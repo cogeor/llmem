@@ -11,8 +11,7 @@ dist/
 # Environment (contains API keys)
 .env
 
-# Editor
-.vscode/
+# Editor temp files
 *.swp
 *.swo
 
