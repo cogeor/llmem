@@ -1,0 +1,7 @@
+loadConfig[]->Config
+- summary:Load config from env vars (artifact settings)
+- in(process.env.ARTIFACT_ROOT, process.env.MAX_FILES_PER_FOLDER, process.env.MAX_FILE_SIZE_KB)
+- out(configInstance)
+getConfig[]->Config
+isConfigLoaded[]->boolean
+resetConfig[]->void

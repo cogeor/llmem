@@ -1,5 +1,6 @@
 # MCP Server Implementation Plan
 # Component: src/mcp/
+# Reference: plan/mcp_design.txt (best practices)
 
 ================================================================================
 ## PURPOSE
@@ -7,6 +8,80 @@
 Primary interface to Antigravity IDE. Implements MCP protocol over stdio,
 registers tools, handles requests, and returns responses with processing
 instructions for the agent.
+
+================================================================================
+## MCP BEST PRACTICES (from mcp_design.txt)
+================================================================================
+
+### Architecture: LLMem follows the 3-layer pattern
+
+1. HOST LAYER: Antigravity IDE (agent + LLM)
+   - Sees few high-level tools (not 20 low-level endpoints)
+   
+2. ORCHESTRATOR LAYER: LLMem MCP Server
+   - Exposes domain-specific tools (generate_prompt, get_artifact, etc.)
+   - Handles chaining via callback pattern (prompt → host LLM → store result)
+   
+3. DOMAIN LAYER: Internal modules (artifact/, parser/, llm/)
+   - Stateless, side-effect-contained operations
+   - Don't orchestrate each other; MCP tools coordinate them
+
+### Key Constraints Applied to LLMem
+
+a. MINIMAL TOOL SURFACE
+   - Expose ~5 focused tools, not many hyper-specific ones
+   - Tools: get_artifact, list_artifacts, generate_artifact, generate_prompt, store_llm_result
+
+b. STRUCTURED RESPONSES (not natural language)
+   - All responses return JSON with: status, data, nextAction, callbackTool
+   - Host agent parses structured responses to decide next steps
+   - Use Zod schemas to guarantee structure
+
+c. BOUNDED RECURSION
+   - MAX_STEPS limit for chained workflows
+   - Per-tool timeouts
+   - Log step counts for debugging
+
+d. SEPARATE READS FROM SIDE EFFECTS
+   - Read-only: get_artifact, list_artifacts, generate_prompt
+   - Side effects: store_llm_result, delete_artifact (clearly named)
+
+e. OBSERVABILITY
+   - Log each MCP call with correlation IDs
+   - Track step counts in chained workflows
+
+### Chained Call Pattern (for LLM-enhanced artifacts)
+
+```
+User: "Annotate functions in config.ts"
+         │
+         ▼
+┌─────────────────────┐
+│ Host calls:         │
+│ generate_prompt     │
+└─────────┬───────────┘
+          │
+          ▼ Returns structured response:
+{
+  "status": "prompt_ready",
+  "promptForHostLLM": "Describe each function...",
+  "callbackTool": "store_llm_result",
+  "callbackArgs": { "path": "...", "task": "annotate" }
+}
+          │
+          ▼
+┌─────────────────────┐
+│ Host executes       │
+│ prompt with its LLM │
+└─────────┬───────────┘
+          │
+          ▼
+┌─────────────────────┐
+│ Host calls:         │
+│ store_llm_result    │
+│ with LLM output     │
+└─────────────────────┘
+```
 
 ================================================================================
 ## FILES & RESPONSIBILITIES
@@ -19,18 +94,18 @@ instructions for the agent.
 - Route requests to appropriate handlers
 
 ### tools.ts
-- Define tool schemas (inputs, outputs)
+- Define tool schemas with Zod
 - Implement tool logic:
-  - generate_artifact: Create new artifacts via LLM
-  - list_artifacts: Query existing artifacts
-  - get_artifact: Retrieve artifact content
-  - delete_artifact: Remove artifacts
+  - get_codebase_info: Parse file, return structure (may return needs_llm)
+  - get_artifact: Retrieve saved artifact
+  - list_artifacts: Query artifact index
+  - process_with_llm: Build prompt for LLM treatment
+  - save_artifact: Store analysis result
 
 ### handlers.ts
-- Validate incoming requests
-- Format responses with agent instructions
-- Error handling and status codes
-- Build processing hints for Antigravity agent
+- Validate requests with Zod schemas
+- Format structured JSON responses
+- Handle 3 response types: success, error, needs_llm
 
 ================================================================================
 ## MODULE INTERACTIONS
@@ -68,34 +143,51 @@ EXTERNAL DEPENDENCIES:
 - server.ts → Receives Config from extension/config.ts
 
 ================================================================================
-## INTERFACES
+## INTERFACES (using Zod per best practices)
 ================================================================================
 
 ```typescript
-// Tool definitions
-interface GenerateArtifactInput {
-  prompt: string;
-  paths: string[];
-  artifactTypes?: string[];
-  options?: { model?: string; temperature?: number };
-}
+import { z } from 'zod';
 
-interface ListArtifactsInput {
-  path?: string;
-  typeFilter?: string[];
-}
+// Tool input schemas (validated with Zod)
+const GenerateArtifactSchema = z.object({
+  path: z.string().describe("Source file path"),
+  task: z.enum(['parse', 'annotate', 'summarize']).describe("Task type"),
+  options: z.object({
+    focusOn: z.array(z.string()).optional(),
+  }).optional(),
+});
 
-interface GetArtifactInput {
-  artifactPath?: string;
-  artifactId?: string;
-}
+const GetArtifactSchema = z.object({
+  path: z.string().describe("Source file path"),
+});
 
-// Response format
+const ListArtifactsSchema = z.object({
+  directory: z.string().optional().describe("Filter by directory"),
+  type: z.string().optional().describe("Filter by artifact type"),
+});
+
+const GeneratePromptSchema = z.object({
+  path: z.string().describe("Source file path"),
+  task: z.enum(['annotate', 'summarize', 'document', 'test-plan']),
+});
+
+const StoreLlmResultSchema = z.object({
+  path: z.string().describe("Source file path"),
+  task: z.string().describe("Task that generated this result"),
+  result: z.string().describe("LLM output to store"),
+});
+
+// Structured response format (per best practices - JSON, not natural language)
 interface McpResponse<T> {
-  success: boolean;
+  status: 'success' | 'error' | 'prompt_ready';
   data?: T;
   error?: string;
-  agentInstructions?: string;  // Hints for Antigravity agent
+  
+  // For chained calls (when status === 'prompt_ready')
+  promptForHostLLM?: string;        // Prompt for host agent to execute
+  callbackTool?: string;            // Tool to call with LLM result
+  callbackArgs?: Record<string, unknown>;  // Arguments for callback
 }
 ```
 
@@ -158,10 +250,9 @@ MCP ↔ Artifact Service:
 - Test: delete_artifact calls artifact/service.deleteArtifact()
 - Test: Artifact errors propagate correctly to MCP response
 
-MCP ↔ LLM Client:
-- Test: generate_artifact calls llm/client.callGemini()
-- Test: LLM timeout is handled gracefully
-- Test: LLM rate limit error returns proper MCP error
+MCP ↔ LLM Prompt Builder:
+- Test: process_with_llm returns valid prompt structure
+- Test: save_artifact stores LLM result correctly
 
 MCP ↔ Parser:
 - Test: generate_artifact uses parser/outline for context

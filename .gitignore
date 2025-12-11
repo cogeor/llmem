@@ -1,1 +1,21 @@
+# Private notes
 memo.txt
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.vsix
+
+# Environment (contains API keys)
+.env
+
+# Editor
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

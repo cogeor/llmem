@@ -1,0 +1,153 @@
+# Part 5: LLM Integration Plan
+# Component: src/llm/
+
+================================================================================
+## PURPOSE
+================================================================================
+Handle cases where parsed code structure needs deeper LLM analysis.
+Generates prompts for the host LLM to process, then stores results as artifacts.
+
+NOT an external LLM API - uses host LLM via chained MCP calls.
+
+================================================================================
+## WORKFLOW
+================================================================================
+
+When `get_codebase_info` determines complex analysis is needed:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ User: "Explain the dependencies in utils.ts"                   │
+│                        │                                        │
+│                        ▼                                        │
+│ Host LLM → get_codebase_info(path, task="dependencies")        │
+│                        │                                        │
+│                        ▼                                        │
+│ LLMem: "This needs LLM analysis" → builds prompt               │
+│                        │                                        │
+│                        ▼                                        │
+│ Returns: { status: "needs_llm", promptForHost: "...",          │
+│            callbackTool: "save_artifact", callbackArgs: {...} }│
+│                        │                                        │
+│                        ▼                                        │
+│ Host LLM executes prompt with its own LLM                      │
+│                        │                                        │
+│                        ▼                                        │
+│ Host LLM → save_artifact(result) → stored in .artifacts/       │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+================================================================================
+## TREATMENT TYPES
+================================================================================
+
+| Task | Input | Output |
+|------|-------|--------|
+| `summary` | File functions/classes | Brief explanation of purpose |
+| `dependencies` | Function/class | What it depends on, who calls it |
+| `callgraph` | Class/module | Functions called, execution flow |
+| `docstring` | Function signature | Generated documentation |
+
+================================================================================
+## FILES & RESPONSIBILITIES
+================================================================================
+
+### prompt-builder.ts
+- Build prompts from artifact data + treatment type
+- Include structured code info in prompt
+- Return prompt with callback instructions
+
+### templates.ts
+- Prompt templates for each treatment type
+- Output format specifications
+
+### response-parser.ts (optional)
+- Parse host LLM response if structured output needed
+- Extract specific fields from natural language response
+
+================================================================================
+## INTERFACES
+================================================================================
+
+```typescript
+import { z } from 'zod';
+
+// Input to process_with_llm tool
+const ProcessWithLlmSchema = z.object({
+  path: z.string(),
+  task: z.enum(['summary', 'dependencies', 'callgraph', 'docstring']),
+  target: z.string().optional().describe("Specific function/class name"),
+});
+
+// Response when LLM treatment needed
+interface NeedsLlmResponse {
+  status: 'needs_llm';
+  promptForHost: string;
+  callbackTool: 'save_artifact';
+  callbackArgs: {
+    path: string;
+    type: string;
+    target?: string;
+  };
+}
+
+// Prompt builder
+function buildTreatmentPrompt(
+  codeInfo: FileOutline,
+  task: string,
+  target?: string
+): string;
+```
+
+================================================================================
+## PROMPT TEMPLATES
+================================================================================
+
+### Summary Template
+```
+File: {path}
+Functions: {function_list}
+Classes: {class_list}
+
+Provide a 2-3 sentence summary of what this file does.
+```
+
+### Dependencies Template
+```
+Function/Class: {target}
+
+Code structure:
+{relevant_outline}
+
+List what this {type} depends on (imports, calls) and what depends on it.
+Format: "Depends on: [...], Used by: [...]"
+```
+
+### Callgraph Template
+```
+Class: {target}
+
+Methods:
+{method_list_with_signatures}
+
+Describe the typical execution flow and method interactions.
+```
+
+================================================================================
+## IMPLEMENTATION ORDER
+================================================================================
+
+1. templates.ts - Define prompt templates
+2. prompt-builder.ts - Template interpolation with code info
+3. response-parser.ts - Optional structured output parsing
+
+================================================================================
+## DEPENDENCIES
+================================================================================
+
+External: None (no external LLM API)
+
+Internal:
+- Reads from: parser/outline (code structure)
+- Reads from: artifact/service (existing artifacts)
+- Writes via: MCP callback to save_artifact

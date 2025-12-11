@@ -1,12 +1,22 @@
-# Text Processing Implementation Plan
+# Part 4: Text Processing Implementation Plan (MVP)
 # Component: src/parser/
 
 ================================================================================
 ## PURPOSE
 ================================================================================
 Code structure extraction using tree-sitter. Parses source files into AST,
-extracts functions/classes/methods, and builds structured outlines for
-LLM context enrichment.
+extracts functions/classes/methods, and stores as .artifact files.
+
+MVP GOAL: For each source file, generate a corresponding .artifact file
+containing the list of functions, classes, and methods.
+
+Example:
+  src/extension/config.ts → .artifacts/src/extension/config.ts.artifact
+  
+  Contents:
+  - Functions: loadConfig, getConfig, isConfigLoaded, resetConfig
+  - Interfaces: Config
+  - Constants: DEFAULT_CONFIG
 
 ================================================================================
 ## FILES & RESPONSIBILITIES

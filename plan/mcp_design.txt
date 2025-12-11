@@ -1,0 +1,100 @@
+# LLMem MCP Design
+
+## Purpose
+
+Build a **cached, machine-readable index** of the codebase.
+Parse code → extract structure → store in queryable .artifact files.
+
+When users ask about code, the LLM queries pre-built artifacts instead of 
+re-parsing files each time. Artifacts contain functions, classes, methods - 
+structured data that's fast to query.
+
+## Core Workflow
+
+```
+CACHE WORKFLOW (on file change or first access):
+┌─────────────────────────────────────────────────────────────────┐
+│ 1. parse config.ts with tree-sitter                            │
+│ 2. extract: loadConfig, getConfig, resetConfig, isConfigLoaded │
+│ 3. save to .artifacts/src/extension/config.ts.artifact         │
+└─────────────────────────────────────────────────────────────────┘
+
+QUERY WORKFLOW (when LLM needs info):
+┌─────────────────────────────────────────────────────────────────┐
+│ User: "What does config.ts do?"                                │
+│                     │                                           │
+│                     ▼                                           │
+│ Host LLM → get_codebase_info("src/extension/config.ts")        │
+│                     │                                           │
+│                     ▼                                           │
+│ LLMem checks: artifact exists? → YES → return cached data      │
+│                                  NO  → parse, cache, return    │
+│                     │                                           │
+│                     ▼                                           │
+│ Returns: { functions: ["loadConfig", ...], classes: [], ... }  │
+└─────────────────────────────────────────────────────────────────┘
+
+ENRICHMENT WORKFLOW (optional LLM treatment):
+┌─────────────────────────────────────────────────────────────────┐
+│ User: "Explain dependencies in config.ts"                      │
+│                     │                                           │
+│                     ▼                                           │
+│ LLMem: artifact has structure, but needs LLM for explanation   │
+│        → returns prompt for host LLM to process                │
+│        → result saved back to artifact (enriched data)         │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Tool Surface (~5 tools)
+
+| Tool | Purpose | Side Effects |
+|------|---------|--------------|
+| `get_codebase_info` | Fetch structure of file/folder | Read-only |
+| `get_artifact` | Retrieve saved artifact | Read-only |
+| `list_artifacts` | Query artifact index | Read-only |
+| `process_with_llm` | Request LLM treatment of code | Returns prompt |
+| `save_artifact` | Store analysis result | Write |
+
+## Response Types
+
+### Type A: Direct structured response
+```json
+{
+  "status": "success",
+  "data": {
+    "path": "src/extension/config.ts",
+    "functions": ["loadConfig", "getConfig", "resetConfig"],
+    "classes": [],
+    "summary": "Configuration module with 4 exported functions"
+  }
+}
+```
+
+### Type B: With artifact save
+```json
+{
+  "status": "success",
+  "data": { ... },
+  "artifactSaved": ".artifacts/src/extension/config.ts.artifact"
+}
+```
+
+### Type C: Request LLM treatment
+When complex analysis needed (e.g., summarize dependencies, explain logic):
+```json
+{
+  "status": "needs_llm",
+  "promptForHost": "Given these functions from config.ts:\n- loadConfig()...\n\nExplain the dependency flow.",
+  "callbackTool": "save_artifact",
+  "callbackArgs": { "path": "...", "type": "analysis" }
+}
+```
+
+## Best Practices Applied
+
+1. **Minimal tool surface** - 5 focused tools, not 20 endpoints
+2. **Structured responses** - JSON, not natural language
+3. **Zod schemas** - Validate all inputs
+4. **Reads vs writes** - Clearly separated (get_* vs save_*)
+5. **Bounded operations** - Timeouts, file size limits
+6. **Cache artifacts** - Avoid re-parsing unchanged files

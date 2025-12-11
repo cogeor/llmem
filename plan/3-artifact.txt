@@ -83,9 +83,8 @@ interface ArtifactMetadata {
   id: string;
   sourcePath: string;
   artifactPath: string;
-  type: string;           // "summary", "test-plan", etc.
+  type: string;           // "summary", "dependencies", etc.
   createdAt: string;      // ISO timestamp
-  model: string;          // "gemini-1.5-pro"
   promptHash?: string;
 }
 

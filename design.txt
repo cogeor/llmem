@@ -109,14 +109,19 @@ chat is the user interface. This extension is purely an MCP server with tools.
 
 --------------------------------------------------------------------------------
 
-### 4. Text Processing (src/parser/)
+### 4. Text Processing (src/parser/) - MVP
    Purpose: Code structure extraction using tree-sitter
    Scope:
    - Parse source files into AST
    - Extract function/method signatures
    - Extract class definitions and their members
-   - Build structured code outline for LLM context
+   - Generate .artifact files with code structure
    - Support multiple languages (TypeScript, Python, etc.)
+   
+   MVP Output: .artifacts/path/to/file.ts.artifact containing:
+   - Functions: function names
+   - Classes: class names with methods
+   - Interfaces/Types: exported types
    
    Files:
    - parser.ts          → Tree-sitter wrapper, language detection
@@ -126,17 +131,28 @@ chat is the user interface. This extension is purely an MCP server with tools.
 
 --------------------------------------------------------------------------------
 
-### 5. Gemini Client (src/llm/)
-   Purpose: LLM API communication
+### 5. LLM Prompt Generation (src/llm/)
+   Purpose: Generate prompts for host LLM via chained MCP calls
+   
+   KEY DESIGN: No external LLM API. Generates prompts that the MCP server
+   returns to Antigravity's host agent for execution.
+   
+   Chained Call Flow:
+   1. Tool → MCP: Build prompt from artifact data
+   2. MCP → Host Agent: Return prompt + callback instructions
+   3. Host Agent → LLM: Execute prompt
+   4. Host Agent → MCP: Store result via callback tool
+   
    Scope:
-   - Gemini API calls (env var: GEMINI_API_KEY)
-   - Prompt construction from file content + code structure
-   - Response parsing into artifacts
+   - Build prompts from artifact data + user task
+   - Return prompts to host agent with callback instructions
+   - Parse LLM results from host agent callbacks
+   - Store enhanced artifacts (annotations, summaries)
    
    Files:
-   - client.ts          → Gemini API wrapper with retry logic
-   - prompt-builder.ts  → Build prompts from context + code outline
-   - response-parser.ts → Parse LLM output into structured artifacts
+   - prompt-builder.ts  → Build prompts for host LLM
+   - response-parser.ts → Parse host LLM results
+   - templates.ts       → Prompt templates (annotate, summarize, etc.)
 
 ================================================================================
 ## FILE STRUCTURE
@@ -168,9 +184,9 @@ llmem/
 │   │   └── types.ts           → CodeOutline interfaces
 │   │
 │   └── llm/
-│       ├── client.ts          → Gemini API wrapper
-│       ├── prompt-builder.ts  → Prompt construction
-│       └── response-parser.ts → Parse LLM responses
+│       ├── prompt-builder.ts  → Build prompts for host LLM
+│       ├── response-parser.ts → Parse host LLM results
+│       └── templates.ts       → Prompt templates (annotate, summarize)
 │
 ├── package.json
 ├── tsconfig.json
