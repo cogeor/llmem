@@ -1,0 +1,570 @@
+
+# Design Document: VS Code Extension with MCP Server for Artifact Generation
+
+- Design differences that need to change from this document:
+- simplify and summarize the document, make it concise while being readable
+- make sure that the mcp-server is compatible with gemini api (stored as env var) and the antigravity IDE
+- instead of VScode, this is an antigravity IDE extension
+- determine ideal file stucture for making modulable and extensible code.
+- use best practices for determining the architecture of the code, keep file size small.
+- determine what the functionality of each file should be, do not implement yet.
+- store file structure as ascii file in this doc.
+
+## 1. Overview
+
+We are building a **VS Code extension** that:
+
+1. Provides a **chat-based UX** inside VS Code.
+2. On chat interaction, **calls a Gemini LLM API** using:
+
+   * Project file information (content + metadata)
+   * A custom prompt from the user
+3. Stores the **LLM outputs as “artifacts”** in a **shadow folder tree** that mirrors the current workspace’s file structure.
+4. Exposes these artifact operations via an **MCP (Model Context Protocol) server**, so external AI clients (e.g. Copilot / Codex / other MCP clients) can leverage them. ([OpenAI Developers][1])
+
+---
+
+## 2. Goals & Non-Goals
+
+### 2.1 Goals
+
+* Provide a **chat participant** (or webview-based chat) in VS Code that:
+
+  * Accepts user prompts
+  * Optionally targets specific files/folders
+  * Generates artifacts via Gemini
+* Implement a **shadow artifact tree** that:
+
+  * Lives under a dedicated root (e.g. `.artifacts/` or `.llm-artifacts/`) in the workspace
+  * Mirrors the workspace folder & file structure
+* Provide an **MCP server** that:
+
+  * Exposes tools to list, read, and create artifacts
+  * Can be used by MCP-aware AI clients / chat agents
+* Make configuration flexible:
+
+  * Gemini model, API key, temperature, max tokens
+  * Artifact storage root
+  * Naming conventions for artifacts
+
+### 2.2 Non-Goals (initial version)
+
+* Not implementing **multi-workspace aggregation** (one workspace at a time).
+* No collaborative syncing of artifacts between machines.
+* No GUI for complex artifact visualization beyond:
+
+  * Explorer-style tree view
+  * Normal VS Code editors for files
+* No advanced semantic search over artifacts (can be a later feature).
+
+---
+
+## 3. User Stories
+
+1. **Generate artifact for file**
+
+   * As a user, I open `src/app.ts` and ask via chat:
+
+     * “Generate a high-level summary and test plan for the current file.”
+   * The extension:
+
+     * Reads `src/app.ts`
+     * Calls Gemini with my prompt + file content
+     * Saves artifacts under `.artifacts/src/app.ts/summary.md` and `test-plan.md`
+     * Shows links to these artifacts, which I can open in VS Code.
+
+2. **Generate artifact for folder**
+
+   * As a user, I select a folder `src/features/auth` and ask:
+
+     * “Create an architectural overview and list of missing tests for this feature.”
+   * The extension:
+
+     * Collects a subset of files from that folder (configurable)
+     * Sends context to Gemini
+     * Creates:
+
+       * `.artifacts/src/features/auth/overview.md`
+       * `.artifacts/src/features/auth/missing-tests.md`
+
+3. **MCP-driven usage**
+
+   * An external AI client connected to the MCP server calls:
+
+     * `generate_artifact` tool with `paths: ["src/app.ts"]` and `prompt: "Summarize this file"`.
+   * The MCP server:
+
+     * Reads the file from the workspace
+     * Calls Gemini
+     * Stores artifact in `.artifacts/...`
+     * Returns a reference to the artifact (path + ID).
+
+4. **Browse artifacts**
+
+   * In VS Code, I open a dedicated “Artifacts” view that:
+
+     * Shows `.artifacts` as a mirrored tree
+     * Lets me open and inspect artifacts side-by-side with source files.
+
+---
+
+## 4. High-Level Architecture
+
+### 4.1 Components
+
+1. **VS Code Extension (TypeScript)**
+
+   * Registers:
+
+     * A **Chat Participant**, e.g. `@artifacts` ([Visual Studio Code][2])
+     * A **Tree View** for artifacts (using VS Code Views API) ([Visual Studio Code][3])
+   * Hosts/launches the MCP server process (or points clients at it).
+   * Provides workspace-level services (file system, config, logging).
+
+2. **MCP Server**
+
+   * Node.js process implementing MCP over stdio or HTTP.
+   * Exposes MCP **tools** and **resources** for:
+
+     * Listing artifacts
+     * Generating artifacts
+     * Reading artifacts
+   * Uses shared “artifact service” logic (shared lib with extension if feasible).
+
+3. **Artifact Service (Shared Library / Module)**
+
+   * Pure logic for:
+
+     * Mapping source paths → artifact paths
+     * Reading/writing artifacts
+     * Maintaining artifact metadata (index)
+   * Called by:
+
+     * VS Code extension (chat interactions, tree view)
+     * MCP server (tool implementations)
+
+4. **Gemini LLM Client**
+
+   * Thin client/wrapper for the Gemini REST API:
+
+     * Handles auth (API key from VS Code secrets/settings)
+     * Streaming responses (optional)
+     * Error handling, retries, timeouts
+
+5. **Storage**
+
+   * File-based artifacts in `.artifacts/` under workspace root.
+   * Optional metadata index (JSON or SQLite) for fast lookup.
+
+---
+
+## 5. VS Code Extension Design
+
+### 5.1 Activation
+
+* Activation events:
+
+  * `onStartupFinished`
+  * `onView:artifactsView`
+  * `onCommand:artifacts.generateFromChat`
+  * Optional: when a `.vscode/mcp.json` references our MCP server.
+
+### 5.2 Chat Participant
+
+Use VS Code **Chat Participant API** to register something like `@artifacts`. ([Visual Studio Code][2])
+
+Key behaviors:
+
+* **Inputs**:
+
+  * User natural language message.
+  * Contextual data: active editor, selected files, or explicit file references in the chat.
+
+* **Actions**:
+
+  * Parse intent (e.g., “generate summary / tests / refactor plan”).
+  * Resolve target scope:
+
+    * Current file
+    * Selected folders/files
+    * Whole workspace (limited sample)
+  * Build a structured `ArtifactGenerationRequest` and call the Artifact Service + Gemini.
+
+* **Chat Responses**:
+
+  * Inform user about:
+
+    * Which files were used as context.
+    * Which artifacts were created, with clickable file links.
+  * Provide any inline summary plus navigation links to artifact files.
+
+### 5.3 Artifact Tree View
+
+* Implement a TreeDataProvider that:
+
+  * Roots at `${workspaceRoot}/${artifactRoot}` (e.g. `.artifacts`).
+  * Mirrors folder/file structure.
+  * Nodes:
+
+    * Folder node → children
+    * Artifact file node → opens in editor on click
+* Allows simple actions:
+
+  * Refresh tree
+  * Delete artifact
+  * Regenerate artifact (re-run Gemini with updated source)
+
+---
+
+## 6. Shadow File Tree Design
+
+### 6.1 Storage Root
+
+* Default root: `.artifacts/` in workspace root.
+* Configurable via setting:
+
+  * `artifacts.shadowRoot: string` (e.g. `.llm-artifacts`)
+
+### 6.2 Path Mapping
+
+Given workspace file path:
+
+```text
+<workspaceRoot> / src / utils / math.ts
+```
+
+Artifacts live under:
+
+```text
+<workspaceRoot> / .artifacts / src / utils / math.ts / <artifact-file>
+```
+
+Examples:
+
+```text
+.artifacts/
+  src/
+    utils/
+      math.ts/
+        summary.md
+        test-plan.md
+        refactor-suggestions-2025-01-01T10-15-00.json
+```
+
+For folder-level artifacts:
+
+```text
+<workspaceRoot> / src / features / auth  (folder)
+
+.artifacts/
+  src/
+    features/
+      auth/
+        _folder-overview.md
+        missing-tests.md
+```
+
+Special conventions:
+
+* File artifacts: directory named exactly the source file name.
+* Folder artifacts: artifacts directly under mirrored folder path.
+* Workspace-level artifacts: store at `.artifacts/_workspace/`.
+
+### 6.3 Metadata Index
+
+Optional index file:
+
+```text
+.artifacts/.index.json
+```
+
+Schema example:
+
+```json
+{
+  "version": 1,
+  "artifacts": [
+    {
+      "id": "uuid-or-hash",
+      "sourcePath": "src/utils/math.ts",
+      "artifactPath": ".artifacts/src/utils/math.ts/summary.md",
+      "type": "summary",
+      "createdAt": "2025-01-01T10:15:00Z",
+      "model": "gemini-1.5-pro",
+      "promptHash": "..."
+    }
+  ]
+}
+```
+
+Used for:
+
+* Quick listing/filtering for MCP tools
+* Debugging & history
+
+---
+
+## 7. Artifact Generation Flow
+
+### 7.1 Request Structure
+
+Internal TypeScript interface:
+
+```ts
+interface ArtifactGenerationRequest {
+  prompt: string;                  // User’s custom prompt
+  targetPaths: string[];           // Relative file/folder paths
+  maxFilesPerFolder?: number;
+  includeGlobs?: string[];
+  excludeGlobs?: string[];
+  artifactTypes?: string[];        // e.g. ["summary", "tests", "refactor-plan"]
+  model?: string;                  // Gemini model override
+  temperature?: number;
+}
+```
+
+### 7.2 LLM Prompt Construction
+
+The extension (or MCP server) constructs a prompt:
+
+* System-style instructions (template):
+
+  * Explain the project context
+  * Define what “artifact” means
+  * Specify the desired artifactTypes and formats
+* For each target file:
+
+  * Add path + trimmed content (respecting token limit)
+* Add user custom prompt verbatim at the end as the main “task”.
+
+### 7.3 Gemini Call
+
+* Use Gemini API (e.g. via Google AI Studio REST).
+* Each call returns either:
+
+  * A single artifact; or
+  * A structured, multi-part response (e.g., JSON with different artifacts).
+
+Strategy options:
+
+1. **Single request, structured output**
+
+   * Instruct Gemini to return JSON with keys per artifact type.
+   * Extension parses and writes multiple artifact files.
+
+2. **Multiple requests**
+
+   * One Gemini call per artifact type (summary, tests, etc.).
+   * Simpler parsing, more API calls.
+
+Initial version can pick 1 for efficiency or 2 for implementation simplicity.
+
+### 7.4 Writing Artifacts
+
+For each generated artifact:
+
+1. Determine artifact root:
+
+   * File-level or folder-level based on `targetPaths`.
+2. Create directories with `fs.mkdir({ recursive: true })`.
+3. Write artifact:
+
+   * `.md` for human-readable content.
+   * `.json` for structured outputs.
+4. Update `.index.json` with metadata.
+
+---
+
+## 8. MCP Server Design
+
+### 8.1 Protocol
+
+* Implement MCP server in Node.js using stdio or HTTP per Model Context Protocol spec. ([OpenAI Developers][1])
+* The server is configured in:
+
+  * `.vscode/mcp.json` or user `settings.json` (for clients like Copilot). ([GitHub Docs][4])
+
+### 8.2 Tools
+
+Proposed MCP **tools**:
+
+1. **`generate_artifact`**
+
+   * **Inputs**:
+
+     * `prompt: string`
+     * `paths: string[]` (relative workspace paths for files/folders)
+     * `artifactTypes?: string[]`
+     * `options?: { model?: string; temperature?: number }`
+   * **Behavior**:
+
+     * Reads files/directories from workspace
+     * Calls Gemini like the VS Code chat participant would
+     * Writes artifacts to shadow tree
+   * **Return**:
+
+     * List of artifacts:
+
+       * `artifactId`, `artifactPath`, `sourcePath`, `type`, `createdAt`.
+
+2. **`list_artifacts`**
+
+   * **Inputs**:
+
+     * `path?: string` (folder or file path; default to workspace root)
+     * `typeFilter?: string[]`
+   * **Return**:
+
+     * Tree or flat list of artifact metadata.
+
+3. **`get_artifact`**
+
+   * **Inputs**:
+
+     * `artifactPath?: string`
+     * `artifactId?: string`
+   * **Return**:
+
+     * Artifact content + metadata.
+
+4. **`delete_artifact`** (optional initial version)
+
+   * Remove a given artifact file & update index.
+
+### 8.3 Resources
+
+MCP **resources** (optional but useful):
+
+* `source_file:<path>`
+
+  * Read-only resource exposing source file contents.
+* `artifact_file:<path>`
+
+  * Expose artifact file contents.
+
+This allows AI clients to pull file contents via MCP resources instead of direct FS access.
+
+### 8.4 Integration with Extension
+
+Two options:
+
+1. **Shared Codebase, Separate Process**
+
+   * MCP server is a separate Node entrypoint using shared library code.
+   * VS Code extension points clients to this server via config/system.
+
+2. **Embedded Server in Extension Process (stdio child)**
+
+   * Extension spawns MCP server as a child process on demand.
+   * More tightly coupled; easier to ship as a single extension.
+
+Initial design can target option 1 but reuse a shared `artifact-service` package between extension and server.
+
+---
+
+## 9. Configuration & Security
+
+### 9.1 VS Code Settings
+
+Example settings:
+
+```jsonc
+{
+  "artifacts.gemini.apiKey": "*****", // stored via VS Code SecretStorage
+  "artifacts.gemini.model": "gemini-1.5-pro",
+  "artifacts.gemini.temperature": 0.3,
+  "artifacts.shadowRoot": ".artifacts",
+  "artifacts.maxFilesPerFolder": 20,
+  "artifacts.maxFileSizeKB": 512
+}
+```
+
+* API key is saved using `vscode.SecretStorage`, not plain JSON.
+
+### 9.2 Rate Limiting & Quotas
+
+* Implement basic client-side throttling:
+
+  * Limit concurrent Gemini calls.
+  * Queue or reject if too many outstanding requests.
+* Provide descriptive errors for:
+
+  * 429 / quota exceeded
+  * 401 / invalid credentials
+  * Network errors
+
+---
+
+## 10. Error Handling & Edge Cases
+
+* **Large Projects**
+
+  * Use glob filters and `maxFilesPerFolder` to limit context size.
+  * If token budget is exceeded, summarize subsets or ask user to narrow scope.
+
+* **Conflicting Artifact Names**
+
+  * Overwrite by default with timestamped backup or:
+
+    * Use naming pattern with timestamp suffix.
+  * Or provide config:
+
+    * `artifacts.conflictStrategy = "overwrite" | "timestamp"`.
+
+* **Deleted Source Files**
+
+  * Artifacts may remain in shadow tree.
+  * Extension can:
+
+    * Mark them as “orphaned” in the tree.
+    * Offer a cleanup command.
+
+* **Workspace Renamed / Moved**
+
+  * Paths remain relative; as long as `.artifacts` moves with workspace, things still map.
+
+---
+
+## 11. Testing Strategy
+
+* **Unit Tests**
+
+  * Artifact path mapping
+  * Index read/write operations
+  * Gemini prompt construction and parsing
+
+* **Integration Tests**
+
+  * End-to-end: chat → Gemini mock → artifacts written.
+  * MCP tool calls with a fake filesystem workspace.
+
+* **Manual QA**
+
+  * Small sample project (TypeScript, Python, etc.)
+  * Test:
+
+    * File-level, folder-level, workspace-level artifacts
+    * MCP client integration where available
+
+---
+
+## 12. Future Enhancements
+
+* Semantic search over artifacts (embedding + vector store).
+* Artifact diffing (compare artifact vs current source).
+* “Live artifacts” that auto-refresh when source changes.
+* UI for editing and re-running artifact prompts from within artifact files.
+* Richer dashboard Webview (graphs, cross-links) using the Webview API. ([Visual Studio Code][5])
+
+---
+
+If you’d like, next step I can:
+
+* Propose a **concrete folder + package layout** (e.g. `/extension`, `/mcp-server`, `/shared`).
+* Or sketch **TypeScript skeleton code** for the artifact service, chat participant, and one MCP tool.
+
+[1]: https://developers.openai.com/codex/mcp/?utm_source=chatgpt.com "Model Context Protocol"
+[2]: https://code.visualstudio.com/api/extension-guides/ai/chat?utm_source=chatgpt.com "Chat Participant API"
+[3]: https://code.visualstudio.com/api/ux-guidelines/views?utm_source=chatgpt.com "Views | Visual Studio Code Extension API"
+[4]: https://docs.github.com/copilot/customizing-copilot/using-model-context-protocol/extending-copilot-chat-with-mcp?utm_source=chatgpt.com "Extending GitHub Copilot Chat with Model Context ..."
+[5]: https://code.visualstudio.com/api/extension-guides/webview?utm_source=chatgpt.com "Webview API | Visual Studio Code Extension API"

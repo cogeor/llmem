@@ -1,0 +1,240 @@
+# LLMem Design Document
+# Antigravity IDE Extension (MCP Server) for Artifact Generation
+
+## Overview
+An MCP server extension for Antigravity IDE that generates and manages LLM artifacts.
+The Antigravity IDE agent calls this MCP server to create, retrieve, and manage artifacts.
+
+KEY DESIGN PRINCIPLE: This extension provides NO chat UI. Antigravity IDE's built-in
+chat is the user interface. This extension is purely an MCP server with tools.
+
+================================================================================
+## USER STORY: END-TO-END FLOW
+================================================================================
+
+### Scenario: Developer Requests Artifacts via Antigravity Chat
+
+1. USER opens project in Antigravity IDE
+   - MCP Server extension activates
+   - Artifact Tree loads into memory (hidden from user)
+   - MCP Server registers tools with Antigravity IDE
+
+2. USER chats normally with Antigravity IDE agent
+   - Types: "Pull the artifacts for src/utils/auth.ts"
+   - OR: "Generate a summary and test plan for this file"
+
+3. ANTIGRAVITY AGENT recognizes artifact request
+   - Agent decides to call MCP tool: get_artifact or generate_artifact
+   - Agent passes file path and user intent to MCP server
+
+4. MCP SERVER handles the request
+   - Checks Artifact Tree (in memory) for existing artifacts
+   - If generating: calls Gemini API to create new artifacts
+   - If retrieving: reads from .artifacts/ shadow folder
+
+5. MCP SERVER returns to agent
+   - Returns artifact content + metadata
+   - Includes processing instructions for the agent
+   - Example: "Here is the summary. Present this to the user."
+
+6. ANTIGRAVITY AGENT presents result to user
+   - Agent formats and displays artifact in chat
+   - User sees output seamlessly in normal IDE chat
+
+### Scenario: Agent Uses Artifacts During Coding Task
+
+1. USER asks: "Refactor the auth module"
+
+2. ANTIGRAVITY AGENT calls MCP tool: list_artifacts
+   - Checks if existing analysis exists for auth module
+
+3. IF artifacts exist:
+   - Agent calls get_artifact to retrieve context
+   - Uses existing summaries/test plans to inform refactoring
+
+4. IF no artifacts:
+   - Agent may call generate_artifact first
+   - Creates architectural overview before refactoring
+
+5. AGENT performs refactoring with full context
+   - Artifacts provide historical/architectural knowledge
+
+================================================================================
+## COMPONENT ARCHITECTURE
+================================================================================
+
+### 1. Extension Core (src/extension/)
+   Purpose: MCP server lifecycle and configuration
+   Scope:
+   - Extension activation (starts MCP server)
+   - Configuration loading (API keys, settings)
+   - Workspace path resolution
+   
+   Files:
+   - extension.ts       → Activation, MCP server startup
+   - config.ts          → Settings and env var management
+
+--------------------------------------------------------------------------------
+
+### 2. MCP Server (src/mcp/)
+   Purpose: Primary interface - exposes tools to Antigravity IDE
+   Scope:
+   - MCP protocol implementation (stdio transport)
+   - Tool definitions and handlers
+   - Request/response formatting
+   - Processing instructions for agent
+   
+   Files:
+   - server.ts          → MCP server entry point, tool registration
+   - tools.ts           → Tool implementations (generate, list, get, delete)
+   - handlers.ts        → Request validation and response formatting
+
+--------------------------------------------------------------------------------
+
+### 3. Artifact Service (src/artifact/)
+   Purpose: Core artifact operations
+   Scope:
+   - Path mapping (source → artifact paths)
+   - Read/write artifacts to filesystem
+   - Metadata index management
+   - In-memory tree structure
+   
+   Files:
+   - service.ts         → Main service orchestration
+   - path-mapper.ts     → Source-to-artifact path conversion
+   - storage.ts         → File system read/write
+   - index.ts           → Metadata index (.index.json)
+   - tree.ts            → In-memory artifact tree (hidden from user)
+   - types.ts           → Shared interfaces
+
+--------------------------------------------------------------------------------
+
+### 4. Text Processing (src/parser/)
+   Purpose: Code structure extraction using tree-sitter
+   Scope:
+   - Parse source files into AST
+   - Extract function/method signatures
+   - Extract class definitions and their members
+   - Build structured code outline for LLM context
+   - Support multiple languages (TypeScript, Python, etc.)
+   
+   Files:
+   - parser.ts          → Tree-sitter wrapper, language detection
+   - extractor.ts       → Extract functions, classes, methods from AST
+   - outline.ts         → Build code structure summary
+   - types.ts           → CodeOutline, FunctionInfo, ClassInfo interfaces
+
+--------------------------------------------------------------------------------
+
+### 5. Gemini Client (src/llm/)
+   Purpose: LLM API communication
+   Scope:
+   - Gemini API calls (env var: GEMINI_API_KEY)
+   - Prompt construction from file content + code structure
+   - Response parsing into artifacts
+   
+   Files:
+   - client.ts          → Gemini API wrapper with retry logic
+   - prompt-builder.ts  → Build prompts from context + code outline
+   - response-parser.ts → Parse LLM output into structured artifacts
+
+================================================================================
+## FILE STRUCTURE
+================================================================================
+
+llmem/
+├── src/
+│   ├── extension/
+│   │   ├── extension.ts       → Entry point, MCP server startup
+│   │   └── config.ts          → Settings, env var management
+│   │
+│   ├── mcp/
+│   │   ├── server.ts          → MCP server, tool registration
+│   │   ├── tools.ts           → Tool implementations
+│   │   └── handlers.ts        → Request/response handling
+│   │
+│   ├── artifact/
+│   │   ├── service.ts         → Main service orchestration
+│   │   ├── path-mapper.ts     → Source-to-artifact paths
+│   │   ├── storage.ts         → File system operations
+│   │   ├── index.ts           → Metadata index management
+│   │   ├── tree.ts            → In-memory artifact tree
+│   │   └── types.ts           → Shared interfaces
+│   │
+│   ├── parser/
+│   │   ├── parser.ts          → Tree-sitter wrapper
+│   │   ├── extractor.ts       → AST to functions/classes
+│   │   ├── outline.ts         → Code structure summary
+│   │   └── types.ts           → CodeOutline interfaces
+│   │
+│   └── llm/
+│       ├── client.ts          → Gemini API wrapper
+│       ├── prompt-builder.ts  → Prompt construction
+│       └── response-parser.ts → Parse LLM responses
+│
+├── package.json
+├── tsconfig.json
+└── .env.example               → GEMINI_API_KEY template
+
+================================================================================
+## SHADOW ARTIFACT TREE
+================================================================================
+
+Storage Root: .artifacts/ (configurable)
+
+Path Mapping:
+  Source: src/utils/math.ts
+  Artifacts: .artifacts/src/utils/math.ts/{summary.md, test-plan.md, ...}
+
+  Source (folder): src/features/auth/
+  Artifacts: .artifacts/src/features/auth/{overview.md, missing-tests.md, ...}
+
+  Workspace-level: .artifacts/_workspace/{...}
+
+Metadata Index: .artifacts/.index.json
+  - Tracks artifact IDs, paths, types, timestamps, model info
+
+================================================================================
+## MCP TOOLS
+================================================================================
+
+1. generate_artifact
+   Input:  prompt, paths[], artifactTypes[], options{model, temperature}
+   Output: List of {artifactId, artifactPath, sourcePath, type, createdAt}
+
+2. list_artifacts
+   Input:  path?, typeFilter[]
+   Output: Tree/list of artifact metadata
+
+3. get_artifact
+   Input:  artifactPath or artifactId
+   Output: Artifact content + metadata
+
+4. delete_artifact (optional v1)
+   Input:  artifactPath or artifactId
+   Output: Success/failure
+
+================================================================================
+## CONFIGURATION
+================================================================================
+
+Environment Variables:
+  GEMINI_API_KEY         → Gemini API authentication
+
+Extension Settings:
+  artifacts.gemini.model       → Model selection (default: gemini-1.5-pro)
+  artifacts.gemini.temperature → Sampling temperature
+  artifacts.shadowRoot         → Artifact storage path
+  artifacts.maxFilesPerFolder  → Context limiting
+  artifacts.maxFileSizeKB      → File size filter
+
+================================================================================
+## DESIGN PRINCIPLES
+================================================================================
+
+1. MCP-Only Interface: No custom UI - Antigravity IDE provides all user interaction
+2. Hidden Tree: Artifact structure maintained in memory, not exposed to user
+3. Modularity: 4 focused components with clear boundaries
+4. Small Files: Single responsibility per file (~100-200 lines target)
+5. Agent-Friendly: MCP responses include processing instructions for the agent
+6. Extensibility: Easy to add new artifact types, LLM providers
