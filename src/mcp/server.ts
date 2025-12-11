@@ -60,6 +60,14 @@ let serverConfig: Config | null = null;
 // Server Lifecycle
 // ============================================================================
 
+import { initializeArtifactService } from '../artifact/service';
+
+// ... imports
+
+// ============================================================================
+// Server Lifecycle
+// ============================================================================
+
 /**
  * Start the MCP server
  * 
@@ -76,7 +84,14 @@ export async function startServer(config: Config): Promise<void> {
     serverConfig = config;
     const correlationId = generateCorrelationId();
     console.error(`[${correlationId}] Starting MCP server...`);
+
+    // Initialize Artifact Service
+    // TODO: Allow passing workspace root via config or args. For now assume CWD.
+    const workspaceRoot = process.cwd();
+    console.error(`[${correlationId}]   Workspace root: ${workspaceRoot}`);
     console.error(`[${correlationId}]   Artifact root: ${config.artifactRoot}`);
+
+    await initializeArtifactService(workspaceRoot);
 
     // Create server instance
     server = new Server(

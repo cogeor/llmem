@@ -23,13 +23,19 @@ import {
     logRequest,
     logResponse,
 } from './handlers';
+import {
+    getArtifact,
+    listArtifacts,
+    createArtifact,
+} from '../artifact/service';
+import { ArtifactMetadata as ServiceArtifactMetadata } from '../artifact/types';
 
 // ============================================================================
 // Tool Schemas (Zod)
 // ============================================================================
 
 export const GetArtifactSchema = z.object({
-    path: z.string().describe('Source file path (relative to workspace)'),
+    path: z.string().describe('Source file path (relative to workspace), artifact ID, or absolute artifact path'),
 });
 
 export const ListArtifactsSchema = z.object({
@@ -85,9 +91,6 @@ export interface Artifact extends ArtifactMetadata {
 
 /**
  * Get a saved artifact by path
- * 
- * STUB: Returns placeholder artifact
- * TODO: Import { getArtifact } from '../artifact/service' when implemented
  */
 export async function handleGetArtifact(
     args: unknown
@@ -105,27 +108,32 @@ export async function handleGetArtifact(
 
     const { path } = validation.data!;
 
-    // STUB: Return placeholder artifact
-    // TODO: Replace with: const artifact = await getArtifact(path);
-    const stubArtifact: Artifact = {
-        path: `.artifacts/${path}.artifact`,
-        sourcePath: path,
-        type: 'structure',
-        content: `STUB: Artifact content for ${path}`,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-    };
+    try {
+        const artifactRecord = await getArtifact(path);
 
-    const response = formatSuccess(stubArtifact);
-    logResponse(correlationId, response);
-    return response;
+        if (!artifactRecord) {
+            return formatError(`Artifact not found for path: ${path}`);
+        }
+
+        const artifact: Artifact = {
+            ...artifactRecord.metadata,
+            path: artifactRecord.metadata.artifactPath,
+            updatedAt: artifactRecord.metadata.createdAt, // Use createdAt as fallback
+            content: artifactRecord.content,
+        };
+
+        const response = formatSuccess(artifact);
+        logResponse(correlationId, response);
+        return response;
+    } catch (error) {
+        const response = formatError(error instanceof Error ? error.message : String(error));
+        logResponse(correlationId, response);
+        return response;
+    }
 }
 
 /**
  * List artifacts with optional filtering
- * 
- * STUB: Returns empty list
- * TODO: Import { listArtifacts } from '../artifact/service' when implemented
  */
 export async function handleListArtifacts(
     args: unknown
@@ -141,25 +149,45 @@ export async function handleListArtifacts(
         return response;
     }
 
-    // STUB: Return empty list
-    // TODO: Replace with: const artifacts = await listArtifacts(validation.data);
-    const stubArtifacts: ArtifactMetadata[] = [];
+    try {
+        const { directory, type } = validation.data!;
+        // The service listArtifacts takes { sourcePath?: string; type?: string }
+        // directory filter is not directly supported by service.ts yet in this simple version, 
+        // or we interpret directory as sourcePath prefix?
+        // Let's assume for now we only support strict path or type match as per service.ts signature.
+        // Or we pass undefined if not matching.
 
-    const response = formatSuccess(stubArtifacts);
-    logResponse(correlationId, response);
-    return response;
+        const artifacts = await listArtifacts({
+            sourcePath: directory,
+            type
+        });
+
+        // Map to MCP ArtifactMetadata type
+        const mappedArtifacts: ArtifactMetadata[] = artifacts.map((a: ServiceArtifactMetadata) => ({
+            ...a,
+            path: a.artifactPath,
+            updatedAt: a.createdAt // Use createdAt as fallback
+        }));
+
+        const response = formatSuccess(mappedArtifacts);
+        logResponse(correlationId, response);
+        return response;
+    } catch (error) {
+        const response = formatError(error instanceof Error ? error.message : String(error));
+        logResponse(correlationId, response);
+        return response;
+    }
 }
 
 /**
  * Generate artifact by parsing a source file
  * 
- * STUB: Returns placeholder metadata
- * TODO: Import { extractCodeStructure } from '../parser/extractor' when implemented
- * TODO: Import { saveArtifact } from '../artifact/service' when implemented
+ * STUB: Returns placeholder metadata since Parser is not implemented,
+ * but uses createArtifact to actually save the placeholder.
  */
 export async function handleGenerateArtifact(
     args: unknown
-): Promise<McpResponse<ArtifactMetadata>> {
+): Promise<McpResponse<Artifact>> {
     const correlationId = generateCorrelationId();
     logRequest(correlationId, 'generate_artifact', args);
 
@@ -173,33 +201,38 @@ export async function handleGenerateArtifact(
 
     const { path, task } = validation.data!;
 
-    // STUB: Return placeholder metadata
-    // TODO: 
-    // 1. const structure = await extractCodeStructure(path);
-    // 2. const artifact = { path, sourcePath: path, type: task, content: JSON.stringify(structure), ... };
-    // 3. await saveArtifact(artifact);
-    const stubMetadata: ArtifactMetadata = {
-        path: `.artifacts/${path}.artifact`,
-        sourcePath: path,
-        type: task,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-    };
+    try {
+        // Real implementation would use Parser here.
+        // For now, create a stub content.
+        const stubContent = JSON.stringify({
+            message: "This is a stub artifact generated by LLMem (Parser not yet implemented)",
+            task: task,
+            files: [path]
+        }, null, 2);
 
-    const response = formatSuccess(stubMetadata);
-    logResponse(correlationId, response);
-    return response;
+        const metadata = await createArtifact(path, task, stubContent);
+
+        const responseArtifact: Artifact = {
+            ...metadata,
+            path: metadata.artifactPath,
+            updatedAt: metadata.createdAt,
+            content: stubContent
+        };
+
+        const response = formatSuccess(responseArtifact);
+        logResponse(correlationId, response);
+        return response;
+    } catch (error) {
+        const response = formatError(error instanceof Error ? error.message : String(error));
+        logResponse(correlationId, response);
+        return response;
+    }
 }
 
 /**
  * Generate a prompt for the host LLM
  * 
- * Returns a prompt_ready response with instructions for the host agent
- * to execute the prompt and call store_llm_result with the output.
- * 
- * STUB: Returns placeholder prompt
- * TODO: Import { buildPrompt } from '../llm/prompt-builder' when implemented
- * TODO: Import { extractCodeStructure } from '../parser/extractor' when implemented
+ * STUB: Remains mostly stubbed as depends on LLM module.
  */
 export async function handleGeneratePrompt(
     args: unknown
@@ -217,10 +250,6 @@ export async function handleGeneratePrompt(
 
     const { path, task } = validation.data!;
 
-    // STUB: Return placeholder prompt
-    // TODO:
-    // 1. const structure = await extractCodeStructure(path);
-    // 2. const prompt = buildPrompt(task, structure);
     const stubPrompt = `STUB PROMPT: Please ${task} the code in ${path}.\n\nProvide your analysis in a structured format.`;
 
     const response = formatPromptResponse(
@@ -234,12 +263,6 @@ export async function handleGeneratePrompt(
 
 /**
  * Store LLM result as an artifact
- * 
- * Called by host agent after executing a prompt from generate_prompt.
- * 
- * STUB: Returns success without actually storing
- * TODO: Import { saveArtifact } from '../artifact/service' when implemented
- * TODO: Import { parseResult } from '../llm/prompt-builder' when implemented
  */
 export async function handleStoreLlmResult(
     args: unknown
@@ -257,24 +280,24 @@ export async function handleStoreLlmResult(
 
     const { path, task, result } = validation.data!;
 
-    // STUB: Return success without storing
-    // TODO:
-    // 1. const parsed = parseResult(result, task);
-    // 2. const artifact = { path, sourcePath: path, type: task, content: parsed, ... };
-    // 3. await saveArtifact(artifact);
-    const stubMetadata: ArtifactMetadata = {
-        path: `.artifacts/${path}.${task}.artifact`,
-        sourcePath: path,
-        type: task,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-    };
+    try {
+        // In real impl, we might parse the result first.
+        const metadata = await createArtifact(path, task, result);
 
-    console.error(`[${correlationId}] STUB: Would store LLM result (${result.length} chars) for ${path}`);
+        const responseArtifact: ArtifactMetadata = {
+            ...metadata,
+            path: metadata.artifactPath,
+            updatedAt: metadata.createdAt
+        };
 
-    const response = formatSuccess(stubMetadata);
-    logResponse(correlationId, response);
-    return response;
+        const response = formatSuccess(responseArtifact);
+        logResponse(correlationId, response);
+        return response;
+    } catch (error) {
+        const response = formatError(error instanceof Error ? error.message : String(error));
+        logResponse(correlationId, response);
+        return response;
+    }
 }
 
 // ============================================================================

@@ -4,74 +4,93 @@
 ================================================================================
 ## PURPOSE
 ================================================================================
-Core artifact operations. Manages the shadow folder tree (.artifacts/),
-handles path mapping, maintains metadata index, and provides in-memory
-tree structure for fast lookups.
+Core artifact operations. Manages the "Mirror Artifact" system where each source
+file has a corresponding artifact file in the .artifact/ directory.
+
+Goal:
+- Maintain a shadow folder tree (.artifacts/) mirroring the source.
+- Each .artifact file contains the parser-extracted code structure (Mirror).
+- Enrich these artifacts with LLM-generated insights (summaries, dependencies) 
+  on demand.
 
 ================================================================================
 ## FILES & RESPONSIBILITIES
 ================================================================================
 
 ### service.ts
-- Orchestrate artifact operations (create, read, update, delete)
-- Coordinate between storage, index, and tree
-- Public API for other modules
+- Orchestrate artifact operations.
+- Ensure "Mirror Artifact" exists for a given source file (call parser if missing).
+- Manage updates when source files change.
+- Provide API for storing/retrieving LLM enrichment data within the artifact.
 
 ### path-mapper.ts
-- Convert source paths to artifact paths
-- Handle file vs folder artifact conventions
-- Resolve workspace-relative paths
+- Convert source paths to artifact paths.
+- Convention: src/file.ts -> .artifacts/src/file.ts/file.artifact
+- Handles directory creation and path resolution.
 
 ### storage.ts
-- Read/write artifact files to filesystem
-- Create directories recursively
-- Handle file encoding (UTF-8)
+- Low-level filesystem operations (read/write/delete).
+- JSON handling for utilizing the artifact schema.
 
-### index.ts
-- Manage .artifacts/.index.json
-- CRUD operations on metadata records
-- Query artifacts by path, type, date
+### index.ts (Optional/Deprioritized)
+- Metadata index for fast global queries (may be redundant if we rely on filesystem structure + parser).
 
-### tree.ts
-- In-memory tree structure of all artifacts
-- Fast lookup without filesystem access
-- Refresh/sync with filesystem on demand
+### tree.ts (Optional/Deprioritized)
+- In-memory representation. Can be built on-the-fly from matching .artifact files.
 
 ### types.ts
-- Shared interfaces and types
-- ArtifactMetadata, ArtifactRecord, etc.
+- Artifact data structures (Mirror + Enrichment).
 
 ================================================================================
 ## MODULE INTERACTIONS
 ================================================================================
 
-INTERNAL (within artifact/):
-┌─────────────────────────────────────────────────┐
-│                  service.ts                     │
-│                                                 │
-│  createArtifact()  getArtifact()  listArtifacts│
-└───────┬─────────────────┬─────────────────┬─────┘
-        │                 │                 │
-        ▼                 ▼                 ▼
-┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-│ path-mapper  │  │   storage    │  │    tree      │
-│              │  │              │  │              │
-│ mapPath()    │  │ readFile()   │  │ lookup()     │
-│ getArtDir()  │  │ writeFile()  │  │ refresh()    │
-└──────────────┘  └──────────────┘  └──────┬───────┘
-                                           │
-                  ┌──────────────┐          │
-                  │    index     │<─────────┘
-                  │              │
-                  │ addRecord()  │
-                  │ query()      │
-                  └──────────────┘
+┌─────────────────────┐      ┌───────────────────────────┐
+│ src/mcp/tools.ts    │      │ src/parser/ (New)         │
+│ (User Request)      │      │                           │
+└──────────┬──────────┘      │ - parseFile(srcPath)      │
+           │                 └─────────────▲─────────────┘
+           ▼                               │
+┌──────────────────────────────────────────┴───────────────┐
+│ src/artifact/service.ts                                  │
+│                                                          │
+│ - getArtifact(srcPath) ──────────────────────────────────┘
+│   1. Check if .artifact exists                           │
+│   2. If No: Call Parser -> Create Mirror Artifact        │
+│   3. If Yes: Return content                              │
+│                                                          │
+│ - updateArtifact(srcPath, enrichData)                    │
+│   Add LLM summaries/insights to the artifact JSON        │
+└──────────────────────────────────────────────────────────┘
 
-All modules import from types.ts
+================================================================================
+## ARTIFACT FILE STRUCTURE
+================================================================================
 
-EXTERNAL DEPENDENCIES:
-- service.ts → Called by mcp/tools.ts
-- types.ts → Used by mcp/handlers.ts for response typing
+File: .artifacts/src/extension/config.ts/file.artifact (JSON)
+
+```json
+{
+  "sourcePath": "src/extension/config.ts",
+  "lastModified": 123456789,
+  "structure": { // From Parser
+    "functions": [
+       { "name": "loadConfig", "signature": "...", "startLine": 10, "endLine": 20 }
+    ],
+    "classes": []
+  },
+  "enrichment": { // From LLM/User
+    "summary": "Handles loading of vs code configuration options.",
+    "functions": {
+       "loadConfig": {
+          "description": "Loads config from workspace settings",
+          "inputs": ["context: ExtensionContext"],
+          "outputs": ["Config"]
+       }
+    }
+  }
+}
+```
 
 ================================================================================
 ## INTERFACES
@@ -79,128 +98,27 @@ EXTERNAL DEPENDENCIES:
 
 ```typescript
 // types.ts
-interface ArtifactMetadata {
-  id: string;
+
+interface ArtifactData {
   sourcePath: string;
-  artifactPath: string;
-  type: string;           // "summary", "dependencies", etc.
-  createdAt: string;      // ISO timestamp
-  promptHash?: string;
+  lastModified: number;
+  structure: FileOutline; // From parser/types.ts
+  enrichment?: ArtifactEnrichment;
 }
 
-interface ArtifactRecord {
-  metadata: ArtifactMetadata;
-  content: string;
+interface ArtifactEnrichment {
+  summary?: string;
+  functions?: Record<string, FunctionEnrichment>;
+  classes?: Record<string, ClassEnrichment>;
+}
+
+interface FunctionEnrichment {
+  description?: string;
+  inputs?: string[];
+  outputs?: string[];
 }
 
 // service.ts exports
-function createArtifact(sourcePath: string, type: string, content: string): Promise<ArtifactMetadata>;
-function getArtifact(artifactPath: string): Promise<ArtifactRecord | null>;
-function listArtifacts(basePath?: string, typeFilter?: string[]): Promise<ArtifactMetadata[]>;
-function deleteArtifact(artifactPath: string): Promise<boolean>;
-
-// path-mapper.ts exports
-function sourceToArtifactDir(sourcePath: string): string;
-function artifactFilePath(sourcePath: string, artifactType: string): string;
-
-// tree.ts exports
-function getTree(): ArtifactTree;
-function refreshTree(): Promise<void>;
-function lookupArtifacts(sourcePath: string): ArtifactMetadata[];
+function getArtifact(sourcePath: string): Promise<ArtifactData>;
+function updateArtifactEnrichment(sourcePath: string, data: DeepPartial<ArtifactEnrichment>): Promise<void>;
 ```
-
-================================================================================
-## IMPLEMENTATION ORDER
-================================================================================
-
-1. types.ts
-   - Define all interfaces first
-
-2. path-mapper.ts
-   - Pure functions, no dependencies
-
-3. storage.ts
-   - Filesystem operations
-
-4. index.ts
-   - Depends on types, works with storage
-
-5. tree.ts
-   - Depends on index for initial load
-
-6. service.ts
-   - Orchestrates all other modules
-
-================================================================================
-## DEPENDENCIES
-================================================================================
-
-External packages:
-- fs/promises (Node.js built-in)
-- path (Node.js built-in)
-- crypto (for ID generation)
-
-Internal dependencies:
-- Depends on: (none - core module)
-- Depended on by: mcp/tools.ts
-
-================================================================================
-## TESTING
-================================================================================
-
-### Unit Tests (artifact/)
-
-path-mapper.ts:
-- sourceToArtifactDir() maps file paths correctly
-- sourceToArtifactDir() maps folder paths correctly
-- artifactFilePath() generates correct artifact filenames
-- Handles edge cases (root files, deep nesting)
-
-storage.ts:
-- writeFile() creates directories recursively
-- writeFile() writes UTF-8 content
-- readFile() returns null for missing files
-- deleteFile() removes file and empty parent dirs
-
-index.ts:
-- addRecord() appends to .index.json
-- query() filters by path
-- query() filters by type
-- removeRecord() updates index correctly
-
-tree.ts:
-- refreshTree() builds tree from index
-- lookup() finds artifacts by source path
-- getTree() returns consistent structure
-
-service.ts:
-- createArtifact() coordinates all modules
-- getArtifact() returns content + metadata
-- listArtifacts() uses tree for fast lookup
-- deleteArtifact() updates both storage and index
-
-### Integration Tests (artifact/ ↔ mcp/)
-
-Artifact ↔ MCP Tools:
-- Test: MCP create → artifact appears in tree
-- Test: MCP list → returns all artifacts for path
-- Test: MCP get → returns correct content
-- Test: MCP delete → removes from tree and filesystem
-
-### Internal Integration Tests (within artifact/)
-
-Storage ↔ Index:
-- Test: writeFile + addRecord creates consistent state
-- Test: deleteFile + removeRecord cleans up fully
-
-Tree ↔ Index:
-- Test: refreshTree() matches index contents
-- Test: Tree updates after index changes
-
-### Module Compatibility Tests
-
-Filesystem Edge Cases:
-- Test: Handles special characters in paths
-- Test: Handles very long file paths
-- Test: Concurrent read/write operations
-- Test: Recovery from corrupted .index.json
