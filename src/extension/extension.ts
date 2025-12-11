@@ -8,6 +8,7 @@
 
 import * as vscode from 'vscode';
 import { loadConfig, getConfig, isConfigLoaded, resetConfig, Config } from './config';
+import { startServer, stopServer } from '../mcp/server';
 
 /** Extension output channel for logging */
 let outputChannel: vscode.OutputChannel | null = null;
@@ -116,12 +117,7 @@ function showStatus(): void {
  * Placeholder - will be implemented in Part 2 (MCP Server)
  */
 async function startMcpServer(config: Config): Promise<void> {
-    // TODO: Implement in Part 2
-    // This will start the MCP server process and register tools
-    log(`[Placeholder] Would start MCP server with artifact root: ${config.artifactRoot}`);
-
-    // Simulate async startup
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await startServer(config);
 }
 
 /**
@@ -130,10 +126,5 @@ async function startMcpServer(config: Config): Promise<void> {
  * Placeholder - will be implemented in Part 2 (MCP Server)
  */
 async function stopMcpServer(): Promise<void> {
-    // TODO: Implement in Part 2
-    // This will gracefully stop the MCP server
-    log('[Placeholder] Would stop MCP server');
-
-    // Simulate async shutdown
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await stopServer();
 }

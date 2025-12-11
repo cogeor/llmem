@@ -143,6 +143,64 @@ EXTERNAL DEPENDENCIES:
 - server.ts → Receives Config from extension/config.ts
 
 ================================================================================
+## FUTURE MODULE INTEGRATION (for artifact/, parser/, llm/)
+================================================================================
+
+When implementing the full MCP tools, import ONLY these functions from each module:
+
+### From artifact/service.ts (Part 3)
+```typescript
+// Import only the service facade - NOT internal storage/index/tree modules
+import {
+  getArtifact,     // (path: string) => Promise<Artifact | null>
+  listArtifacts,   // (options?: ListOptions) => Promise<ArtifactMetadata[]>
+  saveArtifact,    // (artifact: Artifact) => Promise<void>
+  deleteArtifact,  // (path: string) => Promise<boolean>
+} from '../artifact/service';
+```
+
+### From parser/extractor.ts (Part 4)
+```typescript
+// Import only the extractor facade - NOT internal parser/outline modules
+import {
+  extractCodeStructure,  // (path: string) => Promise<CodeStructure>
+} from '../parser/extractor';
+```
+
+### From llm/prompt-builder.ts (Part 5)
+```typescript
+// Import only the prompt builder - NOT templates directly
+import {
+  buildPrompt,     // (task: TaskType, codeStructure: CodeStructure) => string
+  parseResult,     // (llmOutput: string, task: TaskType) => ParsedResult
+} from '../llm/prompt-builder';
+```
+
+### Integration Pattern in tools.ts
+
+Current stub implementation:
+```typescript
+// STUB: Returns placeholder data
+async function handleGetArtifact(args: GetArtifactArgs): Promise<McpResponse<Artifact>> {
+  return formatResponse('success', { path: args.path, content: 'STUB', metadata: {} });
+}
+```
+
+After artifact/ module is implemented:
+```typescript
+// REAL: Calls artifact service
+import { getArtifact } from '../artifact/service';
+
+async function handleGetArtifact(args: GetArtifactArgs): Promise<McpResponse<Artifact>> {
+  const artifact = await getArtifact(args.path);
+  if (!artifact) {
+    return formatResponse('error', undefined, `Artifact not found: ${args.path}`);
+  }
+  return formatResponse('success', artifact);
+}
+```
+
+================================================================================
 ## INTERFACES (using Zod per best practices)
 ================================================================================
 
@@ -269,3 +327,89 @@ Full Flow Tests:
 - Test: list_artifacts returns correct tree structure
 - Test: Agent instructions format is understood by mock client
 - Test: Error responses include proper MCP error codes
+
+================================================================================
+## ENGINEER - MANUAL TESTING
+================================================================================
+
+### Option A: Test as Standalone MCP Server (Recommended)
+
+Antigravity calls the server directly via mcp.json.
+
+1. Compile the project:
+   ```
+   npm run compile
+   ```
+
+2. Add server config to Antigravity's mcp_config.json:
+   Location: %USERPROFILE%\.gemini\antigravity\mcp_config.json
+   
+   Via UI: Agent panel → ... → MCP Servers → Manage MCP Servers → View raw config
+   
+   ```json
+   {
+     "llmem": {
+       "command": "node",
+       "args": ["C:/Users/costa/src/llmem/dist/mcp/server.js"]
+     }
+   }
+   ```
+   
+   Note: Use absolute path in args since there's no cwd option.
+
+3. Refresh MCP servers in Antigravity (via MCP Servers menu or restart)
+
+4. Verify in Output panel:
+   - View → Output → Select "MCP" from dropdown
+   - Look for "llmem" server startup messages
+
+5. Test via chat:
+   - Ask: "Use the llmem list_artifacts tool"
+   - Ask: "Call get_artifact for src/extension/config.ts"
+
+Dev Cycle (after code changes):
+   1. npm run compile
+   2. Restart Antigravity
+   3. Test via chat
+
+--------------------------------------------------------------------------------
+
+### Option B: Test as VS Code Extension (F5)
+
+Extension activates and starts MCP server internally.
+
+1. Open llmem project in Antigravity
+
+2. Press F5 to launch Extension Development Host
+
+3. Check Output panel in host window:
+   - Select "LLMem" from Output dropdown
+   - Verify: "MCP server started successfully"
+
+4. Use the status command:
+   - Ctrl+Shift+P → "LLMem: Show Status"
+   - Should show: "MCP Server: Running"
+
+Dev Cycle (after code changes):
+   1. npm run compile
+   2. Press Ctrl+Shift+F5 to restart Extension Development Host
+   3. Check Output panel for startup logs
+
+Note: In extension mode, MCP tools may not be directly accessible via chat
+unless the extension registers them with Antigravity's MCP system.
+
+--------------------------------------------------------------------------------
+
+### Troubleshooting
+
+Server exits immediately:
+- Check mcp.json has correct absolute path in "cwd"
+- Run `node dist/mcp/server.js` manually to see error output
+
+"Server exited before responding to initialize":
+- Build may be stale: run `npm run compile`
+- Server crashed during startup: check for import/require errors
+
+No MCP tools visible in chat:
+- Restart Antigravity after editing mcp.json
+- Check Output → MCP for server registration status
