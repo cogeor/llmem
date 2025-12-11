@@ -1,124 +1,55 @@
-# Artifact Service Implementation Plan
+# Artifact Service Implementation Plan (Architectural Helper)
 # Component: src/artifact/
 
 ================================================================================
 ## PURPOSE
 ================================================================================
-Core artifact operations. Manages the "Mirror Artifact" system where each source
-file has a corresponding artifact file in the .artifact/ directory.
+Manages "Mirror Artifacts" and "Folder Summaries".
 
-Goal:
-- Maintain a shadow folder tree (.artifacts/) mirroring the source.
-- Each .artifact file contains the parser-extracted code structure (Mirror).
-- Enrich these artifacts with LLM-generated insights (summaries, dependencies) 
-  on demand.
+Naming Convention:
+- Source: `src/path/file.ts`
+- Artifact: `.artifacts/src/path/file.ts.artifact`
+- Summary: `.artifacts/src/path/path.summary`
 
 ================================================================================
 ## FILES & RESPONSIBILITIES
 ================================================================================
 
 ### service.ts
-- Orchestrate artifact operations.
-- Ensure "Mirror Artifact" exists for a given source file (call parser if missing).
-- Manage updates when source files change.
-- Provide API for storing/retrieving LLM enrichment data within the artifact.
+- `ensureArtifacts(folderPath: string)`: 
+  - Iterates files in folder.
+  - Checks if corresponding `.artifact` exists and is fresh.
+  - If not, calls Parser -> writes `.artifact`.
+  - Returns list of ArtifactData for all files in folder.
+- `saveFolderSummary(folderPath: string, content: string)`:
+  - Writes `.summary` file for the folder.
 
 ### path-mapper.ts
-- Convert source paths to artifact paths.
-- Convention: src/file.ts -> .artifacts/src/file.ts/file.artifact
-- Handles directory creation and path resolution.
-
-### storage.ts
-- Low-level filesystem operations (read/write/delete).
-- JSON handling for utilizing the artifact schema.
-
-### index.ts (Optional/Deprioritized)
-- Metadata index for fast global queries (may be redundant if we rely on filesystem structure + parser).
-
-### tree.ts (Optional/Deprioritized)
-- In-memory representation. Can be built on-the-fly from matching .artifact files.
+- `sourceToArtifactPath(srcPath)`: `src/a.ts` -> `.artifacts/src/a.ts.artifact`
+- `folderToSummaryPath(folderPath)`: `src/utils` -> `.artifacts/src/utils/utils.summary`
 
 ### types.ts
-- Artifact data structures (Mirror + Enrichment).
+- `FileArtifact`: Just the signatures and path.
+- `FolderSummary`: Markdown content + metadata.
 
 ================================================================================
 ## MODULE INTERACTIONS
 ================================================================================
 
 ┌─────────────────────┐      ┌───────────────────────────┐
-│ src/mcp/tools.ts    │      │ src/parser/ (New)         │
-│ (User Request)      │      │                           │
+│ src/mcp/tools.ts    │      │ src/parser/               │
+│ (get_artifacts)     │      │                           │
 └──────────┬──────────┘      │ - parseFile(srcPath)      │
            │                 └─────────────▲─────────────┘
            ▼                               │
 ┌──────────────────────────────────────────┴───────────────┐
 │ src/artifact/service.ts                                  │
 │                                                          │
-│ - getArtifact(srcPath) ──────────────────────────────────┘
-│   1. Check if .artifact exists                           │
-│   2. If No: Call Parser -> Create Mirror Artifact        │
-│   3. If Yes: Return content                              │
+│ - ensureArtifacts(folder) ───────────────────────────────┘
+│   Loop:                                                  │
+│     Call Parser -> Write .artifact                       │
+│   Return [ArtifactData...]                               │
 │                                                          │
-│ - updateArtifact(srcPath, enrichData)                    │
-│   Add LLM summaries/insights to the artifact JSON        │
+│ - saveFolderSummary(folder, text)                        │
+│   Write .summary                                         │
 └──────────────────────────────────────────────────────────┘
-
-================================================================================
-## ARTIFACT FILE STRUCTURE
-================================================================================
-
-File: .artifacts/src/extension/config.ts/file.artifact (JSON)
-
-```json
-{
-  "sourcePath": "src/extension/config.ts",
-  "lastModified": 123456789,
-  "structure": { // From Parser
-    "functions": [
-       { "name": "loadConfig", "signature": "...", "startLine": 10, "endLine": 20 }
-    ],
-    "classes": []
-  },
-  "enrichment": { // From LLM/User
-    "summary": "Handles loading of vs code configuration options.",
-    "functions": {
-       "loadConfig": {
-          "description": "Loads config from workspace settings",
-          "inputs": ["context: ExtensionContext"],
-          "outputs": ["Config"]
-       }
-    }
-  }
-}
-```
-
-================================================================================
-## INTERFACES
-================================================================================
-
-```typescript
-// types.ts
-
-interface ArtifactData {
-  sourcePath: string;
-  lastModified: number;
-  structure: FileOutline; // From parser/types.ts
-  enrichment?: ArtifactEnrichment;
-}
-
-interface ArtifactEnrichment {
-  summary?: string;
-  functions?: Record<string, FunctionEnrichment>;
-  classes?: Record<string, ClassEnrichment>;
-}
-
-interface FunctionEnrichment {
-  description?: string;
-  inputs?: string[];
-  outputs?: string[];
-}
-
-// service.ts exports
-function getArtifact(sourcePath: string): Promise<ArtifactData>;
-function updateArtifactEnrichment(sourcePath: string, data: DeepPartial<ArtifactEnrichment>): Promise<void>;
-```

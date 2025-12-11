@@ -1,18 +1,17 @@
 import * as crypto from 'crypto';
 import * as path from 'path';
+import * as fs from 'fs/promises';
 import { ArtifactMetadata, ArtifactRecord, ArtifactTree } from './types';
 import { ArtifactIndex } from './index';
 import { ArtifactTreeManager } from './tree';
-import { artifactFilePath, sourceToArtifactDir } from './path-mapper';
+import { artifactFilePath, sourceToArtifactDir, summaryFilePath } from './path-mapper';
 import { readFile, writeFile, deleteFile, exists } from './storage';
+import { OutlineGenerator } from '../parser';
 
 let index: ArtifactIndex;
 let tree: ArtifactTreeManager;
 let workspaceRoot: string;
 let isInitialized = false;
-
-import { OutlineGenerator } from '../parser';
-
 let outlineGenerator: OutlineGenerator;
 
 export async function initializeArtifactService(root: string) {
@@ -59,84 +58,100 @@ export async function createArtifact(sourcePath: string, type: string, content: 
     return metadata;
 }
 
-export async function getArtifact(pathOrId: string): Promise<ArtifactRecord | null> {
+/**
+ * Ensures that all files in the given folder have corresponding mirror artifacts.
+ * Returns the list of artifacts (content + metadata) for the folder.
+ */
+export async function ensureArtifacts(folderPath: string, recursive: boolean = false): Promise<ArtifactRecord[]> {
     checkInitialized();
 
-    // 1. Try to find existing record
-    const all = index.getAll();
-    let record = all.find(r => r.id === pathOrId || r.artifactPath === pathOrId);
-
-    // If looking up by source path (common case for "get info for file X")
-    if (!record) {
-        // Find by source path
-        // We prioritize "mirror" artifacts for source files
-        const matches = all.filter(r => r.sourcePath === pathOrId);
-        // If we have a mirror, return that. Else return the most recent one.
-        record = matches.find(r => r.type === 'mirror');
-        if (!record && matches.length > 0) {
-            matches.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-            record = matches[0];
-        }
+    const absFolderPath = path.isAbsolute(folderPath) ? folderPath : path.join(workspaceRoot, folderPath);
+    if (!await exists(absFolderPath)) {
+        throw new Error(`Folder not found: ${absFolderPath}`);
     }
 
-    // 2. If no record found, check if it is a valid source file and generate mirror
-    if (!record) {
-        // Assume pathOrId is a source path if it exists on disk
-        // We need to resolve it to absolute path if it is relative
-        let absCurrentPath = pathOrId;
-        if (!path.isAbsolute(pathOrId)) {
-            absCurrentPath = path.join(workspaceRoot, pathOrId);
+    const records: ArtifactRecord[] = [];
+
+    // Read directory
+    const entries = await fs.readdir(absFolderPath, { withFileTypes: true });
+
+    for (const entry of entries) {
+        const fullPath = path.join(absFolderPath, entry.name);
+        // Calculate relative path for ID/storage
+        const sourcePath = path.relative(workspaceRoot, fullPath);
+
+        if (entry.isDirectory()) {
+            if (recursive) {
+                const subRecords = await ensureArtifacts(sourcePath, true);
+                records.push(...subRecords);
+            }
+            continue;
         }
 
-        if (await exists(absCurrentPath)) {
-            // It's a source file! Generate mirror.
-            const sourceContent = await readFile(absCurrentPath);
-            if (sourceContent !== null) {
-                const outline = await outlineGenerator.generateFileOutline(absCurrentPath, sourceContent);
+        // Only process code files? Let's rely on parser to decide or skip unknown.
+        // We prioritize "mirror" artifacts for source files
+        const all = index.getAll();
+        let record = all.find(r => r.sourcePath === sourcePath && r.type === 'mirror');
+
+        // Check if we need to generate it (if missing)
+        // TODO: In future, check lastModified vs source file to update stale artifacts
+        if (!record) {
+            // Generate it
+            const content = await readFile(fullPath);
+            if (content !== null) {
+                const outline = await outlineGenerator.generateFileOutline(fullPath, content);
                 if (outline) {
-                    // Create the mirror artifact
+                    // Create artifact with JUST signatures as per plan
                     const artifactContent = JSON.stringify({
-                        sourcePath: pathOrId, // Keep relative/as requested or normalize? Let's use mapped one.
-                        lastModified: Date.now(), // TODO: getting real stats would be better
-                        structure: outline,
-                        enrichment: {}
+                        path: sourcePath,
+                        signatures: outline.functions.map(f => f.signature).concat(
+                            outline.classes.flatMap(c =>
+                                [`class ${c.name}`].concat(c.methods.map(m => `  ${m.signature}`))
+                            )
+                        )
                     }, null, 2);
 
-                    const metadata = await createArtifact(pathOrId, 'mirror', artifactContent);
-                    return {
-                        metadata,
-                        content: artifactContent,
-                        data: JSON.parse(artifactContent)
-                    };
+                    const metadata = await createArtifact(sourcePath, 'mirror', artifactContent);
+                    record = metadata;
                 }
+            }
+        }
+
+        if (record) {
+            const content = await readFile(record.artifactPath);
+            if (content !== null) {
+                records.push({
+                    metadata: record,
+                    content
+                });
             }
         }
     }
 
-    if (!record) {
-        return null;
-    }
+    return records;
+}
 
-    const content = await readFile(record.artifactPath);
-    if (content === null) {
-        return null; // Inconsistency
-    }
+/**
+ * Saves a summary for a folder.
+ */
+export async function saveFolderSummary(folderPath: string, summary: string): Promise<ArtifactMetadata> {
+    checkInitialized();
 
-    // Attempt to parse if it's a mirror
-    let data;
-    if (record.type === 'mirror') {
-        try {
-            data = JSON.parse(content);
-        } catch (e) {
-            // ignore JSON parse error
-        }
-    }
+    const filePath = summaryFilePath(workspaceRoot, folderPath);
 
-    return {
-        metadata: record,
-        content: content,
-        data
+    const metadata: ArtifactMetadata = {
+        id: crypto.randomUUID(),
+        sourcePath: folderPath,
+        artifactPath: filePath,
+        type: 'folder_summary',
+        createdAt: new Date().toISOString()
     };
+
+    await writeFile(filePath, summary);
+    index.addRecord(metadata);
+    await index.save();
+
+    return metadata;
 }
 
 export async function listArtifacts(filter?: { sourcePath?: string; type?: string }): Promise<ArtifactMetadata[]> {

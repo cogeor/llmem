@@ -1,153 +1,97 @@
-# Part 5: LLM Integration Plan
+# Part 5: LLM Integration Plan (Architectural Helper)
 # Component: src/llm/
 
 ================================================================================
 ## PURPOSE
 ================================================================================
-Handle cases where parsed code structure needs deeper LLM analysis.
-Generates prompts for the host LLM to process, then stores results as artifacts.
+Turn the system into an "Architectural Codebase Helper".
+Focus is on high-level understanding of modules (folders) rather than deep-diving
+into single files immediately.
 
-NOT an external LLM API - uses host LLM via chained MCP calls.
-
-================================================================================
-## WORKFLOW
-================================================================================
-
-When `get_codebase_info` determines complex analysis is needed:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ User: "Explain the dependencies in utils.ts"                   │
-│                        │                                        │
-│                        ▼                                        │
-│ Host LLM → get_codebase_info(path, task="dependencies")        │
-│                        │                                        │
-│                        ▼                                        │
-│ LLMem: "This needs LLM analysis" → builds prompt               │
-│                        │                                        │
-│                        ▼                                        │
-│ Returns: { status: "needs_llm", promptForHost: "...",          │
-│            callbackTool: "save_artifact", callbackArgs: {...} }│
-│                        │                                        │
-│                        ▼                                        │
-│ Host LLM executes prompt with its own LLM                      │
-│                        │                                        │
-│                        ▼                                        │
-│ Host LLM → save_artifact(result) → stored in .artifacts/       │
-└─────────────────────────────────────────────────────────────────┘
-```
+Goal:
+1. Provide parsed signatures for all files in a requested folder (Context).
+2. Ask Host LLM to synthesize this into a Module Summary.
+3. Store this summary as a Folder Artifact.
 
 ================================================================================
-## TREATMENT TYPES
+## WORKFLOW: get_artifacts(folder)
 ================================================================================
 
-| Task | Input | Output |
-|------|-------|--------|
-| `summary` | File functions/classes | Brief explanation of purpose |
-| `dependencies` | Function/class | What it depends on, who calls it |
-| `callgraph` | Class/module | Functions called, execution flow |
-| `docstring` | Function signature | Generated documentation |
+User: "What does the 'mcp' folder do?"
+
+1. **Host LLM** calls `get_artifacts(path="src/mcp")`
+
+2. **LLMem Server**:
+   a. Scans `src/mcp/*.ts` (non-recursive by default).
+   b. For each file:
+      - Parse signatures (Function/Class names + types).
+      - Store in `.artifacts/src/mcp/file.ts.artifact`.
+   c. Aggregates all signatures into a JSON object.
+   d. Returns Response:
+      - **Status**: `prompt_ready` (or similar instruction).
+      - **Data**: JSON of signatures.
+      - **Prompt**: "Based on these signatures, summarize the functionality of the 
+        'src/mcp' folder. Identify inputs, outputs, and role in the system."
+      - **Callback**: `store_folder_summary`
+
+3. **Host LLM**:
+   - Generates summary.
+   - Calls `store_folder_summary(path="src/mcp", summary="...")`.
+
+4. **LLMem Server**:
+   - Saves summary to `.artifacts/src/mcp/mcp.summary`.
 
 ================================================================================
-## FILES & RESPONSIBILITIES
+## ARTIFACTS
 ================================================================================
 
-### prompt-builder.ts
-- Build prompts from artifact data + treatment type
-- Include structured code info in prompt
-- Return prompt with callback instructions
-
-### templates.ts
-- Prompt templates for each treatment type
-- Output format specifications
-
-### response-parser.ts (optional)
-- Parse host LLM response if structured output needed
-- Extract specific fields from natural language response
-
-================================================================================
-## INTERFACES
-================================================================================
-
-```typescript
-import { z } from 'zod';
-
-// Input to process_with_llm tool
-const ProcessWithLlmSchema = z.object({
-  path: z.string(),
-  task: z.enum(['summary', 'dependencies', 'callgraph', 'docstring']),
-  target: z.string().optional().describe("Specific function/class name"),
-});
-
-// Response when LLM treatment needed
-interface NeedsLlmResponse {
-  status: 'needs_llm';
-  promptForHost: string;
-  callbackTool: 'save_artifact';
-  callbackArgs: {
-    path: string;
-    type: string;
-    target?: string;
-  };
+### File Artifact (Signatures Only)
+Location: `.artifacts/src/path/to/file.ts.artifact`
+Content:
+```json
+{
+  "path": "src/path/to/file.ts",
+  "signatures": [
+    "function loadConfig(context: ExtensionContext): void",
+    "class ConfigManager { get(key: string): any }"
+  ]
 }
+```
 
-// Prompt builder
-function buildTreatmentPrompt(
-  codeInfo: FileOutline,
-  task: string,
-  target?: string
-): string;
+### Folder Artifact (Summary)
+Location: `.artifacts/src/path/to/folder.summary`
+Content:
+```markdown
+# Module: src/mcp
+
+## Purpose
+Handles MCP protocol communication and tool management.
+
+## Inputs
+- Configuration from `src/extension/config.ts`
+- Tool implementation from `src/artifact/`
+
+## Outputs
+- JSON-RPC responses over stdio
 ```
 
 ================================================================================
-## PROMPT TEMPLATES
+## PROMPTS
 ================================================================================
 
-### Summary Template
+### Module Summarization Prompt
 ```
-File: {path}
-Functions: {function_list}
-Classes: {class_list}
+You are an Architectural Codebase Assistant.
+Context: I have analyzed the folder "{folder_path}".
 
-Provide a 2-3 sentence summary of what this file does.
+Here are the signatures of the files in this folder:
+{json_signatures}
+
+Task:
+Summarize the functionality of this folder/module. 
+1. What is its primary responsibility?
+2. What are its main external inputs and outputs (based on signatures)?
+3. How do the files interact?
+
+Format: Markdown
 ```
-
-### Dependencies Template
-```
-Function/Class: {target}
-
-Code structure:
-{relevant_outline}
-
-List what this {type} depends on (imports, calls) and what depends on it.
-Format: "Depends on: [...], Used by: [...]"
-```
-
-### Callgraph Template
-```
-Class: {target}
-
-Methods:
-{method_list_with_signatures}
-
-Describe the typical execution flow and method interactions.
-```
-
-================================================================================
-## IMPLEMENTATION ORDER
-================================================================================
-
-1. templates.ts - Define prompt templates
-2. prompt-builder.ts - Template interpolation with code info
-3. response-parser.ts - Optional structured output parsing
-
-================================================================================
-## DEPENDENCIES
-================================================================================
-
-External: None (no external LLM API)
-
-Internal:
-- Reads from: parser/outline (code structure)
-- Reads from: artifact/service (existing artifacts)
-- Writes via: MCP callback to save_artifact

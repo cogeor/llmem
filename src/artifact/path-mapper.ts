@@ -23,7 +23,8 @@ export function sourceToArtifactDir(workspaceRoot: string, sourcePath: string): 
         throw new Error(`Source path must be inside workspace: ${sourcePath}`);
     }
 
-    return path.join(getArtifactsRoot(workspaceRoot), relativeSource);
+    const relativeDir = path.dirname(relativeSource);
+    return path.join(getArtifactsRoot(workspaceRoot), relativeDir);
 }
 
 /**
@@ -35,7 +36,51 @@ export function artifactFilePath(workspaceRoot: string, sourcePath: string, arti
     // Sanitize type just in case
     const safeType = artifactType.replace(/[^a-zA-Z0-9_-]/g, '_');
 
-    // Mirror artifacts have a special extension
-    const extension = artifactType === 'mirror' ? 'artifact' : 'md';
-    return path.join(artifactDir, `${safeType}.${extension}`);
+    // Naming convention:
+    // Source: src/file.ts
+    // Artifact: .artifacts/src/file.ts/file.ts.artifact (if we stay with directory per file)
+    // OR Flat Sibling: .artifacts/src/file.ts.artifact
+
+    // Per the plan "Sibling style": 
+    // .artifacts/src/path/file.ts.artifact
+
+    // NOTE: sourceToArtifactDir currently creates a directory matching the source file structure.
+    // e.g. src/extension/config.ts -> .artifacts/src/extension/config.ts/
+
+    // If we want SIBLING style:
+    // src/extension/config.ts -> .artifacts/src/extension/config.ts.artifact
+
+    // Let's adjust sourceToArtifactDir to return the PARENT directory of the artifact
+    // BUT sourceToArtifactDir is used to calculate the destination.
+
+    // Let's refactor slightly.
+
+    const relativeSource = path.relative(workspaceRoot, sourcePath);
+    const artifactsRoot = getArtifactsRoot(workspaceRoot);
+    const relativeDir = path.dirname(relativeSource);
+    const fileName = path.basename(relativeSource);
+
+    // Target Dir: .artifacts/src/extension/
+    const targetDir = path.join(artifactsRoot, relativeDir);
+
+    if (artifactType === 'mirror') {
+        // .artifacts/src/path/file.ts.artifact
+        return path.join(targetDir, `${fileName}.artifact`);
+    } else {
+        // .artifacts/src/path/file.ts.<type>.md (legacy/other types)
+        // OR make them siblings too: file.ts.summary.md
+        return path.join(targetDir, `${fileName}.${safeType}.md`);
+    }
+}
+
+/**
+ * Generates the path for a folder summary artifact.
+ * Format: .artifacts/path/to/folder/folderName.summary
+ */
+export function summaryFilePath(workspaceRoot: string, folderPath: string): string {
+    const relativeFolder = path.relative(workspaceRoot, folderPath);
+    const artifactsRoot = getArtifactsRoot(workspaceRoot);
+    const folderName = path.basename(folderPath);
+
+    return path.join(artifactsRoot, relativeFolder, `${folderName}.summary`);
 }
