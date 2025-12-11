@@ -1,0 +1,207 @@
+# Artifact Service Implementation Plan
+# Component: src/artifact/
+
+================================================================================
+## PURPOSE
+================================================================================
+Core artifact operations. Manages the shadow folder tree (.artifacts/),
+handles path mapping, maintains metadata index, and provides in-memory
+tree structure for fast lookups.
+
+================================================================================
+## FILES & RESPONSIBILITIES
+================================================================================
+
+### service.ts
+- Orchestrate artifact operations (create, read, update, delete)
+- Coordinate between storage, index, and tree
+- Public API for other modules
+
+### path-mapper.ts
+- Convert source paths to artifact paths
+- Handle file vs folder artifact conventions
+- Resolve workspace-relative paths
+
+### storage.ts
+- Read/write artifact files to filesystem
+- Create directories recursively
+- Handle file encoding (UTF-8)
+
+### index.ts
+- Manage .artifacts/.index.json
+- CRUD operations on metadata records
+- Query artifacts by path, type, date
+
+### tree.ts
+- In-memory tree structure of all artifacts
+- Fast lookup without filesystem access
+- Refresh/sync with filesystem on demand
+
+### types.ts
+- Shared interfaces and types
+- ArtifactMetadata, ArtifactRecord, etc.
+
+================================================================================
+## MODULE INTERACTIONS
+================================================================================
+
+INTERNAL (within artifact/):
+┌─────────────────────────────────────────────────┐
+│                  service.ts                     │
+│                                                 │
+│  createArtifact()  getArtifact()  listArtifacts│
+└───────┬─────────────────┬─────────────────┬─────┘
+        │                 │                 │
+        ▼                 ▼                 ▼
+┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+│ path-mapper  │  │   storage    │  │    tree      │
+│              │  │              │  │              │
+│ mapPath()    │  │ readFile()   │  │ lookup()     │
+│ getArtDir()  │  │ writeFile()  │  │ refresh()    │
+└──────────────┘  └──────────────┘  └──────┬───────┘
+                                           │
+                  ┌──────────────┐          │
+                  │    index     │<─────────┘
+                  │              │
+                  │ addRecord()  │
+                  │ query()      │
+                  └──────────────┘
+
+All modules import from types.ts
+
+EXTERNAL DEPENDENCIES:
+- service.ts → Called by mcp/tools.ts
+- types.ts → Used by mcp/handlers.ts for response typing
+
+================================================================================
+## INTERFACES
+================================================================================
+
+```typescript
+// types.ts
+interface ArtifactMetadata {
+  id: string;
+  sourcePath: string;
+  artifactPath: string;
+  type: string;           // "summary", "test-plan", etc.
+  createdAt: string;      // ISO timestamp
+  model: string;          // "gemini-1.5-pro"
+  promptHash?: string;
+}
+
+interface ArtifactRecord {
+  metadata: ArtifactMetadata;
+  content: string;
+}
+
+// service.ts exports
+function createArtifact(sourcePath: string, type: string, content: string): Promise<ArtifactMetadata>;
+function getArtifact(artifactPath: string): Promise<ArtifactRecord | null>;
+function listArtifacts(basePath?: string, typeFilter?: string[]): Promise<ArtifactMetadata[]>;
+function deleteArtifact(artifactPath: string): Promise<boolean>;
+
+// path-mapper.ts exports
+function sourceToArtifactDir(sourcePath: string): string;
+function artifactFilePath(sourcePath: string, artifactType: string): string;
+
+// tree.ts exports
+function getTree(): ArtifactTree;
+function refreshTree(): Promise<void>;
+function lookupArtifacts(sourcePath: string): ArtifactMetadata[];
+```
+
+================================================================================
+## IMPLEMENTATION ORDER
+================================================================================
+
+1. types.ts
+   - Define all interfaces first
+
+2. path-mapper.ts
+   - Pure functions, no dependencies
+
+3. storage.ts
+   - Filesystem operations
+
+4. index.ts
+   - Depends on types, works with storage
+
+5. tree.ts
+   - Depends on index for initial load
+
+6. service.ts
+   - Orchestrates all other modules
+
+================================================================================
+## DEPENDENCIES
+================================================================================
+
+External packages:
+- fs/promises (Node.js built-in)
+- path (Node.js built-in)
+- crypto (for ID generation)
+
+Internal dependencies:
+- Depends on: (none - core module)
+- Depended on by: mcp/tools.ts
+
+================================================================================
+## TESTING
+================================================================================
+
+### Unit Tests (artifact/)
+
+path-mapper.ts:
+- sourceToArtifactDir() maps file paths correctly
+- sourceToArtifactDir() maps folder paths correctly
+- artifactFilePath() generates correct artifact filenames
+- Handles edge cases (root files, deep nesting)
+
+storage.ts:
+- writeFile() creates directories recursively
+- writeFile() writes UTF-8 content
+- readFile() returns null for missing files
+- deleteFile() removes file and empty parent dirs
+
+index.ts:
+- addRecord() appends to .index.json
+- query() filters by path
+- query() filters by type
+- removeRecord() updates index correctly
+
+tree.ts:
+- refreshTree() builds tree from index
+- lookup() finds artifacts by source path
+- getTree() returns consistent structure
+
+service.ts:
+- createArtifact() coordinates all modules
+- getArtifact() returns content + metadata
+- listArtifacts() uses tree for fast lookup
+- deleteArtifact() updates both storage and index
+
+### Integration Tests (artifact/ ↔ mcp/)
+
+Artifact ↔ MCP Tools:
+- Test: MCP create → artifact appears in tree
+- Test: MCP list → returns all artifacts for path
+- Test: MCP get → returns correct content
+- Test: MCP delete → removes from tree and filesystem
+
+### Internal Integration Tests (within artifact/)
+
+Storage ↔ Index:
+- Test: writeFile + addRecord creates consistent state
+- Test: deleteFile + removeRecord cleans up fully
+
+Tree ↔ Index:
+- Test: refreshTree() matches index contents
+- Test: Tree updates after index changes
+
+### Module Compatibility Tests
+
+Filesystem Edge Cases:
+- Test: Handles special characters in paths
+- Test: Handles very long file paths
+- Test: Concurrent read/write operations
+- Test: Recovery from corrupted .index.json

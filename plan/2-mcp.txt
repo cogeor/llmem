@@ -1,0 +1,180 @@
+# MCP Server Implementation Plan
+# Component: src/mcp/
+
+================================================================================
+## PURPOSE
+================================================================================
+Primary interface to Antigravity IDE. Implements MCP protocol over stdio,
+registers tools, handles requests, and returns responses with processing
+instructions for the agent.
+
+================================================================================
+## FILES & RESPONSIBILITIES
+================================================================================
+
+### server.ts
+- Initialize MCP server with stdio transport
+- Register all available tools
+- Start server and listen for requests
+- Route requests to appropriate handlers
+
+### tools.ts
+- Define tool schemas (inputs, outputs)
+- Implement tool logic:
+  - generate_artifact: Create new artifacts via LLM
+  - list_artifacts: Query existing artifacts
+  - get_artifact: Retrieve artifact content
+  - delete_artifact: Remove artifacts
+
+### handlers.ts
+- Validate incoming requests
+- Format responses with agent instructions
+- Error handling and status codes
+- Build processing hints for Antigravity agent
+
+================================================================================
+## MODULE INTERACTIONS
+================================================================================
+
+INTERNAL (within mcp/):
+┌─────────────────┐
+│   server.ts     │
+│                 │
+│ - startServer() │
+│ - registerTools │
+└────────┬────────┘
+         │ dispatches to
+         ▼
+┌─────────────────┐      ┌─────────────────┐
+│    tools.ts     │─────>│   handlers.ts   │
+│                 │      │                 │
+│ - generate()    │      │ - validate()    │
+│ - list()        │      │ - formatResp()  │
+│ - get()         │      │ - addInstr()    │
+│ - delete()      │      └─────────────────┘
+└────────┬────────┘
+         │
+         │ calls
+         ▼
+┌─────────────────────────────────────────┐
+│            Other Modules                │
+│  artifact/service  llm/client  parser/  │
+└─────────────────────────────────────────┘
+
+EXTERNAL DEPENDENCIES:
+- tools.ts → Calls artifact/service.ts for CRUD operations
+- tools.ts → Calls llm/client.ts for artifact generation
+- tools.ts → Calls parser/extractor.ts for code structure
+- server.ts → Receives Config from extension/config.ts
+
+================================================================================
+## INTERFACES
+================================================================================
+
+```typescript
+// Tool definitions
+interface GenerateArtifactInput {
+  prompt: string;
+  paths: string[];
+  artifactTypes?: string[];
+  options?: { model?: string; temperature?: number };
+}
+
+interface ListArtifactsInput {
+  path?: string;
+  typeFilter?: string[];
+}
+
+interface GetArtifactInput {
+  artifactPath?: string;
+  artifactId?: string;
+}
+
+// Response format
+interface McpResponse<T> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  agentInstructions?: string;  // Hints for Antigravity agent
+}
+```
+
+================================================================================
+## IMPLEMENTATION ORDER
+================================================================================
+
+1. handlers.ts
+   - Request validation utilities
+   - Response formatting
+   - Agent instruction templates
+
+2. server.ts
+   - MCP protocol setup (stdio)
+   - Tool registration framework
+   - Request routing
+
+3. tools.ts
+   - Tool schema definitions
+   - Tool implementations (integrate with artifact/llm/parser)
+
+================================================================================
+## DEPENDENCIES
+================================================================================
+
+External packages:
+- @modelcontextprotocol/sdk (MCP protocol implementation)
+
+Internal dependencies:
+- Depends on: extension/config, artifact/service, llm/client, parser/extractor
+- Depended on by: extension/extension.ts (starts this server)
+
+================================================================================
+## TESTING
+================================================================================
+
+### Unit Tests (mcp/)
+
+handlers.ts:
+- validate() rejects malformed requests
+- validate() accepts valid tool inputs
+- formatResponse() includes agentInstructions
+- formatResponse() handles errors properly
+
+server.ts:
+- startServer() initializes stdio transport
+- registerTools() registers all 4 tools
+- Server responds to MCP handshake
+
+tools.ts:
+- Tool schemas match expected input types
+- Each tool function signature is correct
+
+### Integration Tests (mcp/ ↔ other modules)
+
+MCP ↔ Artifact Service:
+- Test: generate_artifact calls artifact/service.createArtifact()
+- Test: list_artifacts calls artifact/service.listArtifacts()
+- Test: get_artifact calls artifact/service.getArtifact()
+- Test: delete_artifact calls artifact/service.deleteArtifact()
+- Test: Artifact errors propagate correctly to MCP response
+
+MCP ↔ LLM Client:
+- Test: generate_artifact calls llm/client.callGemini()
+- Test: LLM timeout is handled gracefully
+- Test: LLM rate limit error returns proper MCP error
+
+MCP ↔ Parser:
+- Test: generate_artifact uses parser/outline for context
+- Test: Parser failure falls back to no-outline mode
+
+MCP ↔ Extension Config:
+- Test: Server reads API key from config
+- Test: Server uses configured model settings
+
+### Module Compatibility Tests
+
+Full Flow Tests:
+- Test: generate_artifact end-to-end (MCP → Parser → LLM → Artifact)
+- Test: list_artifacts returns correct tree structure
+- Test: Agent instructions format is understood by mock client
+- Test: Error responses include proper MCP error codes

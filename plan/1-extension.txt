@@ -1,0 +1,124 @@
+# Extension Core Implementation Plan
+# Component: src/extension/
+
+================================================================================
+## PURPOSE
+================================================================================
+Entry point for the MCP server extension. Handles lifecycle management,
+configuration loading, and MCP server initialization.
+
+================================================================================
+## FILES & RESPONSIBILITIES
+================================================================================
+
+### extension.ts
+- Register extension activation event
+- Initialize configuration on startup
+- Start MCP server process
+- Handle extension deactivation/cleanup
+
+### config.ts
+- Load settings from environment variables
+- Validate required configuration (GEMINI_API_KEY)
+- Provide typed configuration interface to other modules
+- Handle missing/invalid configuration gracefully
+
+================================================================================
+## MODULE INTERACTIONS
+================================================================================
+
+INTERNAL (within extension/):
+┌─────────────────┐      ┌─────────────────┐
+│  extension.ts   │─────>│    config.ts    │
+│                 │      │                 │
+│ - activate()    │      │ - loadConfig()  │
+│ - deactivate()  │      │ - getConfig()   │
+└────────┬────────┘      └─────────────────┘
+         │
+         │ starts
+         ▼
+┌─────────────────┐
+│   MCP Server    │
+│  (src/mcp/)     │
+└─────────────────┘
+
+EXTERNAL DEPENDENCIES:
+- config.ts → Provides Config to mcp/server.ts
+- extension.ts → Starts mcp/server.ts
+
+================================================================================
+## INTERFACES
+================================================================================
+
+```typescript
+// config.ts exports
+interface Config {
+  geminiApiKey: string;
+  geminiModel: string;
+  geminiTemperature: number;
+  artifactRoot: string;
+  maxFilesPerFolder: number;
+  maxFileSizeKB: number;
+}
+
+function loadConfig(): Config;
+function getConfig(): Config;
+```
+
+================================================================================
+## IMPLEMENTATION ORDER
+================================================================================
+
+1. config.ts
+   - Environment variable loading
+   - Default values
+   - Validation logic
+
+2. extension.ts
+   - Activation handler
+   - Config initialization
+   - MCP server startup call
+
+================================================================================
+## DEPENDENCIES
+================================================================================
+
+External packages:
+- None (uses standard Node.js process.env)
+
+Internal dependencies:
+- Depends on: (none - this is the root)
+- Depended on by: mcp/server.ts
+
+================================================================================
+## TESTING
+================================================================================
+
+### Unit Tests (extension/)
+
+config.ts:
+- loadConfig() returns defaults when env vars missing
+- loadConfig() reads GEMINI_API_KEY from process.env
+- loadConfig() validates required fields
+- getConfig() throws if called before loadConfig()
+- getConfig() returns cached config after load
+
+extension.ts:
+- activate() calls loadConfig()
+- activate() starts MCP server with config
+- deactivate() shuts down MCP server cleanly
+
+### Integration Tests (extension/ ↔ mcp/)
+
+Extension → MCP Server:
+- Test: activate() successfully starts MCP server
+- Test: Config is correctly passed to server
+- Test: deactivate() stops server without hanging
+- Test: Server restart after config change
+
+### Module Compatibility Tests
+
+Config ↔ All Modules:
+- Test: All modules can import and use Config interface
+- Test: Config changes propagate to dependent modules
+- Test: Missing API key is handled gracefully across system
