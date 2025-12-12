@@ -1,9 +1,9 @@
-import { FileOutline } from '../parser';
+import { FileArtifact } from '../parser';
 
 export interface ArtifactData {
     sourcePath: string;
     lastModified: number;
-    structure: FileOutline;
+    structure: FileArtifact;
     enrichment?: ArtifactEnrichment;
 }
 

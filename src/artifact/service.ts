@@ -106,18 +106,8 @@ export async function ensureArtifacts(folderPath: string, recursive: boolean = f
             if (content !== null) {
                 const outline = await outlineGenerator.generateFileOutline(fullPath, content);
                 if (outline) {
-                    // Create artifact with JUST signatures as per plan
-                    const artifactContent = JSON.stringify({
-                        path: sourcePath,
-                        imports: outline.imports.map(i => `from '${i.source}' import { ${i.specifiers.map(s => s.name).join(', ')} }`),
-                        exports: outline.exports.map(e => `export ${e.type} ${e.name}`),
-                        types: outline.types.map(t => `${t.kind} ${t.name}`),
-                        signatures: outline.functions.map(f => f.signature).concat(
-                            outline.classes.flatMap(c =>
-                                [`class ${c.name}`].concat(c.methods.map(m => `  ${m.signature}`))
-                            )
-                        )
-                    }, null, 2);
+                    // Create artifact with full JSON content as per new design
+                    const artifactContent = JSON.stringify(outline, null, 2);
 
                     const metadata = await createArtifact(sourcePath, 'mirror', artifactContent);
                     record = metadata;

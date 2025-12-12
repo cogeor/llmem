@@ -1,56 +1,61 @@
-export interface FunctionInfo {
+export interface Loc {
+    startByte: number;
+    endByte: number;
+    startLine: number;
+    endLine: number;
+    startColumn: number;
+    endColumn: number;
+}
+
+export type ImportSpec = {
+    kind: 'es';
+    source: string;
+    resolvedPath: string | null;
+    specifiers: Array<{ name: string; alias?: string }>;
+    loc: Loc;
+}
+
+export type ExportSpec = {
+    type: 'named' | 'default' | 'reexport' | 'all';
     name: string;
-    params: Array<{ name: string; type?: string }>;
-    returnType?: string;
-    startLine: number;
-    endLine: number;
-    docstring?: string;
-    signature: string;
+    localName?: string;
+    source?: string;
+    loc: Loc;
 }
 
-export interface ClassInfo {
+export type EntityKind = 'class' | 'function' | 'method' | 'arrow' | 'const' | 'getter' | 'setter' | 'ctor';
+
+export interface CallSite {
+    callSiteId: string;
+    kind: 'function' | 'method' | 'new';
+    calleeName: string;
+    loc: Loc;
+}
+
+export interface Entity {
+    id: string;
+    kind: EntityKind;
     name: string;
-    methods: FunctionInfo[];
-    properties: Array<{ name: string; type?: string }>;
-    startLine: number;
-    endLine: number;
-    docstring?: string;
+    isExported: boolean;
+    loc: Loc;
+    signature?: string;
+    calls?: CallSite[];
 }
 
-export interface ImportInfo {
-    source: string; // The module path, e.g. "vscode", "./types"
-    specifiers: Array<{ name: string; alias?: string }>; // e.g. { name: "Foo", alias: "Bar" }
-    startLine: number;
-    endLine: number;
-}
-
-export interface ExportInfo {
-    type: 'default' | 'named';
-    name: string; // "default" or the exported name
-    localName?: string; // if re-exported or aliased
-    startLine: number;
-    endLine: number;
-}
-
-export interface TypeInfo {
-    name: string;
-    kind: 'interface' | 'type' | 'enum';
-    definition: string; // The signature/definition snippet
-    startLine: number;
-    endLine: number;
-}
-
-export interface FileOutline {
-    path: string;
-    language: string;
-    functions: FunctionInfo[];
-    classes: ClassInfo[];
-    imports: ImportInfo[];
-    exports: ExportInfo[];
-    types: TypeInfo[];
+export interface FileArtifact {
+    schemaVersion: string;
+    file: {
+        id: string;
+        path: string;
+        language: string;
+    };
+    imports: ImportSpec[];
+    exports: ExportSpec[];
+    entities: Entity[];
 }
 
 export interface CodeOutline {
-    files: FileOutline[];
+    // Legacy support or new aggregate structure
+    files: FileArtifact[];
     summary?: string;
 }

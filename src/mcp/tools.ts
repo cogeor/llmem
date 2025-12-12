@@ -180,6 +180,46 @@ export async function handleAnalyzeCodebase(
             }
         });
 
+        // Add package.json and README.md if present in the target folder (for root summary)
+        // We do this manually because they are not "artifacts" in the parser sense
+        const extraFiles = ['package.json', 'README.md'];
+        for (const file of extraFiles) {
+            const filePath = path.join(folderPath, file);
+            const content = await readFile(path.isAbsolute(filePath) ? filePath : path.join(getWorkspaceRoot(), filePath));
+            if (content) {
+                const dir = '.'; // Relative to the analyze root, these are at root
+                // Actually contextMap keys are directory paths. 
+                // If folderPath is root, artifacts returns paths like 'src/file.ts'.
+                // We should align keys.
+                // artifact sourcePath is relative to workspace root.
+                // let's assume folderPath is relative to workspace root or absolute?
+                // ensureArtifacts takes folderPath. `path.dirname` of artifact source path.
+
+                // If we are at root, artifacts might be deep.
+                // If we analyze 'src', artifacts are in 'src'.
+                // If we analyze '.', we might get nothing if no TS files in root.
+
+                // We want to attach these to the folderPath entry in contextMap?
+                // Or just '.' if folderPath is root.
+                // Let's use `path.relative` logic consistent with artifacts.
+
+                // However, contextMap keys are currently directory names derived from artifacts.
+                // If artifacts list is empty, contextMap is empty.
+                // We need to ensure the root entry exists.
+
+                let relativeDir = path.relative(getWorkspaceRoot(), path.isAbsolute(folderPath) ? folderPath : path.join(getWorkspaceRoot(), folderPath));
+                if (relativeDir === '') relativeDir = '.';
+
+                if (!contextMap[relativeDir]) {
+                    contextMap[relativeDir] = [];
+                }
+                contextMap[relativeDir].push({
+                    file: file,
+                    content: content.slice(0, 2000) // Truncate to avoid context limit
+                });
+            }
+        }
+
         const prompt = `You are an Architectural Codebase Assistant.
 Context: I have analyzed the folder tree starting at "${folderPath}".
 

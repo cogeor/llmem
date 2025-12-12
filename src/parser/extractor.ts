@@ -1,266 +1,361 @@
+import * as path from 'path';
+import * as fs from 'fs';
 import Parser = require('tree-sitter');
-import { FunctionInfo, ClassInfo, FileOutline, ImportInfo, ExportInfo, TypeInfo } from './types';
+import { FileArtifact, Entity, ImportSpec, ExportSpec, CallSite, EntityKind, Loc } from './types';
+
+const QUERY_FILES = {
+    imports: 'imports.scm',
+    exports: 'exports.scm',
+    entities: 'entities.scm',
+    callsites: 'callsites.scm'
+};
 
 export class Extractor {
-    public extract(tree: Parser.Tree, language: string, filePath: string): FileOutline {
-        const functions: FunctionInfo[] = [];
-        const classes: ClassInfo[] = [];
-        const imports: ImportInfo[] = [];
-        const exports: ExportInfo[] = [];
-        const types: TypeInfo[] = [];
+    private queries: Map<string, Parser.Query> = new Map();
+    private querySources: Map<string, string> = new Map();
+    private initialized = false;
 
-        this.visitNode(tree.rootNode, functions, classes, imports, exports, types, language);
+    constructor() {
+        this.loadQuerySources();
+    }
+
+    private loadQuerySources() {
+        const queryDir = path.join(__dirname, 'queries');
+        if (!fs.existsSync(queryDir)) {
+            console.error(`[Extractor] Query directory not found: ${queryDir}`);
+            return;
+        }
+
+        for (const [key, filename] of Object.entries(QUERY_FILES)) {
+            const fullPath = path.join(queryDir, filename);
+            if (fs.existsSync(fullPath)) {
+                this.querySources.set(key, fs.readFileSync(fullPath, 'utf8'));
+            } else {
+                console.error(`[Extractor] Query file missing: ${fullPath}`);
+            }
+        }
+        this.initialized = true;
+    }
+
+    private getQuery(language: any, key: string): Parser.Query | null {
+        // We do not cache Query objects because they are bound to a specific Language instance.
+        // If we reuse Extractor across different language instances (unlikely but safer), we should recreate.
+        // Optimization: Cache by language instance if needed. For now, recreate.
+        const source = this.querySources.get(key);
+        if (!source) {
+            return null;
+        }
+        try {
+            return new Parser.Query(language, source);
+        } catch (e) {
+            console.error('[Extractor] Failed to compile query ' + key, e);
+            return null;
+        }
+    }
+
+    public extract(tree: Parser.Tree, languageName: string, filePath: string): FileArtifact {
+        let language: any;
+        try {
+            if (languageName === 'typescript') language = require('tree-sitter-typescript').typescript;
+            else if (languageName === 'tsx') language = require('tree-sitter-typescript').tsx;
+            else if (languageName === 'javascript') language = require('tree-sitter-javascript');
+            else if (languageName === 'python') language = require('tree-sitter-python');
+        } catch (e) {
+            console.error(`[Extractor] Failed to load language module for ${languageName}`, e);
+        }
+
+        if (!language) {
+            return this.createEmptyArtifact(filePath, languageName);
+        }
+
+        const imports = this.extractImports(tree, language);
+        const exports = this.extractExports(tree, language);
+        const entities = this.extractEntities(tree, language);
+
+        this.attachCallSites(tree, imports, entities, language);
+
+        const fileId = path.relative(process.cwd(), filePath).replace(/\\/g, '/');
 
         return {
-            path: filePath,
-            language,
-            functions,
-            classes,
+            schemaVersion: "ts-graph-v1",
+            file: {
+                id: fileId,
+                path: filePath,
+                language: languageName
+            },
             imports,
             exports,
-            types
+            entities
         };
     }
 
-    private visitNode(
-        node: Parser.SyntaxNode,
-        functions: FunctionInfo[],
-        classes: ClassInfo[],
-        imports: ImportInfo[],
-        exports: ExportInfo[],
-        types: TypeInfo[],
-        language: string
-    ) {
-        if (this.isFunction(node, language)) {
-            functions.push(this.parseFunction(node));
-        } else if (this.isClass(node, language)) {
-            classes.push(this.parseClass(node, language));
-        } else if (this.isImport(node, language)) {
-            const imp = this.parseImport(node, language);
-            if (imp) imports.push(imp);
-        } else if (this.isExport(node, language)) {
-            const exp = this.parseExport(node, language);
-            if (exp) exports.push(...exp); // Can implement multiple exports in one statement
-        } else if (this.isType(node, language)) {
-            types.push(this.parseType(node, language));
-        } else {
-            // Recurse
-            for (let i = 0; i < node.childCount; i++) {
-                const child = node.child(i);
-                if (child) {
-                    this.visitNode(child, functions, classes, imports, exports, types, language);
-                }
-            }
-        }
-    }
+    private extractImports(tree: Parser.Tree, language: any): ImportSpec[] {
+        const query = this.getQuery(language, 'imports');
+        if (!query) return [];
 
-    // --- CHECKERS ---
+        const matches = query.matches(tree.rootNode);
+        const imports: ImportSpec[] = [];
 
-    private isFunction(node: Parser.SyntaxNode, lang: string): boolean {
-        if (lang === 'python') return node.type === 'function_definition';
-        return node.type === 'function_declaration' ||
-            (node.type === 'lexical_declaration' && this.isArrowFunctionVariable(node));
-    }
+        for (const match of matches) {
+            const sourceNode = match.captures.find(c => c.name === 'import.source')?.node;
+            if (!sourceNode) continue;
 
-    private isArrowFunctionVariable(node: Parser.SyntaxNode): boolean {
-        if (node.childCount > 0) {
-            const declarator = node.children.find(c => c.type === 'variable_declarator');
-            if (declarator && declarator.children.some(c => c.type === 'arrow_function')) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private isClass(node: Parser.SyntaxNode, lang: string): boolean {
-        return node.type === 'class_declaration' || node.type === 'class_definition';
-    }
-
-    private isImport(node: Parser.SyntaxNode, lang: string): boolean {
-        if (lang === 'python') return node.type === 'import_statement' || node.type === 'import_from_statement';
-        return node.type === 'import_declaration';
-    }
-
-    private isExport(node: Parser.SyntaxNode, lang: string): boolean {
-        return node.type === 'export_statement' || node.type === 'export_declaration';
-    }
-
-    private isType(node: Parser.SyntaxNode, lang: string): boolean {
-        // TS specific for now
-        return node.type === 'interface_declaration' || node.type === 'type_alias_declaration' || node.type === 'enum_declaration';
-    }
-
-    // --- PARSERS ---
-
-    private parseFunction(node: Parser.SyntaxNode): FunctionInfo {
-        let name = 'anonymous';
-
-        if (node.type === 'function_declaration' || node.type === 'function_definition') {
-            const nameNode = node.childForFieldName('name');
-            if (nameNode) name = nameNode.text;
-        } else if (node.type === 'lexical_declaration') {
-            const declarator = node.children.find(c => c.type === 'variable_declarator');
-            const nameNode = declarator?.childForFieldName('name');
-            if (nameNode) name = nameNode.text;
-        }
-
-        const params: Array<{ name: string; type?: string }> = [];
-        const parametersNode = node.childForFieldName('parameters');
-        if (parametersNode) {
-            for (let i = 0; i < parametersNode.childCount; i++) {
-                const p = parametersNode.child(i);
-                if (p && (p.type === 'identifier' || p.type === 'required_parameter' || p.type === 'typed_parameter')) {
-                    params.push({ name: p.text });
-                }
-            }
-        }
-
-        return {
-            name,
-            params,
-            startLine: node.startPosition.row + 1,
-            endLine: node.endPosition.row + 1,
-            signature: node.text.split('\n')[0],
-        };
-    }
-
-    private parseClass(node: Parser.SyntaxNode, language: string): ClassInfo {
-        const nameNode = node.childForFieldName('name');
-        const name = nameNode ? nameNode.text : 'anonymous';
-        const methods: FunctionInfo[] = [];
-
-        const bodyIndex = node.children.findIndex(c => c.type === 'class_body' || c.type === 'block');
-        if (bodyIndex !== -1) {
-            const body = node.children[bodyIndex];
-            for (let i = 0; i < body.childCount; i++) {
-                const child = body.child(i);
-                if (!child) continue;
-                // TS: method_definition, Python: function_definition
-                if (child.type === 'method_definition' || (language === 'python' && child.type === 'function_definition')) {
-                    const methodNameNode = child.childForFieldName('name');
-                    methods.push({
-                        name: methodNameNode ? methodNameNode.text : 'anonymous',
-                        params: [], // Simplified
-                        startLine: child.startPosition.row + 1,
-                        endLine: child.endPosition.row + 1,
-                        signature: child.text.split('\n')[0]
-                    });
-                }
-            }
-        }
-
-        return {
-            name,
-            methods,
-            properties: [],
-            startLine: node.startPosition.row + 1,
-            endLine: node.endPosition.row + 1,
-        };
-    }
-
-    private parseImport(node: Parser.SyntaxNode, language: string): ImportInfo | null {
-        // Simple logic for TS import_declaration
-        if (node.type === 'import_declaration') {
-            const sourceNode = node.childForFieldName('source');
-            if (!sourceNode) return null;
-            // sourceNode text includes quotes, e.g. "'vscode'"
             const source = sourceNode.text.replace(/['"]/g, '');
+            const stmtNode = match.captures.find(c => c.name === 'import.stmt')?.node ?? sourceNode;
 
-            const specifiers: Array<{ name: string }> = [];
-            const clause = node.childForFieldName('clause'); // import_clause
-            // Need to dig into clause -> named_imports -> import_specifier
-            if (clause) {
-                // Iterate clause children
-                // Flatten logic for brevity: just regex text for named imports would be flaky
-                // Traverse:
-                // 1. named_imports e.g. { A, B }
-                // 2. identifier e.g. import X from ...
-                const namedImports = clause.children.find(c => c.type === 'named_imports');
-                if (namedImports) {
-                    for (let i = 0; i < namedImports.childCount; i++) {
-                        const child = namedImports.child(i);
-                        if (child?.type === 'import_specifier') {
-                            // name or name as alias
-                            const nameNode = child.childForFieldName('name');
-                            if (nameNode) specifiers.push({ name: nameNode.text });
-                        }
-                    }
-                }
+            const specifiers: { name: string; alias?: string }[] = [];
+
+            const def = match.captures.find(c => c.name === 'import.default')?.node;
+            if (def) specifiers.push({ name: 'default', alias: def.text });
+
+            const ns = match.captures.find(c => c.name === 'import.namespace')?.node;
+            if (ns) specifiers.push({ name: '*', alias: ns.text });
+
+            if (stmtNode) {
+                this.extractSpecifiersFromStmt(stmtNode, specifiers);
             }
 
-            return {
+            imports.push({
+                kind: 'es',
                 source,
+                resolvedPath: null,
                 specifiers,
-                startLine: node.startPosition.row + 1,
-                endLine: node.endPosition.row + 1
-            };
+                loc: this.nodeLoc(stmtNode)
+            });
         }
-        return null;
+        return imports;
     }
 
-    private parseExport(node: Parser.SyntaxNode, language: string): ExportInfo[] | null {
-        // TS export_declaration
-        // format: export const x = 1; OR export { x };
-        const exports: ExportInfo[] = [];
+    private extractSpecifiersFromStmt(node: Parser.SyntaxNode, list: { name: string; alias?: string }[]) {
+        const clause = node.childForFieldName('clause');
+        if (!clause) return;
 
-        // 1. Exporting a declaration (const, class, function)
-        // Checks if child[1] is declaration
-        for (let i = 0; i < node.childCount; i++) {
-            const child = node.child(i);
+        for (let i = 0; i < clause.childCount; i++) {
+            const child = clause.child(i);
             if (!child) continue;
 
-            // export const X = ...
-            if (child.type === 'lexical_declaration') {
-                const declarator = child.children.find(c => c.type === 'variable_declarator');
-                const nameNode = declarator?.childForFieldName('name');
-                if (nameNode) {
-                    exports.push({ type: 'named', name: nameNode.text, startLine: node.startPosition.row + 1, endLine: node.endPosition.row + 1 });
+            if (child.type === 'identifier') {
+                if (!list.some(x => x.name === 'default')) {
+                    list.push({ name: 'default', alias: child.text });
                 }
             }
-            // export function F() {}
-            else if (child.type === 'function_declaration') {
-                const nameNode = child.childForFieldName('name');
-                if (nameNode) {
-                    exports.push({ type: 'named', name: nameNode.text, startLine: node.startPosition.row + 1, endLine: node.endPosition.row + 1 });
+            if (child.type === 'namespace_import') {
+                const inner = child.children.find(c => c.type === 'identifier');
+                if (inner && !list.some(x => x.name === '*')) {
+                    list.push({ name: '*', alias: inner.text });
                 }
             }
-            // export class C {}
-            else if (child.type === 'class_declaration') {
-                const nameNode = child.childForFieldName('name');
-                if (nameNode) {
-                    exports.push({ type: 'named', name: nameNode.text, startLine: node.startPosition.row + 1, endLine: node.endPosition.row + 1 });
-                }
-            }
-            // export { X, Y }
-            else if (child.type === 'export_clause') {
-                for (let k = 0; k < child.childCount; k++) {
-                    const spec = child.child(k);
-                    if (spec?.type === 'export_specifier') {
-                        const nameNode = spec.childForFieldName('name');
+            if (child.type === 'named_imports') {
+                for (let j = 0; j < child.childCount; j++) {
+                    const imp = child.child(j);
+                    if (imp && imp.type === 'import_specifier') {
+                        const nameNode = imp.childForFieldName('name');
+                        const aliasNode = imp.childForFieldName('alias');
                         if (nameNode) {
-                            exports.push({ type: 'named', name: nameNode.text, startLine: node.startPosition.row + 1, endLine: node.endPosition.row + 1 });
+                            list.push({
+                                name: nameNode.text,
+                                alias: aliasNode ? aliasNode.text : undefined
+                            });
                         }
                     }
                 }
             }
         }
-
-        return exports.length ? exports : null;
     }
 
-    private parseType(node: Parser.SyntaxNode, language: string): TypeInfo {
-        const nameNode = node.childForFieldName('name');
-        const name = nameNode ? nameNode.text : 'anonymous';
-        let kind: TypeInfo['kind'] = 'type';
-        if (node.type === 'interface_declaration') kind = 'interface';
-        if (node.type === 'enum_declaration') kind = 'enum';
+    private extractExports(tree: Parser.Tree, language: any): ExportSpec[] {
+        const query = this.getQuery(language, 'exports');
+        if (!query) return [];
+        const matches = query.matches(tree.rootNode);
+        const exports: ExportSpec[] = [];
 
+        for (const match of matches) {
+            const stmt = match.captures.find(c => c.name.endsWith('.stmt') || c.name === 'export.default')?.node;
+            if (!stmt) continue;
+
+            const loc = this.nodeLoc(stmt);
+
+            const nameNode = match.captures.find(c => c.name === 'export.name' || c.name === 'export.default_name')?.node;
+            if (nameNode) {
+                const type = match.captures.some(c => c.name === 'export.default' || c.name === 'export.default_name') ? 'default' : 'named';
+                exports.push({ type, name: nameNode.text, loc });
+                continue;
+            }
+
+            const localNode = match.captures.find(c => c.name === 'export.local')?.node;
+            const exportedNode = match.captures.find(c => c.name === 'export.exported')?.node;
+            if (localNode) {
+                const name = exportedNode ? exportedNode.text : localNode.text;
+                const localName = localNode.text;
+                exports.push({ type: 'named', name, localName, loc });
+                continue;
+            }
+
+            const reSource = match.captures.find(c => c.name === 'reexport.source')?.node;
+            if (reSource) {
+                const source = reSource.text.replace(/['"]/g, '');
+                if (match.captures.some(c => c.name === 'export.star')) {
+                    exports.push({ type: 'all', name: '*', source, loc });
+                } else {
+                    const clause = stmt.children.find(c => c.type === 'export_clause');
+                    if (clause) {
+                        for (let k = 0; k < clause.childCount; k++) {
+                            const child = clause.child(k);
+                            if (child && child.type === 'export_specifier') {
+                                const n = child.childForFieldName('name');
+                                const a = child.childForFieldName('alias');
+                                if (n) {
+                                    exports.push({
+                                        type: 'reexport',
+                                        name: a ? a.text : n.text,
+                                        localName: n.text,
+                                        source,
+                                        loc
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+                continue;
+            }
+
+            if (match.captures.some(c => c.name === 'export.default_expr')) {
+                exports.push({ type: 'default', name: 'default', loc });
+            }
+        }
+        return exports;
+    }
+
+    private extractEntities(tree: Parser.Tree, language: any): Entity[] {
+        const query = this.getQuery(language, 'entities');
+        if (!query) return [];
+        const matches = query.matches(tree.rootNode);
+        const entities: Entity[] = [];
+
+        for (const match of matches) {
+            const nameNode = match.captures.find(c => c.name === 'entity.name' || c.name === 'entity.member_name' || c.name === 'entity.ctor_name')?.node;
+
+            let kind: EntityKind = 'function';
+            if (match.captures.some(c => c.name === 'entity.class')) kind = 'class';
+            else if (match.captures.some(c => c.name === 'entity.method')) kind = 'method';
+            else if (match.captures.some(c => c.name === 'entity.arrow' || c.name === 'entity.var_arrow')) kind = 'arrow';
+            else if (match.captures.some(c => c.name === 'entity.ctor')) kind = 'ctor';
+            else if (match.captures.some(c => c.name === 'entity.getter')) kind = 'getter';
+            else if (match.captures.some(c => c.name === 'entity.setter')) kind = 'setter';
+
+            let entityNode = nameNode?.parent;
+            if (kind === 'arrow') {
+                const val = match.captures.find(c => c.name === 'entity.arrow' || c.name === 'entity.var_arrow')?.node;
+                entityNode = val?.parent;
+            } else if (match.captures.some(c => c.name === 'entity.function')) {
+                entityNode = match.captures.find(c => c.name === 'entity.function')?.node;
+            } else if (match.captures.some(c => c.name === 'entity.class')) {
+                entityNode = match.captures.find(c => c.name === 'entity.class')?.node;
+            }
+
+            if (!entityNode || !nameNode) continue;
+
+            const id = '' + entityNode.startIndex;
+
+            const signature = this.signatureTextFromNode(tree.rootNode.text, entityNode);
+
+            entities.push({
+                id: id,
+                kind,
+                name: nameNode.text,
+                isExported: false,
+                loc: this.nodeLoc(entityNode),
+                signature,
+                calls: []
+            });
+
+            (entities[entities.length - 1] as any)._node = entityNode;
+        }
+        return entities;
+    }
+
+    private attachCallSites(tree: Parser.Tree, imports: ImportSpec[], entities: Entity[], language: any) {
+        const query = this.getQuery(language, 'callsites');
+        if (!query) return;
+
+        for (const entity of entities) {
+            const node = (entity as any)._node as Parser.SyntaxNode;
+            if (!node) continue;
+            delete (entity as any)._node;
+
+            const calls = this.collectCallsInScope(node, query);
+            entity.calls = calls.reduce((acc, c) => {
+                const callee = c.childForFieldName('function') ?? c.childForFieldName('constructor');
+                if (callee) {
+                    let name = callee.text;
+                    name = name.replace(/\s+/g, '');
+
+                    acc.push({
+                        callSiteId: 'call@' + c.startIndex,
+                        kind: c.type === 'new_expression' ? 'new' : 'function',
+                        calleeName: name,
+                        loc: this.nodeLoc(c)
+                    });
+                }
+                return acc;
+            }, [] as CallSite[]);
+        }
+    }
+
+    private collectCallsInScope(root: Parser.SyntaxNode, query: Parser.Query): Parser.SyntaxNode[] {
+        const captures = query.captures(root);
+
+        const validCalls: Parser.SyntaxNode[] = [];
+        for (const cap of captures) {
+            let p = cap.node.parent;
+            let nested = false;
+            while (p && p.id !== root.id) {
+                if (this.isCallable(p)) {
+                    nested = true;
+                    break;
+                }
+                p = p.parent;
+            }
+            if (!nested) {
+                validCalls.push(cap.node);
+            }
+        }
+        return validCalls;
+    }
+
+    private isCallable(node: Parser.SyntaxNode): boolean {
+        return ['function_declaration', 'function_definition', 'arrow_function', 'method_definition', 'class_declaration'].includes(node.type);
+    }
+
+    private signatureTextFromNode(source: string, node: Parser.SyntaxNode): string {
+        const text = node.text;
+        const firstBrace = text.indexOf('{');
+        const arrow = text.indexOf('=>');
+        let end = text.length;
+        if (firstBrace !== -1) end = Math.min(end, firstBrace);
+        if (arrow !== -1) end = Math.min(end, arrow);
+        return text.substring(0, end).trim() + ' ...';
+    }
+
+    private nodeLoc(node: Parser.SyntaxNode): Loc {
         return {
-            name,
-            kind,
-            definition: node.text.replace(/\s+/g, ' ').substring(0, 100) + '...', // Truncate long definitions
+            startByte: node.startIndex,
+            endByte: node.endIndex,
             startLine: node.startPosition.row + 1,
-            endLine: node.endPosition.row + 1
+            endLine: node.endPosition.row + 1,
+            startColumn: node.startPosition.column,
+            endColumn: node.endPosition.column
+        };
+    }
+
+    private createEmptyArtifact(filePath: string, language: string): FileArtifact {
+        return {
+            schemaVersion: "ts-graph-v1",
+            file: { id: path.basename(filePath), path: filePath, language },
+            imports: [],
+            exports: [],
+            entities: []
         };
     }
 }

@@ -1,22 +1,18 @@
-# Part 4: Text Processing Implementation Plan (MVP)
+# Part 4: Text Processing Implementation Plan
 # Component: src/parser/
 
 ================================================================================
 ## PURPOSE
 ================================================================================
-Code structure extraction using tree-sitter. Parses source files into AST,
-extracts functions/classes/methods, and stores as .artifact files.
+Robust code structure extraction using Tree-sitter and S-expression queries.
+Parses source files into AST, runs queries to extract imports, exports, entities,
+and callsites, and stores as structured JSON in `.artifact` files.
 
-MVP GOAL: For each source file, generate a corresponding .artifact file
-containing the list of functions, classes, and methods.
+DESIGN GOAL: For each source file, generate a corresponding .artifact file containing
+rich structural data (entities + callsites) to enable downstream graph construction.
 
 Example:
   src/extension/config.ts → .artifacts/src/extension/config.ts.artifact
-  
-  Contents:
-  - Functions: loadConfig, getConfig, isConfigLoaded, resetConfig
-  - Interfaces: Config
-  - Constants: DEFAULT_CONFIG
 
 ================================================================================
 ## FILES & RESPONSIBILITIES
@@ -29,248 +25,145 @@ Example:
 - Parse file content into AST
 
 ### extractor.ts
-- Walk AST to find code constructs
-- Extract function definitions (name, params, return type)
-- Extract class definitions (name, methods, properties)
-- Extract method signatures within classes
-- Handle nested structures
+- Load S-expression queries (imports, exports, entities, callsites)
+- Iterate captures from `tree.query`
+- Construct `FileArtifact` JSON structure
+- Handle scope attribution for callsites (ensure calls belong to correct callable)
 
-### outline.ts
-- Build high-level code structure summary
-- Format outline for LLM consumption
-- Aggregate file-level outlines into project overview
+### queries/*.scm (New)
+- `imports.scm`: Extract ES imports
+- `exports.scm`: Extract named/default/star exports
+- `entities.scm`: Extract functions, classes, methods, arrows
+- `callsites.scm`: Extract call expressions and new expressions
 
 ### types.ts
-- FunctionInfo, ClassInfo, MethodInfo interfaces
-- CodeOutline structure
-- FileOutline for per-file summaries
+- `FileArtifact`, `Entity`, `ImportSpec`, `CallSite` interfaces (see Data Model)
 
 ================================================================================
-## MODULE INTERACTIONS
-================================================================================
-
-INTERNAL (within parser/):
-┌─────────────────┐
-│    parser.ts    │
-│                 │
-│ - parse(file)   │
-│ - detectLang()  │
-└────────┬────────┘
-         │ returns AST
-         ▼
-┌─────────────────┐
-│  extractor.ts   │
-│                 │
-│ - extractFns()  │
-│ - extractCls()  │
-└────────┬────────┘
-         │ returns structured data
-         ▼
-┌─────────────────┐
-│   outline.ts    │
-│                 │
-│ - buildOutline()│
-│ - formatForLLM()│
-└─────────────────┘
-
-All modules import from types.ts
-
-EXTERNAL DEPENDENCIES:
-- outline.ts → Called by llm/prompt-builder.ts
-- extractor.ts → May be called by mcp/tools.ts for direct queries
-
-================================================================================
-## INTERFACES
+## DATA MODEL (Artifact JSON Structure)
 ================================================================================
 
 ```typescript
-// types.ts
-interface FunctionInfo {
+type Loc = {
+  startByte: number; endByte: number;
+  startLine: number; endLine: number;
+  startColumn: number; endColumn: number;
+};
+
+type FileArtifact = {
+  schemaVersion: "ts-graph-v1";
+  file: { id: string; path: string; language: string };
+  imports: ImportSpec[];
+  exports: ExportSpec[];
+  entities: Entity[];
+};
+
+type ImportSpec = {
+  kind: "es";
+  source: string;             // raw module specifier
+  resolvedPath: string | null;
+  specifiers: { name: string; alias?: string }[];
+  loc: Loc;
+};
+
+type ExportSpec = {
+  type: "named" | "default" | "reexport" | "all";
+  name: string;      // exported name
+  localName?: string; // local entity name if different
+  source?: string;   // for re-exports
+  loc: Loc;
+};
+
+type EntityKind = "class" | "function" | "method" | "arrow" | "const";
+
+type Entity = {
+  id: string; // generated stable ID (e.g. file#name@byte)
+  kind: EntityKind;
   name: string;
-  params: Array<{ name: string; type?: string }>;
-  returnType?: string;
-  startLine: number;
-  endLine: number;
-  docstring?: string;
-}
+  isExported: boolean;
+  loc: Loc;
+  signature?: string; // full signature text
+  calls?: CallSite[]; // outgoing calls
+};
 
-interface ClassInfo {
-  name: string;
-  methods: FunctionInfo[];
-  properties: Array<{ name: string; type?: string }>;
-  startLine: number;
-  endLine: number;
-  docstring?: string;
-}
-
-interface FileOutline {
-  path: string;
-  language: string;
-  functions: FunctionInfo[];
-  classes: ClassInfo[];
-  imports?: string[];
-}
-
-interface CodeOutline {
-  files: FileOutline[];
-  summary: string;  // High-level description for LLM
-}
-
-// parser.ts exports
-function parseFile(filePath: string, content: string): SyntaxTree;
-function detectLanguage(filePath: string): string;
-
-// extractor.ts exports
-function extractFunctions(tree: SyntaxTree, lang: string): FunctionInfo[];
-function extractClasses(tree: SyntaxTree, lang: string): ClassInfo[];
-
-// outline.ts exports
-function buildFileOutline(filePath: string, content: string): FileOutline;
-function buildCodeOutline(files: Array<{path: string, content: string}>): CodeOutline;
-function formatOutlineForLLM(outline: CodeOutline): string;
+type CallSite = {
+  callSiteId: string;
+  kind: "function" | "method" | "new";
+  calleeName: string; // best effort name extraction
+  loc: Loc;
+};
 ```
 
 ================================================================================
-## LANGUAGE SUPPORT
+## TREE-SITTER QUERIES (Reference)
 ================================================================================
 
-Priority languages (Phase 1):
-- TypeScript (.ts, .tsx)
-- JavaScript (.js, .jsx)
-- Python (.py)
-
-Future languages:
-- Go (.go)
-- Rust (.rs)
-- Java (.java)
-- C/C++ (.c, .cpp, .h)
-
-Language detection: Based on file extension mapping
-
-================================================================================
-## TREE-SITTER QUERIES
-================================================================================
-
-Example TypeScript queries:
+### imports.scm
+```scm
+(import_statement
+  (import_clause
+    (identifier) @import.default)?
+  (import_clause
+    (named_imports
+      (import_specifier
+        name: (identifier) @import.imported
+        alias: (identifier)? @import.local)?))?
+  (string) @import.source) @import.stmt
 ```
-; Functions
-(function_declaration
-  name: (identifier) @function.name)
 
-; Arrow functions assigned to const
+### exports.scm
+```scm
+; Named export
+(export_statement
+  (function_declaration name: (identifier) @export.name)) @export.stmt
+
+; Re-export
+(export_statement
+  (export_clause
+    (export_specifier name: (identifier) @reexport.name))
+  source: (string) @reexport.source) @reexport.stmt
+```
+
+### entities.scm
+```scm
+(function_declaration name: (identifier) @entity.name) @entity.function
+(class_declaration name: (identifier) @entity.name) @entity.class
+(method_definition name: (property_identifier) @entity.name) @entity.method
 (lexical_declaration
   (variable_declarator
-    name: (identifier) @function.name
-    value: (arrow_function)))
+    name: (identifier) @entity.name
+    value: (arrow_function))) @entity.arrow
+```
 
-; Classes
-(class_declaration
-  name: (type_identifier) @class.name)
-
-; Methods
-(method_definition
-  name: (property_identifier) @method.name)
+### callsites.scm
+```scm
+(call_expression
+  function: (_) @call.callee) @call.expr
+(new_expression
+  constructor: (_) @call.callee) @call.new
 ```
 
 ================================================================================
-## IMPLEMENTATION ORDER
+## IMPLEMENTATION STRATEGY
 ================================================================================
 
-1. types.ts
-   - Define all interfaces
-
-2. parser.ts
-   - Tree-sitter setup
-   - Language detection
-   - Basic parsing
-
-3. extractor.ts
-   - TypeScript/JavaScript extraction first
-   - Add Python support
-   - Query-based extraction
-
-4. outline.ts
-   - Combine extractors
-   - Format for LLM prompts
+1.  **Query Files**: Create `.scm` files in `src/parser/queries/`.
+2.  **Extractor Class**:
+    -   Initialize with query contents.
+    -   Method `extract(tree, language)`:
+        -   Run `imports` query -> build `ImportSpec[]`.
+        -   Run `exports` query -> build `ExportSpec[]`.
+        -   Run `entities` query -> build `Entity[]` (flat list).
+        -   Run `callsites` query OR traverse entities to find calls within scopes (Scope-Sensitive Traversal recommended for correct attribution).
+3.  **Service Integration**:
+    -   Update `ensureArtifacts` in `src/artifact/service.ts`.
+    -   Serialize extraction result to JSON string.
+    -   Write to `.artifact`.
 
 ================================================================================
-## DEPENDENCIES
+## VERIFICATION
 ================================================================================
 
-External packages:
-- tree-sitter (core library)
-- tree-sitter-typescript
-- tree-sitter-javascript
-- tree-sitter-python
-- (additional language packages as needed)
-
-Internal dependencies:
-- Depends on: (none - utility module)
-- Depended on by: llm/prompt-builder.ts, mcp/tools.ts
-
-================================================================================
-## TESTING
-================================================================================
-
-### Unit Tests (parser/)
-
-parser.ts:
-- detectLanguage() identifies TypeScript files
-- detectLanguage() identifies Python files
-- detectLanguage() returns "unknown" for unsupported
-- parseFile() returns valid AST for TypeScript
-- parseFile() returns valid AST for Python
-
-extractor.ts:
-- extractFunctions() finds top-level functions
-- extractFunctions() finds arrow functions
-- extractFunctions() extracts parameters and return types
-- extractClasses() finds class declarations
-- extractClasses() extracts methods
-- extractClasses() extracts properties
-- Handles nested classes/functions
-
-outline.ts:
-- buildFileOutline() combines parser + extractor
-- buildCodeOutline() aggregates multiple files
-- formatOutlineForLLM() produces readable output
-- Summary generation is concise
-
-### Integration Tests (parser/ ↔ llm/)
-
-Parser ↔ Prompt Builder:
-- Test: CodeOutline integrates into prompt
-- Test: Large projects truncate appropriately
-- Test: Empty outline handled gracefully
-
-Parser ↔ MCP:
-- Test: MCP can request outline directly
-- Test: Outline included in generate_artifact flow
-
-### Language-Specific Tests
-
-TypeScript:
-- Test: Functions, classes, interfaces, types
-- Test: Arrow functions and exports
-- Test: Decorators and generics
-
-JavaScript:
-- Test: ES6 classes and functions
-- Test: CommonJS exports
-- Test: Prototype methods
-
-Python:
-- Test: Functions and classes
-- Test: Decorators
-- Test: Method types (instance, class, static)
-
-### Module Compatibility Tests
-
-Cross-Language:
-- Test: Mixed-language project outline
-- Test: Unsupported file types skipped gracefully
-
-Performance:
-- Test: Large file parsing (>1000 lines)
-- Test: Many files (>100) in outline
-- Test: Deeply nested structures
+-   **Unit Tests**: Test extractor against fixture TS files (imports, exports, nested arrows).
+-   **Artifact Check**: Verify generated JSON contains expected structure.
+-   **Summary Check**: Ensure top-level folder logic works (via `analyze_codebase` integration).

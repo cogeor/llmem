@@ -1,6 +1,6 @@
 import { CodeParser } from './parser';
 import { Extractor } from './extractor';
-import { FileOutline, CodeOutline } from './types';
+import { FileArtifact, CodeOutline } from './types';
 
 export class OutlineGenerator {
     private parser: CodeParser;
@@ -11,7 +11,7 @@ export class OutlineGenerator {
         this.extractor = new Extractor();
     }
 
-    public async generateFileOutline(filePath: string, content: string): Promise<FileOutline | null> {
+    public async generateFileOutline(filePath: string, content: string): Promise<FileArtifact | null> {
         const tree = this.parser.parse(filePath, content);
         if (!tree) {
             return null;
@@ -21,14 +21,15 @@ export class OutlineGenerator {
         return this.extractor.extract(tree, language, filePath);
     }
 
-    public formatForLLM(outline: FileOutline): string {
-        let output = `File: ${outline.path} (${outline.language})\n`;
+    public formatForLLM(outline: FileArtifact): string {
+        let output = `File: ${outline.file.path} (${outline.file.language})\n`;
 
         // Imports
         if (outline.imports.length > 0) {
             output += `Imports:\n`;
             outline.imports.forEach(i => {
-                output += `  - ${i.source} ([${i.specifiers.map(s => s.name).join(', ')}])\n`;
+                const specs = i.specifiers.map(s => s.alias ? `${s.name} as ${s.alias}` : s.name).join(', ');
+                output += `  - ${i.source} (${specs})\n`;
             });
         }
 
@@ -40,28 +41,23 @@ export class OutlineGenerator {
             });
         }
 
-        // Types
-        if (outline.types.length > 0) {
-            output += `Types/Interfaces:\n`;
-            outline.types.forEach(t => {
-                output += `  - ${t.kind} ${t.name}\n`;
-            });
-        }
+        // Entities (Classes, Functions, etc)
+        if (outline.entities.length > 0) {
+            // Group by class if method
+            // The entities list is flat.
+            // We can just dump them or try to reconstruct hierarchy if we want.
+            // For LLM summary, flat list with signatures is fine.
+            output += `Entities:\n`;
+            outline.entities.forEach(e => {
+                output += `  - [${e.kind}] ${e.name}`;
+                if (e.signature) output += `: ${e.signature}`;
+                output += ` (Line ${e.loc.startLine}-${e.loc.endLine})`;
+                if (e.isExported) output += ` [EXPORTED]`;
+                output += `\n`;
 
-        if (outline.classes.length > 0) {
-            output += `Classes:\n`;
-            outline.classes.forEach(c => {
-                output += `  - ${c.name} : ${c.startLine}-${c.endLine}\n`;
-                c.methods.forEach(m => {
-                    output += `    - ${m.name}()\n`;
-                });
-            });
-        }
-
-        if (outline.functions.length > 0) {
-            output += `Functions:\n`;
-            outline.functions.forEach(f => {
-                output += `  - ${f.name}(${f.params.map(p => p.name).join(', ')}) : ${f.startLine}-${f.endLine}\n`;
+                if (e.calls && e.calls.length > 0) {
+                    output += `    Calls: ${e.calls.slice(0, 5).map(c => c.calleeName).join(', ')}${e.calls.length > 5 ? '...' : ''}\n`;
+                }
             });
         }
 
