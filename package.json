@@ -27,6 +27,7 @@
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
     "test": "node --test dist/**/*.test.js",
+    "verify": "node dist/test/verify_mcp.js && node dist/test/verify_strategy.js",
     "package": "vsce package"
   },
   "devDependencies": {
