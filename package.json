@@ -35,16 +35,11 @@
     "@types/vscode": "^1.85.0",
     "@typescript-eslint/eslint-plugin": "^6.13.0",
     "@typescript-eslint/parser": "^6.13.0",
-    "eslint": "^8.54.0",
-    "typescript": "^5.3.0"
+    "eslint": "^8.54.0"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "tree-sitter": "^0.25.0",
-    "tree-sitter-cli": "^0.25.10",
-    "tree-sitter-javascript": "^0.25.0",
-    "tree-sitter-python": "^0.25.0",
-    "tree-sitter-typescript": "^0.23.2",
+    "typescript": "^5.3.0",
     "zod": "^3.22.4",
     "zod-to-json-schema": "^3.22.4"
   }

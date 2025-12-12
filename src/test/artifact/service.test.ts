@@ -69,7 +69,7 @@ describe('Artifact Service', async () => {
 
     // Skipped: Flaky in temporary directory environment where tree-sitter bindings 
     // might not load correctly, but verified manually via src/test/verify_mcp.ts
-    it.skip('should ensure artifacts for a folder (generate from source)', async () => {
+    it('should ensure artifacts for a folder (generate from source)', async () => {
         // Create dummy source file
         const folder = path.join(testRoot, 'src', 'code');
         await fs.mkdir(folder, { recursive: true });
@@ -85,8 +85,8 @@ describe('Artifact Service', async () => {
         assert.strictEqual(artifact.metadata.sourcePath, expectedPath);
 
         const jsonContent = JSON.parse(artifact.content);
-        assert.ok(jsonContent.signatures.length > 0);
-        assert.ok(jsonContent.signatures[0].includes('main'));
+        assert.ok(jsonContent.entities.length > 0, 'Should have entities');
+        assert.ok(jsonContent.entities.some((e: any) => e.name === 'main'), 'Should find main function');
     });
 
     it('should save folder summary', async () => {

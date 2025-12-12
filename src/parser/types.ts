@@ -29,6 +29,10 @@ export interface CallSite {
     callSiteId: string;
     kind: 'function' | 'method' | 'new';
     calleeName: string;
+    resolvedDefinition?: {
+        file: string; // Absolute or relative path to file defining the symbol
+        name: string; // Name of the symbol
+    };
     loc: Loc;
 }
 

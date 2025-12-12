@@ -4,12 +4,12 @@
 ================================================================================
 ## PURPOSE
 ================================================================================
-Robust code structure extraction using Tree-sitter and S-expression queries.
-Parses source files into AST, runs queries to extract imports, exports, entities,
-and callsites, and stores as structured JSON in `.artifact` files.
+Robust code structure extraction using TypeScript Compiler API (primary) and Tree-sitter (fallback).
+Parses source files into AST, extracts semantic information (resolved imports, full signatures, cross-file references),
+and stores as structured JSON in `.artifact` files.
 
 DESIGN GOAL: For each source file, generate a corresponding .artifact file containing
-rich structural data (entities + callsites) to enable downstream graph construction.
+rich structural data (entities + callsites) and semantic edges (resolved paths) to enable validation and graph construction.
 
 Example:
   src/extension/config.ts → .artifacts/src/extension/config.ts.artifact
@@ -18,26 +18,32 @@ Example:
 ## FILES & RESPONSIBILITIES
 ================================================================================
 
+### interfaces.ts
+- `ArtifactExtractor`: Common interface for all language extractors.
+
+### ts-extractor.ts (Primary for TS/JS)
+- Implements `ArtifactExtractor`.
+- Uses `ts.Program` and `ts.TypeChecker`.
+- Extracts:
+    - **Imports**: Resolves module specifiers to absolute paths.
+    - **Exports**: Analyzes symbol exports and re-exports.
+    - **Entities**: Extracts functions, classes, methods with signatures.
+    - **Call Sites**: Finds references (calls/new) within entities.
+
+### ts-service.ts
+- Manages `ts.Program` lifecycle.
+- Provides singleton access to the Program for the workspace.
+- Handles creation of temporary programs for files not in the main project config.
+
+### extractor.ts (Fallback / Non-TS)
+- Uses Tree-sitter and S-expression queries.
+- Legacy extraction logic for generic file support.
+
 ### parser.ts
-- Tree-sitter initialization
-- Language detection from file extension
-- Load appropriate language grammar
-- Parse file content into AST
-
-### extractor.ts
-- Load S-expression queries (imports, exports, entities, callsites)
-- Iterate captures from `tree.query`
-- Construct `FileArtifact` JSON structure
-- Handle scope attribution for callsites (ensure calls belong to correct callable)
-
-### queries/*.scm (New)
-- `imports.scm`: Extract ES imports
-- `exports.scm`: Extract named/default/star exports
-- `entities.scm`: Extract functions, classes, methods, arrows
-- `callsites.scm`: Extract call expressions and new expressions
+- Tree-sitter initialization and language detection.
 
 ### types.ts
-- `FileArtifact`, `Entity`, `ImportSpec`, `CallSite` interfaces (see Data Model)
+- `FileArtifact`, `Entity`, `ImportSpec`, `CallSite` interfaces.
 
 ================================================================================
 ## DATA MODEL (Artifact JSON Structure)
@@ -61,7 +67,7 @@ type FileArtifact = {
 type ImportSpec = {
   kind: "es";
   source: string;             // raw module specifier
-  resolvedPath: string | null;
+  resolvedPath: string | null; // Resolved absolute path (populated by TS extractor)
   specifiers: { name: string; alias?: string }[];
   loc: Loc;
 };
@@ -95,75 +101,31 @@ type CallSite = {
 ```
 
 ================================================================================
-## TREE-SITTER QUERIES (Reference)
-================================================================================
-
-### imports.scm
-```scm
-(import_statement
-  (import_clause
-    (identifier) @import.default)?
-  (import_clause
-    (named_imports
-      (import_specifier
-        name: (identifier) @import.imported
-        alias: (identifier)? @import.local)?))?
-  (string) @import.source) @import.stmt
-```
-
-### exports.scm
-```scm
-; Named export
-(export_statement
-  (function_declaration name: (identifier) @export.name)) @export.stmt
-
-; Re-export
-(export_statement
-  (export_clause
-    (export_specifier name: (identifier) @reexport.name))
-  source: (string) @reexport.source) @reexport.stmt
-```
-
-### entities.scm
-```scm
-(function_declaration name: (identifier) @entity.name) @entity.function
-(class_declaration name: (identifier) @entity.name) @entity.class
-(method_definition name: (property_identifier) @entity.name) @entity.method
-(lexical_declaration
-  (variable_declarator
-    name: (identifier) @entity.name
-    value: (arrow_function))) @entity.arrow
-```
-
-### callsites.scm
-```scm
-(call_expression
-  function: (_) @call.callee) @call.expr
-(new_expression
-  constructor: (_) @call.callee) @call.new
-```
-
-================================================================================
 ## IMPLEMENTATION STRATEGY
 ================================================================================
 
-1.  **Query Files**: Create `.scm` files in `src/parser/queries/`.
-2.  **Extractor Class**:
-    -   Initialize with query contents.
-    -   Method `extract(tree, language)`:
-        -   Run `imports` query -> build `ImportSpec[]`.
-        -   Run `exports` query -> build `ExportSpec[]`.
-        -   Run `entities` query -> build `Entity[]` (flat list).
-        -   Run `callsites` query OR traverse entities to find calls within scopes (Scope-Sensitive Traversal recommended for correct attribution).
-3.  **Service Integration**:
-    -   Update `ensureArtifacts` in `src/artifact/service.ts`.
-    -   Serialize extraction result to JSON string.
-    -   Write to `.artifact`.
+1.  **TypeScript Service**:
+    -   Initialize with workspace root.
+    -   Load `tsconfig.json` or create default configuration.
+    -   Expose `getProgram()` method.
+
+2.  **TypeScript Extractor**:
+    -   Uses `program.getSourceFile(path)`.
+    -   Uses `program.getTypeChecker()` to resolve symbols and paths.
+    -   Traverses AST (forEachChild) to find nodes.
+    -   Populates `resolvedPath` in `ImportSpec`.
+
+3.  **Fallback Strategy**:
+    -   If file is not TS/JS/TSX, or if TS extractor fails (fails to parse), use `OutlineGenerator` (Tree-sitter).
+    -   Ensures continued support for other languages or loose files.
+
+4.  **Service Integration**:
+    -   `src/artifact/service.ts` initializes `TypeScriptService` and `TypeScriptExtractor`.
+    -   `ensureArtifacts` checks extension and selects extractor.
 
 ================================================================================
 ## VERIFICATION
 ================================================================================
 
--   **Unit Tests**: Test extractor against fixture TS files (imports, exports, nested arrows).
--   **Artifact Check**: Verify generated JSON contains expected structure.
--   **Summary Check**: Ensure top-level folder logic works (via `analyze_codebase` integration).
+-   **Unit Tests**: `src/test/artifact/service.test.ts` verifies artifacts are generated from source.
+-   **Semantic Check**: Verify `imports` contain valid `resolvedPath`.

@@ -21,4 +21,4 @@ dist/
 Thumbs.db
 
 # MCP
-.artifacts/
+.artifacts

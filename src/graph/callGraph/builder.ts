@@ -70,6 +70,34 @@ export function buildCallGraph(artifacts: ArtifactBundle[]): CallGraph {
             if (!nodes.has(callerGid)) continue;
 
             entity.calls.forEach((call, index) => {
+                const callSiteKey = deriveCallSiteKey(fileId, entity.id, call.callSiteId, index);
+
+                // Optimization: If parser provided resolved definition, use it directly
+                if (call.resolvedDefinition) {
+                    const { file: targetFileId, name: targetName } = call.resolvedDefinition;
+                    // Check if we have this file and entity indexed
+                    if (entityIndexByFileAndName.has(targetFileId)) {
+                        const fileIndex = entityIndexByFileAndName.get(targetFileId)!;
+                        // For methods, the entity name in our index is the method name
+                        if (fileIndex.has(targetName)) {
+                            const possibleIds = fileIndex.get(targetName)!;
+                            if (possibleIds.length > 0) {
+                                // Ambiguity check: if multiple ids, we pick first? 
+                                // Ideally TS resolution is precise. But our flatten index might collide 
+                                // (e.g. two classes in same file having same method name?)
+                                // For now, taking first is vastly better than nothing.
+                                edges.push({
+                                    source: callerGid,
+                                    target: possibleIds[0],
+                                    kind: 'call',
+                                    callSiteId: callSiteKey
+                                });
+                                return;
+                            }
+                        }
+                    }
+                }
+
                 const res = resolveCall(
                     fileId,
                     call.calleeName,
@@ -80,7 +108,6 @@ export function buildCallGraph(artifacts: ArtifactBundle[]): CallGraph {
                     normalizePath
                 );
 
-                const callSiteKey = deriveCallSiteKey(fileId, entity.id, call.callSiteId, index);
 
                 if (res.status === 'resolved') {
                     edges.push({

@@ -6,19 +6,31 @@ import { ArtifactIndex } from './index';
 import { ArtifactTreeManager } from './tree';
 import { artifactFilePath, sourceToArtifactDir, summaryFilePath } from './path-mapper';
 import { readFile, writeFile, deleteFile, exists } from './storage';
-import { OutlineGenerator } from '../parser';
+
+import { TypeScriptService, TypeScriptExtractor, ExtractorRegistry } from '../parser';
 
 let index: ArtifactIndex;
 let tree: ArtifactTreeManager;
 let workspaceRoot: string;
 let isInitialized = false;
-let outlineGenerator: OutlineGenerator;
+let registry: ExtractorRegistry;
+let tsService: TypeScriptService;
+let tsExtractor: TypeScriptExtractor;
 
 export async function initializeArtifactService(root: string) {
     workspaceRoot = root;
     index = new ArtifactIndex(workspaceRoot);
     tree = new ArtifactTreeManager();
-    outlineGenerator = new OutlineGenerator();
+
+    // Initialize TS Service
+    tsService = new TypeScriptService(workspaceRoot);
+    tsExtractor = new TypeScriptExtractor(() => tsService.getProgram());
+
+    // Initialize Registry
+    registry = new ExtractorRegistry();
+    registry.register('.ts', tsExtractor);
+    registry.register('.tsx', tsExtractor);
+
     await index.load();
     tree.build(index.getAll());
     isInitialized = true;
@@ -104,11 +116,19 @@ export async function ensureArtifacts(folderPath: string, recursive: boolean = f
             // Generate it
             const content = await readFile(fullPath);
             if (content !== null) {
-                const outline = await outlineGenerator.generateFileOutline(fullPath, content);
-                if (outline) {
-                    // Create artifact with full JSON content as per new design
-                    const artifactContent = JSON.stringify(outline, null, 2);
+                let artifactContent: string | null = null;
 
+                // Find appropriate extractor
+                const extractor = registry.get(fullPath);
+
+                if (extractor) {
+                    const artifact = await extractor.extract(fullPath);
+                    if (artifact) {
+                        artifactContent = JSON.stringify(artifact, null, 2);
+                    }
+                }
+
+                if (artifactContent) {
                     const metadata = await createArtifact(sourcePath, 'mirror', artifactContent);
                     record = metadata;
                 }
