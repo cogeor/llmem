@@ -1,0 +1,121 @@
+Goals
+
+Single command opens a WebviewPanel containing:
+
+interactive plot view
+
+text chat view (Antigravity-backed)
+
+Two-way sync: plot/chat events update extension state; extension pushes state/data updates back.
+
+Components
+
+Extension (TypeScript)
+
+Command: myPlugin.openPanel
+
+WebviewPanel lifecycle + state store
+
+JSON generation (from your pipeline)
+
+Antigravity bridge (agent prompt available) to produce responses/actions
+
+Webview (HTML/CSS/JS)
+
+Plot area (interactive)
+
+Chat pane (messages, input box, send button)
+
+Local bundled assets: main.js, style.css, index.html template
+
+Layout (within the WebviewPanel)
+
+Split view:
+
+Left: plot + small controls (refresh/reset/filter)
+
+Right (or bottom): chat transcript + input
+
+State ownership
+
+Extension is source of truth:
+
+latest JSON payload
+
+selections / filters / hover / viewport (as needed)
+
+chat transcript (or at least current session state)
+
+Webview maintains transient UI state (scroll position, input draft), but can be restored from extension state on reload.
+
+Messaging contract
+
+Extension → Webview
+
+plot:set (full JSON payload)
+
+state:set (selection/filter/state snapshot)
+
+chat:set (transcript snapshot)
+
+chat:append (single new message)
+
+Webview → Extension
+
+plot:event (select/hover/brush/filter changes)
+
+ui:command (refresh/reset)
+
+chat:send (user message + context summary)
+
+chat:action (if chat suggests an action: apply filter, select points, regenerate)
+
+Antigravity integration (agent prompt available)
+
+Extension receives chat:send
+
+Extension calls Antigravity agent using the available prompt/context:
+
+current JSON summary (not raw huge payload unless needed)
+
+current selection/filter state
+
+relevant workspace context (if allowed/needed)
+
+Agent output is interpreted as:
+
+assistant chat text to display
+
+optional structured actions to apply (update state → push state:set / plot:set)
+
+Security & packaging
+
+Bundle CSS/JS/HTML locally and load via webview.asWebviewUri.
+
+Use strict CSP with nonce; no remote scripts/styles.
+
+Validate all inbound messages; never execute code contained in JSON.
+
+UX details
+
+Command opens/reveals the same panel (singleton).
+
+Panel supports refresh/regenerate data, reset view.
+
+Chat supports:
+
+open/close toggle (but always available in the panel)
+
+clear transcript
+
+“apply suggestion” actions that immediately update plot/state
+
+Acceptance criteria
+
+Running command opens WebviewPanel showing plot + chat.
+
+JSON can be pushed from extension and re-rendered without reloading the panel.
+
+Plot interaction triggers messages back to extension and updates state.
+
+Chat can be used to ask for changes; Antigravity response appears; optional actions update plot/state.
