@@ -76,7 +76,7 @@ import { initializeArtifactService } from '../artifact/service';
  * 
  * @param config - Extension configuration
  */
-export async function startServer(config: Config): Promise<void> {
+export async function startServer(config: Config, workspaceRoot: string): Promise<void> {
     if (server) {
         throw new Error('MCP server is already running');
     }
@@ -86,8 +86,6 @@ export async function startServer(config: Config): Promise<void> {
     console.error(`[${correlationId}] Starting MCP server...`);
 
     // Initialize Artifact Service
-    // TODO: Allow passing workspace root via config or args. For now assume CWD.
-    const workspaceRoot = process.cwd();
     console.error(`[${correlationId}]   Workspace root: ${workspaceRoot}`);
     console.error(`[${correlationId}]   Artifact root: ${config.artifactRoot}`);
 
@@ -232,7 +230,7 @@ async function main(): Promise<void> {
     };
 
     try {
-        await startServer(defaultConfig);
+        await startServer(defaultConfig, process.cwd());
     } catch (error) {
         console.error('Failed to start MCP server:', error);
         process.exit(1);

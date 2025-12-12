@@ -18,8 +18,26 @@ export interface ClassInfo {
 }
 
 export interface ImportInfo {
-    source: string;
-    specifiers: string[];
+    source: string; // The module path, e.g. "vscode", "./types"
+    specifiers: Array<{ name: string; alias?: string }>; // e.g. { name: "Foo", alias: "Bar" }
+    startLine: number;
+    endLine: number;
+}
+
+export interface ExportInfo {
+    type: 'default' | 'named';
+    name: string; // "default" or the exported name
+    localName?: string; // if re-exported or aliased
+    startLine: number;
+    endLine: number;
+}
+
+export interface TypeInfo {
+    name: string;
+    kind: 'interface' | 'type' | 'enum';
+    definition: string; // The signature/definition snippet
+    startLine: number;
+    endLine: number;
 }
 
 export interface FileOutline {
@@ -27,7 +45,9 @@ export interface FileOutline {
     language: string;
     functions: FunctionInfo[];
     classes: ClassInfo[];
-    imports?: ImportInfo[];
+    imports: ImportInfo[];
+    exports: ExportInfo[];
+    types: TypeInfo[];
 }
 
 export interface CodeOutline {

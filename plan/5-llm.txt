@@ -1,97 +1,73 @@
-# Part 5: LLM Integration Plan (Architectural Helper)
+# Part 5: LLM Integration Plan (Recursive Summarization)
 # Component: src/llm/
 
 ================================================================================
 ## PURPOSE
 ================================================================================
 Turn the system into an "Architectural Codebase Helper".
-Focus is on high-level understanding of modules (folders) rather than deep-diving
-into single files immediately.
 
 Goal:
-1. Provide parsed signatures for all files in a requested folder (Context).
-2. Ask Host LLM to synthesize this into a Module Summary.
-3. Store this summary as a Folder Artifact.
+1. Provide parsed signatures for all files in a tree (Context).
+2. Ask Host LLM to synthesize this into Summaries for EACH folder.
+3. Store these summaries via `store_summaries`.
 
 ================================================================================
-## WORKFLOW: get_artifacts(folder)
+## WORKFLOW: get_artifacts(folder, recursive=true)
 ================================================================================
 
-User: "What does the 'mcp' folder do?"
+User: "Start recursive analysis of src/"
 
-1. **Host LLM** calls `get_artifacts(path="src/mcp")`
+1. **Host LLM** calls `get_artifacts(path="src", recursive=true)`
 
 2. **LLMem Server**:
-   a. Scans `src/mcp/*.ts` (non-recursive by default).
-   b. For each file:
-      - Parse signatures (Function/Class names + types).
-      - Store in `.artifacts/src/mcp/file.ts.artifact`.
-   c. Aggregates all signatures into a JSON object.
-   d. Returns Response:
-      - **Status**: `prompt_ready` (or similar instruction).
-      - **Data**: JSON of signatures.
-      - **Prompt**: "Based on these signatures, summarize the functionality of the 
-        'src/mcp' folder. Identify inputs, outputs, and role in the system."
-      - **Callback**: `store_folder_summary`
+   Detailed Logic:
+   - Walk tree: `src/`, `src/mcp`, `src/parser`...
+   - Organize signatures by folder.
+   
+   Returns Response:
+   - **Status**: `prompt_ready`
+   - **Data**: JSON Map of Folder -> File Signatures
+   - **Prompt**: 
+     "I have analyzed the following folders. 
+      For EACH folder, output a module summary.
+      ...
+      Return a JSON object where keys are folder paths and values are the summaries."
+      
+   - **Callback**: `store_summaries`
 
 3. **Host LLM**:
-   - Generates summary.
-   - Calls `store_folder_summary(path="src/mcp", summary="...")`.
+   - Generates JSON map of summaries.
+   - Calls `store_summaries(summaries={ "src": "...", "src/mcp": "..." })`.
 
 4. **LLMem Server**:
-   - Saves summary to `.artifacts/src/mcp/mcp.summary`.
-
-================================================================================
-## ARTIFACTS
-================================================================================
-
-### File Artifact (Signatures Only)
-Location: `.artifacts/src/path/to/file.ts.artifact`
-Content:
-```json
-{
-  "path": "src/path/to/file.ts",
-  "signatures": [
-    "function loadConfig(context: ExtensionContext): void",
-    "class ConfigManager { get(key: string): any }"
-  ]
-}
-```
-
-### Folder Artifact (Summary)
-Location: `.artifacts/src/path/to/folder.summary`
-Content:
-```markdown
-# Module: src/mcp
-
-## Purpose
-Handles MCP protocol communication and tool management.
-
-## Inputs
-- Configuration from `src/extension/config.ts`
-- Tool implementation from `src/artifact/`
-
-## Outputs
-- JSON-RPC responses over stdio
-```
+   - Iterates map.
+   - Creates `.summary` file for each entry.
 
 ================================================================================
 ## PROMPTS
 ================================================================================
 
-### Module Summarization Prompt
+### Recursive Summarization Prompt
 ```
 You are an Architectural Codebase Assistant.
-Context: I have analyzed the folder "{folder_path}".
-
-Here are the signatures of the files in this folder:
-{json_signatures}
+Context: I have analyzed the following folders in "{root_path}".
+{structured_folder_data}
 
 Task:
-Summarize the functionality of this folder/module. 
-1. What is its primary responsibility?
-2. What are its main external inputs and outputs (based on signatures)?
-3. How do the files interact?
+For EACH folder listed above, generate a Markdown summary module description.
+1. Primary responsibility
+2. Files contained and their roles
+3. Interactions with other modules
 
-Format: Markdown
+IMPORTANT:
+You must trigger the `store_summaries` tool.
+Pass a single JSON object where:
+- Keys are the folder paths (as shown in context)
+- Values are the Markdown content.
+
+Example:
+{
+  "src/mcp": "# MCP Module...",
+  "src/parser": "# Parser Module..."
+}
 ```

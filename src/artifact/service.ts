@@ -104,6 +104,9 @@ export async function ensureArtifacts(folderPath: string, recursive: boolean = f
                     // Create artifact with JUST signatures as per plan
                     const artifactContent = JSON.stringify({
                         path: sourcePath,
+                        imports: outline.imports.map(i => `from '${i.source}' import { ${i.specifiers.map(s => s.name).join(', ')} }`),
+                        exports: outline.exports.map(e => `export ${e.type} ${e.name}`),
+                        types: outline.types.map(t => `${t.kind} ${t.name}`),
                         signatures: outline.functions.map(f => f.signature).concat(
                             outline.classes.flatMap(c =>
                                 [`class ${c.name}`].concat(c.methods.map(m => `  ${m.signature}`))
@@ -137,11 +140,12 @@ export async function ensureArtifacts(folderPath: string, recursive: boolean = f
 export async function saveFolderSummary(folderPath: string, summary: string): Promise<ArtifactMetadata> {
     checkInitialized();
 
-    const filePath = summaryFilePath(workspaceRoot, folderPath);
+    const absFolderPath = path.isAbsolute(folderPath) ? folderPath : path.join(workspaceRoot, folderPath);
+    const filePath = summaryFilePath(workspaceRoot, absFolderPath);
 
     const metadata: ArtifactMetadata = {
         id: crypto.randomUUID(),
-        sourcePath: folderPath,
+        sourcePath: absFolderPath,
         artifactPath: filePath,
         type: 'folder_summary',
         createdAt: new Date().toISOString()
@@ -152,6 +156,26 @@ export async function saveFolderSummary(folderPath: string, summary: string): Pr
     await index.save();
 
     return metadata;
+}
+
+/**
+ * Saves multiple folder summaries at once.
+ */
+export async function saveModuleSummaries(summaries: Record<string, string>): Promise<ArtifactMetadata[]> {
+    checkInitialized();
+
+    const results: ArtifactMetadata[] = [];
+
+    for (const [folderPath, content] of Object.entries(summaries)) {
+        try {
+            const metadata = await saveFolderSummary(folderPath, content);
+            results.push(metadata);
+        } catch (error) {
+            console.error(`Failed to save summary for ${folderPath}:`, error);
+        }
+    }
+
+    return results;
 }
 
 export async function listArtifacts(filter?: { sourcePath?: string; type?: string }): Promise<ArtifactMetadata[]> {

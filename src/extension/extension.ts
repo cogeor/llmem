@@ -117,7 +117,8 @@ function showStatus(): void {
  * Placeholder - will be implemented in Part 2 (MCP Server)
  */
 async function startMcpServer(config: Config): Promise<void> {
-    await startServer(config);
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
+    await startServer(config, workspaceRoot);
 }
 
 /**

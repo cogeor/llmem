@@ -24,10 +24,27 @@ export class OutlineGenerator {
     public formatForLLM(outline: FileOutline): string {
         let output = `File: ${outline.path} (${outline.language})\n`;
 
-        if (outline.functions.length > 0) {
-            output += `Functions:\n`;
-            outline.functions.forEach(f => {
-                output += `  - ${f.name}(${f.params.map(p => p.name).join(', ')}) : ${f.startLine}-${f.endLine}\n`;
+        // Imports
+        if (outline.imports.length > 0) {
+            output += `Imports:\n`;
+            outline.imports.forEach(i => {
+                output += `  - ${i.source} ([${i.specifiers.map(s => s.name).join(', ')}])\n`;
+            });
+        }
+
+        // Exports
+        if (outline.exports.length > 0) {
+            output += `Exports:\n`;
+            outline.exports.forEach(e => {
+                output += `  - ${e.name} (${e.type})\n`;
+            });
+        }
+
+        // Types
+        if (outline.types.length > 0) {
+            output += `Types/Interfaces:\n`;
+            outline.types.forEach(t => {
+                output += `  - ${t.kind} ${t.name}\n`;
             });
         }
 
@@ -38,6 +55,13 @@ export class OutlineGenerator {
                 c.methods.forEach(m => {
                     output += `    - ${m.name}()\n`;
                 });
+            });
+        }
+
+        if (outline.functions.length > 0) {
+            output += `Functions:\n`;
+            outline.functions.forEach(f => {
+                output += `  - ${f.name}(${f.params.map(p => p.name).join(', ')}) : ${f.startLine}-${f.endLine}\n`;
             });
         }
 

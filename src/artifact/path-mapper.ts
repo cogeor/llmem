@@ -17,7 +17,10 @@ export function getArtifactsRoot(workspaceRoot: string): string {
  * Structure: .artifacts/path/to/source/file.ext/
  */
 export function sourceToArtifactDir(workspaceRoot: string, sourcePath: string): string {
-    const relativeSource = path.relative(workspaceRoot, sourcePath);
+    let relativeSource = sourcePath;
+    if (path.isAbsolute(sourcePath)) {
+        relativeSource = path.relative(workspaceRoot, sourcePath);
+    }
     // prevented traversing up
     if (relativeSource.startsWith('..') || path.isAbsolute(relativeSource)) {
         throw new Error(`Source path must be inside workspace: ${sourcePath}`);
@@ -55,7 +58,10 @@ export function artifactFilePath(workspaceRoot: string, sourcePath: string, arti
 
     // Let's refactor slightly.
 
-    const relativeSource = path.relative(workspaceRoot, sourcePath);
+    let relativeSource = sourcePath;
+    if (path.isAbsolute(sourcePath)) {
+        relativeSource = path.relative(workspaceRoot, sourcePath);
+    }
     const artifactsRoot = getArtifactsRoot(workspaceRoot);
     const relativeDir = path.dirname(relativeSource);
     const fileName = path.basename(relativeSource);
