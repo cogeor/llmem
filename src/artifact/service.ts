@@ -24,6 +24,11 @@ export async function initializeArtifactService(root: string) {
     isInitialized = true;
 }
 
+export function getWorkspaceRoot(): string {
+    checkInitialized();
+    return workspaceRoot;
+}
+
 function checkInitialized() {
     if (!isInitialized) {
         throw new Error('Artifact service not initialized. Call initializeArtifactService() first.');

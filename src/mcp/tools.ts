@@ -14,6 +14,7 @@ import {
     ensureArtifacts,
     saveModuleSummaries,
     initializeArtifactService,
+    getWorkspaceRoot,
 } from '../artifact/service';
 import { readFile } from '../artifact/storage';
 
@@ -68,8 +69,16 @@ export async function handleInspectSource(
     const { path: relativePath, startLine, endLine } = validation.data!;
 
     try {
-        // HACK: Solves standalone execution pathing issues
-        const fullPath = path.join(process.cwd(), relativePath);
+        // Use the service's workspace root if available, otherwise fallback to CWD
+        let root = process.cwd();
+        try {
+            root = getWorkspaceRoot();
+        } catch (e) {
+            // Service might not be initialized yet (though analyze_codebase does it)
+            // fallback to cwd
+        }
+
+        const fullPath = path.join(root, relativePath);
 
         const content = await readFile(fullPath);
         if (content === null) {
