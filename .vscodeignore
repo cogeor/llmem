@@ -1,0 +1,13 @@
+.vscode/**
+.gitignore
+tsconfig.json
+src/**
+!src/webview/**
+plan/**
+*.log
+.github/**
+.env
+.env.example
+scripts/**
+**/*.ts
+.artifacts/**

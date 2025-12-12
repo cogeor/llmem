@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLMem Context</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Local Vis.js (will be injected or loaded from libs) -->
+    <script src="libs/vis-network.min.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <!-- Sidebar / Top Control Bar -->
+        <div class="controls">
+            <div class="header">
+                <h2>Context Graph</h2>
+            </div>
+            <div class="actions">
+                <button id="btn-update" class="primary">Update Context</button>
+                <select id="select-graph-type">
+                    <option value="import">Import Graph</option>
+                    <option value="call">Call Graph</option>
+                </select>
+                <div id="status-indicator">Idle</div>
+            </div>
+        </div>
+
+        <!-- Split View -->
+        <div class="split-view">
+            <!-- Left: Graph Area -->
+            <div class="graph-pane">
+                <div id="mynetwork"></div>
+            </div>
+
+            <!-- Right: Chat Area -->
+            <div class="chat-pane">
+                <div class="chat-header">
+                    <h3>Antigravity Chat</h3>
+                    <button id="btn-clear-chat" class="icon-btn" title="Clear Chat">🗑️</button>
+                </div>
+                <div id="chat-history" class="chat-history">
+                    <!-- Messages go here -->
+                </div>
+                <div class="chat-input-area">
+                    <textarea id="chat-input" placeholder="Ask about the codebase..."></textarea>
+                    <button id="btn-send">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="main.js"></script>
+</body>
+
+</html>

@@ -4,6 +4,10 @@
   "description": "MCP server extension for generating and managing LLM artifacts",
   "version": "0.1.0",
   "publisher": "llmem",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/llmem/llmem.git"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -11,7 +15,8 @@
     "Other"
   ],
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onCommand:llmem.openPanel"
   ],
   "main": "./dist/extension/extension.js",
   "contributes": {
@@ -19,6 +24,10 @@
       {
         "command": "llmem.showStatus",
         "title": "LLMem: Show Status"
+      },
+      {
+        "command": "llmem.openPanel",
+        "title": "LLMem: Open Panel"
       }
     ]
   },
@@ -28,6 +37,7 @@
     "lint": "eslint src --ext ts",
     "test": "node --test dist/**/*.test.js",
     "verify": "node dist/test/verify_mcp.js && node dist/test/verify_strategy.js",
+    "view": "npx ts-node src/scripts/generate_webview.ts",
     "package": "vsce package"
   },
   "devDependencies": {
@@ -40,6 +50,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "typescript": "^5.3.0",
+    "vis-network": "^10.0.2",
     "zod": "^3.22.4",
     "zod-to-json-schema": "^3.22.4"
   }

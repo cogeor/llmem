@@ -9,6 +9,7 @@
 import * as vscode from 'vscode';
 import { loadConfig, getConfig, isConfigLoaded, resetConfig, Config } from './config';
 import { startServer, stopServer } from '../mcp/server';
+import { LLMemPanel } from './panel';
 
 /** Extension output channel for logging */
 let outputChannel: vscode.OutputChannel | null = null;
@@ -48,9 +49,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     });
     context.subscriptions.push(showStatusCommand);
 
+    const openPanelCommand = vscode.commands.registerCommand('llmem.openPanel', () => {
+        LLMemPanel.createOrShow(context.extensionUri);
+    });
+    context.subscriptions.push(openPanelCommand);
+
     // Start MCP server (placeholder - will be implemented in Part 2)
     try {
         await startMcpServer(config);
+
         log('MCP server started successfully');
         mcpServerRunning = true;
     } catch (error) {

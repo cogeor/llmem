@@ -17,6 +17,10 @@ import {
     getWorkspaceRoot,
 } from '../artifact/service';
 import { readFile } from '../artifact/storage';
+import { buildGraphs } from '../graph';
+import { getConfig } from '../extension/config';
+import { generateStaticWebview } from '../webview/generator';
+import { prepareWebviewData } from '../graph/webview-data';
 
 // ============================================================================
 // Tool Schemas (Zod)
@@ -40,11 +44,16 @@ export const SetWorkspaceRootSchema = z.object({
     root: z.string().describe('Absolute path to workspace root'),
 });
 
+export const OpenWindowSchema = z.object({
+    viewColumn: z.number().optional().describe('View column to open in (1-3)'),
+});
+
 // Type inference
 export type AnalyzeCodebaseArgs = z.infer<typeof AnalyzeCodebaseSchema>;
 export type ReportAnalysisArgs = z.infer<typeof ReportAnalysisSchema>;
 export type InspectSourceArgs = z.infer<typeof InspectSourceSchema>;
 export type SetWorkspaceRootArgs = z.infer<typeof SetWorkspaceRootSchema>;
+export type OpenWindowArgs = z.infer<typeof OpenWindowSchema>;
 
 // ============================================================================
 // Tool Handlers
@@ -134,6 +143,107 @@ export async function handleSetWorkspaceRoot(
         return response;
     } catch (error) {
         const response = formatError(error instanceof Error ? error.message : String(error));
+        logResponse(correlationId, response);
+        return response;
+    }
+}
+
+/**
+ * Open the LLMem Webview Panel via VS Code command.
+ */
+/**
+ * Generate Static Webview for Browser Viewing
+ */
+export async function handleOpenWindow(
+    args: unknown
+): Promise<McpResponse<unknown>> {
+    const correlationId = generateCorrelationId();
+    logRequest(correlationId, 'open_window', args);
+
+    const validation = validateRequest(OpenWindowSchema, args);
+    if (!validation.success) {
+        const response = formatError(validation.error!);
+        logResponse(correlationId, response);
+        return response;
+    }
+
+    try {
+        const root = getWorkspaceRoot();
+
+        // Wait, getConfig() relies on env vars or singleton reset. 
+        // In server.ts we set serverConfig. 
+        // But `getConfig()` throws if not loaded.
+        // In standalone mode, main() calls startServer which sets serverConfig. 
+        // But `getConfig` is from extension/config.ts. 
+        // Let's check if we can rely on getConfig() or if we need to use the one from server.ts?
+        // server.ts has `getServerConfig()`. 
+        // Let's import that instead to be safe, or ensure config is loaded.
+        // Actually, importing `getServerConfig` from server.ts might cause cycle if tools imported by server.
+        // Yes, cycle: server -> tools -> server.
+        // Let's rely on getConfig(). If server started correctly, it should be set?
+        // Actually server.ts sets `serverConfig` variable but doesn't call `loadConfig`.
+        // Wait, `loadConfig` returns the config instance.
+        // In standalone `main()`, we call `startServer(defaultConfig)`.
+        // We should ensure `configInstance` in `config.ts` is set.
+        // Let's update this logic later if it fails. For now let's try to get config.
+
+        // actually, safer to use a helper that we know works or re-load default.
+        let safeConfig = { artifactRoot: '.artifacts', maxFilesPerFolder: 20, maxFileSizeKB: 512 };
+        try {
+            safeConfig = getConfig();
+        } catch {
+            // Fallback if not loaded (e.g. testing)
+            safeConfig = { artifactRoot: '.artifacts', maxFilesPerFolder: 20, maxFileSizeKB: 512 };
+        }
+
+        const artifactDir = path.join(root, safeConfig.artifactRoot);
+
+        // 1. Build Graphs
+        const graphData = await prepareWebviewData(artifactDir);
+
+        // 2. Generate Webview
+        const webviewDir = path.join(artifactDir, 'webview');
+        // We need extension root to find src/webview
+        // We can assume we are running from dist/mcp/tools.js
+        // So extension root is likely ../..
+        // But for robust path finding:
+        // __dirname is dist/mcp
+        // extension root is dist/../ = .
+        // src is ./src
+        // Wait, if we are compiled to dist, the src/webview files are NOT in dist (excluded usually?).
+        // Ah, we just Added !src/webview/** to vscodeignore so they ARE in the package.
+        // If running from source (ts-node), __dirname is src/mcp. Root is ../..
+        // If running from dist, __dirname is dist/mcp. Root is ../..
+
+        // We need to find where the "src/webview" assets are at runtime.
+        // In the installed extension, they are in `out/webview` or just `src/webview`?
+        // VS Code extension structure preserves `src`? No, usually compiled to `dist`.
+        // But we added `src/webview` to package, so it should be in `extension/src/webview`.
+
+        // Let's assume relative path from this file.
+        // If we represent `extensionRoot` as the directory containing `package.json`.
+        const extensionRoot = path.resolve(__dirname, '..', '..');
+
+        const indexPath = await generateStaticWebview(webviewDir, extensionRoot, graphData);
+
+        const response = formatSuccess({
+            message: 'Webview generated successfully.',
+            url: `file://${indexPath.replace(/\\/g, '/')}`,
+            note: 'Please open this URL in your browser to view the graph.',
+            debug: {
+                serverRoot: root,
+                exactArtifactPath: artifactDir,
+                nodeCount: graphData.importGraph.nodes.length,
+                edgeCount: graphData.importGraph.edges.length,
+                configRoot: safeConfig.artifactRoot
+            }
+        });
+        logResponse(correlationId, response);
+        return response;
+
+    } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        const response = formatError(`Failed to generate webview: ${msg}`);
         logResponse(correlationId, response);
         return response;
     }
@@ -325,5 +435,11 @@ export const TOOLS: ToolDefinition[] = [
         description: 'Set the workspace root directory for the artifact service (debug/standalone only).',
         schema: SetWorkspaceRootSchema,
         handler: handleSetWorkspaceRoot,
+    },
+    {
+        name: 'open_window',
+        description: 'Open the LLMem Webview Panel in the IDE.',
+        schema: OpenWindowSchema,
+        handler: handleOpenWindow,
     },
 ];
