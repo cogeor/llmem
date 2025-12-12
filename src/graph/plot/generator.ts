@@ -1,12 +1,14 @@
 import * as fs from 'fs';
 import { Graph, Node, Edge } from '../types';
 import { getHtmlTemplate } from './template';
+import { ColorGenerator } from '../utils';
 
 interface VisNode {
     id: string;
     label: string;
     title: string; // Tooltip
     group?: string;
+    color?: string; // HSL color
 }
 
 interface VisEdge {
@@ -31,11 +33,15 @@ function formatTooltip(obj: any): string {
 }
 
 export function generatePlotHtml<N extends Node, E extends Edge>(graph: Graph<N, E>, title: string): string {
+    const colorGen = new ColorGenerator();
+    const nodeColors = colorGen.generateColors(graph.nodes.values());
+
     const visNodes: VisNode[] = Array.from(graph.nodes.values()).map(n => ({
         id: n.id,
         label: n.label,
         group: (n as any).kind || 'default',
-        title: `<b>${n.label}</b><hr/>${formatTooltip(n)}`
+        title: `<b>${n.label}</b><hr/>${formatTooltip(n)}`,
+        color: nodeColors.get(n.id)
     }));
 
     const visEdges: VisEdge[] = graph.edges.map(e => ({
