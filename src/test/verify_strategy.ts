@@ -1,5 +1,5 @@
 import { initializeArtifactService, ensureArtifacts } from '../artifact/service';
-import { handleReadSourceCode } from '../mcp/tools';
+import { handleInspectSource } from '../mcp/tools';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 
@@ -63,17 +63,17 @@ async function main() {
         }
     }
 
-    // 2. Verify Read Source Code
-    console.log('\n--- Verifying read_source_code ---');
+    // 2. Verify Inspect Source
+    console.log('\n--- Verifying inspect_source ---');
     // Read lines 1-5 of src/parser/types.ts
-    const readResponse = await handleReadSourceCode({
+    const readResponse = await handleInspectSource({
         path: 'src/parser/types.ts',
         startLine: 1,
         endLine: 5
     });
 
     if (readResponse.status !== 'success' || !readResponse.data) {
-        console.error('FAILED: read_source_code', readResponse.error);
+        console.error('FAILED: inspect_source', readResponse.error);
         process.exit(1);
     }
 

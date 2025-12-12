@@ -1,5 +1,5 @@
 import { initializeArtifactService } from '../artifact/service';
-import { handleGetArtifacts, handleStoreFolderSummary, handleStoreSummaries } from '../mcp/tools';
+import { handleAnalyzeCodebase, handleReportAnalysis } from '../mcp/tools';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 
@@ -17,7 +17,7 @@ async function main() {
 
     // 1. Get Artifacts RECURSIVELY
     console.log(`Requesting artifacts for folder: ${rootFolder} (RECURSIVE)`);
-    const response = await handleGetArtifacts({ path: rootFolder, recursive: true });
+    const response = await handleAnalyzeCodebase({ path: rootFolder });
 
     if (response.status !== 'prompt_ready') {
         console.error('MCP Request failed OR wrong status:', response.status, response.error);
@@ -26,8 +26,8 @@ async function main() {
 
     // Validate Prompt Structure
     const prompt = response.promptForHostLLM || '';
-    if (!prompt.includes('store_summaries')) {
-        console.error('Prompt did not ask to trigger store_summaries');
+    if (!prompt.includes('report_analysis')) {
+        console.error('Prompt did not ask to trigger report_analysis');
         process.exit(1);
     }
     if (!prompt.includes('grouped by folder')) {
@@ -35,7 +35,7 @@ async function main() {
         process.exit(1);
     }
 
-    console.log('MCP get_artifacts success! Prompt looks correct.');
+    console.log('MCP analyze_codebase success! Prompt looks correct.');
     console.log('Prompt preview:', prompt.substring(0, 200) + '...');
 
     // 2. Simulate Host LLM generating recursive summaries
@@ -47,15 +47,15 @@ async function main() {
         'src/mcp': '# MCP\nModel Context Protocol implementation'
     };
 
-    const storeResponse = await handleStoreSummaries({
+    const storeResponse = await handleReportAnalysis({
         summaries: fakeSummaries
     });
 
     if (storeResponse.status !== 'success') {
-        console.error('MCP store_summaries failed:', storeResponse.error);
+        console.error('MCP report_analysis failed:', storeResponse.error);
         process.exit(1);
     }
-    console.log('MCP store_summaries success!');
+    console.log('MCP report_analysis success!');
 
     // 3. Verify files
     for (const [folder, content] of Object.entries(fakeSummaries)) {

@@ -1,4 +1,4 @@
-# LLMem - LLM Artifact Manager
+# LLMem - Codebase Summary Tool
 
 **LLMem** is an MCP (Model Context Protocol) server extension for the Antigravity IDE. It is designed to enhance the efficiency of LLM context windows by managing a shadow filesystem of "artifacts"—high-level summaries, code outlines, and architectural notes—that exist alongside your source code.
 
@@ -50,13 +50,18 @@ LLMem exposes tools to the Antigravity Agent. You do not run these commands manu
 ### Common Interactions
 
 **1. "Summarize this folder"**
-- **Agent Action**: Calls `get_artifacts` to analyze the directory structure.
+- **Agent Action**: Calls `analyze_codebase` to analyze the directory structure.
 - **LLMem Response**: Returns file signatures and import/export graphs.
-- **Agent Action**: Calls `store_summaries` to save a generated Markdown summary.
+- **Agent Action**: Calls `report_analysis` to save a generated Markdown summary.
 
 **2. "Explain the auth module"**
-- **Agent Action**: Calls `get_artifacts` on the `auth` directory.
+- **Agent Action**: Calls `analyze_codebase` on the `auth` directory.
 - **LLMem Response**: Provides a comprehensive context map of the module, which the Agent uses to answer your question.
+
+### Tools Available to Agent
+1. **`analyze_codebase`**: The entry point. Generates context prompts and triggers the analysis workflow.
+2. **`inspect_source`**: Allows the agent to read specific blocks of code for detailed inspection.
+3. **`report_analysis`**: The final step where the agent submits its generated summaries for storage.
 
 ### Architecture
 The user flows from **User** -> **Antigravity Agent** -> **LLMem MCP Server**.
@@ -76,11 +81,11 @@ The user flows from **User** -> **Antigravity Agent** -> **LLMem MCP Server**.
 
 ## 📁 Directory Structure
 
-- `src/extension`: VS Code extension entry point and configuration.
-- `src/mcp`: The MCP server implementation and tool definitions.
+- `src/extension`: VS Code integration.
+- `src/mcp`: The MCP server implementation (tools: `analyze_codebase`, `inspect_source`, `report_analysis`).
 - `src/artifact`: Core logic for managing the artifact filesystem and path mapping.
 - `src/parser`: Tree-sitter based code analysis and signature extraction.
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
