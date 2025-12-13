@@ -1,4 +1,40 @@
-# LLMem MCP Design
+# MCP Server Implementation Plan (Architectural Helper)
+# Component: src/mcp/
+
+================================================================================
+## TOOLS
+================================================================================
+
+### 1. get_artifacts
+**Args**:
+- `path`: string (Folder path)
+- `recursive`: boolean (default false)
+
+**Behavior**:
+1. Calls `artifact.ensureArtifacts(path, recursive)`.
+2. Groups signatures by folder.
+3. Returns `prompt_ready`.
+   - Prompt: "Analyze these modules... output a JSON map of folder summaries."
+   - Callback: `store_summaries`
+
+### 2. store_summaries (NEW)
+**Description**: Save multiple folder summaries at once.
+**Args**:
+- `summaries`: Record<string, string> (Map of "folder/path" -> "Markdown Summary")
+
+**Behavior**:
+1. Iterates keys.
+2. Calls `artifact.saveFolderSummary` for each.
+
+================================================================================
+## INTERFACES
+================================================================================
+
+```typescript
+const StoreSummariesSchema = z.object({
+  summaries: z.record(z.string()).describe("Map of folder paths to markdown summaries"),
+});
+```
 
 ## Purpose
 

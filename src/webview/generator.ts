@@ -1,5 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { generateWorkTree } from './worktree';
+import { convertAllMarkdown } from './utils/md-converter';
 
 /**
  * Generate a static webview folder in the artifacts directory.
@@ -48,15 +50,42 @@ export async function generateStaticWebview(
         }
     }
 
+    // 1b. Copy .arch folder to arch
+    const archSrc = path.join(extensionRoot, '.arch');
+    const archDest = path.join(destinationDir, 'arch');
+    if (fs.existsSync(archSrc)) {
+        if (!fs.existsSync(archDest)) {
+            fs.mkdirSync(archDest, { recursive: true });
+        }
+        // Simple recursive copy
+        fs.cpSync(archSrc, archDest, { recursive: true });
+
+        // Convert Markdown to HTML
+        convertAllMarkdown(archDest);
+    } else {
+        console.warn(`Warning: .arch folder not found at ${archSrc}`);
+    }
+
+    // 1c. Generate Folder Tree
+    const workTree = await generateWorkTree(extensionRoot, path.join(extensionRoot, 'src'));
+    const treePath = path.join(destinationDir, 'work_tree.json');
+    fs.writeFileSync(treePath, JSON.stringify(workTree, null, 2), 'utf8');
+
     // 2. Read and Template HTML
     const htmlPath = path.join(srcWebview, 'index.html');
     let htmlContent = fs.readFileSync(htmlPath, 'utf8');
 
     // Inject data
-    // We inject a script tag before main.js that sets window.INITIAL_DATA
+    // We inject a script tag before main.js that sets window.GRAPH_DATA_URL
+
+    // Write graph data to JSON file
+    const graphDataPath = path.join(destinationDir, 'graph_data.json');
+    fs.writeFileSync(graphDataPath, JSON.stringify(graphData, null, 2), 'utf8');
+
     const injectionScript = `
     <script>
-        window.INITIAL_DATA = ${JSON.stringify(graphData)};
+        window.GRAPH_DATA_URL = 'graph_data.json';
+        window.WORK_TREE_URL = 'work_tree.json';
     </script>
     `;
 
