@@ -1,20 +1,33 @@
+
+import { AppState } from '../types';
+
+interface Props {
+    el: HTMLElement;
+    state: any;
+}
+
 export class GraphTypeToggle {
-    constructor({ el, state }) {
+    private el: HTMLElement;
+    private state: any;
+    private unsubscribe?: () => void;
+
+    constructor({ el, state }: Props) {
         this.el = el;
         this.state = state;
     }
 
     mount() {
         this.el.addEventListener("click", (e) => {
-            const btn = e.target.closest("[data-graph-type]");
+            const target = e.target as HTMLElement;
+            const btn = target.closest("[data-graph-type]") as HTMLElement;
             if (!btn) return;
             this.state.set({ graphType: btn.dataset.graphType }); // "import" | "call"
         });
 
-        this.unsubscribe = this.state.subscribe((s) => this.render(s));
+        this.unsubscribe = this.state.subscribe((s: AppState) => this.render(s));
     }
 
-    render({ currentView, graphType }) {
+    render({ currentView, graphType }: AppState) {
         if (currentView !== "graph") {
             this.el.innerHTML = "";
             this.el.style.display = 'none';

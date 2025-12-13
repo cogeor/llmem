@@ -1,13 +1,11 @@
-/**
- * Service to resolve and fetch design docs.
- */
+
 export class DesignDocService {
     /**
-     * @param {string} path - The selected file/folder path (e.g. src/utils/foo.ts)
-     * @param {string} type - "file" or "directory"
-     * @returns {Promise<string|null>} - The HTML/Text content or null if not found
+     * @param selectedPath - The selected file/folder path (e.g. src/utils/foo.ts)
+     * @param selectedType - "file" or "directory"
+     * @returns The HTML/Text content or null if not found
      */
-    async fetchDesignDoc(selectedPath, selectedType) {
+    async fetchDesignDoc(selectedPath: string | null, selectedType: "file" | "directory" | null): Promise<string | null> {
         if (!selectedPath) return null;
 
         // Check for bundled docs first (in case we revert to file://)
@@ -16,7 +14,7 @@ export class DesignDocService {
         // Normalize initial path to remove extension if it matches common pattern
         // e.g. src/foo.ts -> src/foo (because we look for arch/src/foo.txt)
         // AND Normalize separators to forward slashes for matching bundled keys
-        let currentPath = selectedPath.replace(/\\/g, '/');
+        let currentPath: string | null = selectedPath.replace(/\\/g, '/');
         if (selectedType === 'file') {
             const lastDotIndex = currentPath.lastIndexOf('.');
             if (lastDotIndex > 0) {
@@ -26,13 +24,7 @@ export class DesignDocService {
 
         // Loop to find doc or parent doc
         while (currentPath !== null) {
-            // Check both full path identity and basename matching (for flat arch structure)
-
-            // Candidates to check:
-            // 1. Full path: "src/extension.html"
-            // 2. Basename: "extension.html" (heuristic for flat structure mapping to folder name)
-
-            const candidates = [];
+            const candidates: string[] = [];
 
             // 1. Full path (e.g. "src/extension")
             candidates.push(currentPath);
@@ -45,7 +37,6 @@ export class DesignDocService {
             }
 
             // PHASE 1: Check Bundle (Priority)
-            // Verify all candidates in the bundle first to avoid unnecessary 404 network logs
             for (const key of candidates) {
                 const htmlKey = `${key}.html`;
                 const txtKey = `${key}.txt`;
@@ -55,13 +46,9 @@ export class DesignDocService {
             }
 
             // PHASE 2: Fetch (Fallthrough - ONLY if bundle is empty)
-            // If we have a populated bundle, we assume it's authoritative.
             const hasBundle = Object.keys(bundledDocs).length > 0;
-            // DEBUG: Check if we are seeing the bundle
-            // console.log(`DesignDocService: hasBundle=${hasBundle}, count=${Object.keys(bundledDocs).length}`);
 
             if (!hasBundle) {
-                // If no bundle, we must fetch
                 for (const key of candidates) {
                     const extensions = ['.html', '.txt'];
                     for (const ext of extensions) {
@@ -77,8 +64,7 @@ export class DesignDocService {
                     }
                 }
             } else {
-                // Bundle exists but file not found in it. Return null.
-                // console.log(`DesignDocService: Bundle active. '${currentPath}' not found in bundle. Skipping fetch.`);
+                // Bundle exists but file not found in it.
             }
 
             if (currentPath === "") {

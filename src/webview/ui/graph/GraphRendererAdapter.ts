@@ -1,19 +1,36 @@
+
+import { VisNode, VisEdge } from '../types';
+
+interface RenderData {
+    nodes: VisNode[];
+    edges: VisEdge[];
+}
+
+interface RenderOptions {
+    selectedId?: string | null;
+}
+
 /**
  * Adapter for Vis.js Network
  */
 export class GraphRendererAdapter {
+    container: HTMLElement;
+    network: any | null; // vis.Network
+    onNodeClick: (nodeId: string) => void;
+    currentData: RenderData;
+
     /**
-     * @param {HTMLElement} container 
-     * @param {Function} onNodeClick - callback(nodeId)
+     * @param container 
+     * @param onNodeClick - callback(nodeId)
      */
-    constructor(container, onNodeClick) {
+    constructor(container: HTMLElement, onNodeClick?: (nodeId: string) => void) {
         this.container = container;
         this.network = null;
         this.onNodeClick = onNodeClick || (() => { });
         this.currentData = { nodes: [], edges: [] };
     }
 
-    render(data, options = {}) {
+    render(data: RenderData, options: RenderOptions = {}) {
         this.currentData = data;
         const { selectedId } = options;
 
@@ -59,15 +76,15 @@ export class GraphRendererAdapter {
         });
 
         const displayData = {
-            nodes: new vis.DataSet(displayNodes),
-            edges: new vis.DataSet(data.edges)
+            nodes: new window.vis.DataSet(displayNodes),
+            edges: new window.vis.DataSet(data.edges)
         };
 
         if (this.network) {
             this.network.setData(displayData);
         } else {
-            this.network = new vis.Network(this.container, displayData, visOptions);
-            this.network.on('click', (params) => {
+            this.network = new window.vis.Network(this.container, displayData, visOptions);
+            this.network.on('click', (params: any) => {
                 if (params.nodes.length > 0) {
                     this.onNodeClick(params.nodes[0]);
                 }

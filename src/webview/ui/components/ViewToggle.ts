@@ -1,20 +1,33 @@
+
+import { AppState } from '../types';
+
+interface Props {
+    el: HTMLElement;
+    state: any;
+}
+
 export class ViewToggle {
-    constructor({ el, state }) {
+    private el: HTMLElement;
+    private state: any;
+    private unsubscribe?: () => void;
+
+    constructor({ el, state }: Props) {
         this.el = el;
         this.state = state;
     }
 
     mount() {
         this.el.addEventListener('click', (e) => {
-            const btn = e.target.closest('[data-view]');
+            const target = e.target as HTMLElement;
+            const btn = target.closest('[data-view]') as HTMLElement;
             if (!btn) return;
             this.state.set({ currentView: btn.dataset.view });
         });
 
-        this.unsubscribe = this.state.subscribe((s) => this.render(s));
+        this.unsubscribe = this.state.subscribe((s: AppState) => this.render(s));
     }
 
-    render({ currentView }) {
+    render({ currentView }: AppState) {
         this.el.innerHTML = `
             <div class="segmented" role="group">
                 <button data-view="design" class="${currentView === 'design' ? 'is-active' : ''}">Design Script</button>

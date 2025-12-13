@@ -1,7 +1,7 @@
-/**
- * Simple state management with subscription support.
- */
-export const initialState = {
+
+import { AppState } from './types';
+
+export const initialState: AppState = {
     currentView: "design", // "design" | "graph"
     graphType: "import",   // "import" | "call"
     selectedPath: "src",    // Default to src
@@ -10,25 +10,26 @@ export const initialState = {
 };
 
 class State {
-    constructor(initial) {
+    private data: AppState;
+    private listeners: Set<(state: AppState) => void>;
+
+    constructor(initial: AppState) {
         this.data = { ...initial };
         this.listeners = new Set();
     }
 
-    get() {
+    get(): AppState {
         return this.data;
     }
 
-    set(partial) {
+    set(partial: Partial<AppState>) {
         const next = { ...this.data, ...partial };
-        // Simple distinct check could go here, but omitted for simplicity
         this.data = next;
         this.notify();
     }
 
-    subscribe(callback) {
+    subscribe(callback: (state: AppState) => void): () => void {
         this.listeners.add(callback);
-        // Immediate call with current state
         callback(this.data);
         return () => this.listeners.delete(callback);
     }
