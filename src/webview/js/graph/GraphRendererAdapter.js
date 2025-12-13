@@ -34,7 +34,10 @@ export class GraphRendererAdapter {
                 smooth: { type: 'continuous' }
             },
             physics: {
-                stabilization: false,
+                stabilization: {
+                    enabled: true,
+                    iterations: 1000 // Force plenty of iterations to ensure stability before draw
+                },
                 barnesHut: {
                     gravitationalConstant: -8000,
                     springConstant: 0.04,
@@ -42,7 +45,7 @@ export class GraphRendererAdapter {
                 }
             },
             layout: {
-                improvedLayout: false // faster for large graphs
+                improvedLayout: true
             }
         };
 

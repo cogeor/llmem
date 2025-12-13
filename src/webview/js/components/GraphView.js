@@ -17,10 +17,9 @@ export class GraphView {
 
     onState({ currentView, graphType, selectedPath, selectedType }) {
         if (currentView !== "graph") {
-            this.el.style.display = 'none';
             return;
         }
-        this.el.style.display = 'block';
+
 
         const msgEl = this.el.querySelector('.graph-message');
         const canvasEl = this.el.querySelector('.graph-canvas');
@@ -43,6 +42,24 @@ export class GraphView {
             // Force re-creation of network because container changed
             this.graphRenderer.network = null;
         }
+
+        // Check if we need to re-render or if this is just a view toggle
+        const newParams = { selectedPath, selectedType, graphType };
+        const paramsChanged = !this.lastParams ||
+            this.lastParams.selectedPath !== selectedPath ||
+            this.lastParams.selectedType !== selectedType ||
+            this.lastParams.graphType !== graphType;
+
+        if (!paramsChanged) {
+            // Just switching back to graph tab with same selection.
+            // We might need to handle resize if it was hidden.
+            // forcing a redraw without resetting position
+            if (this.graphRenderer.network) {
+                this.graphRenderer.network.redraw();
+            }
+            return;
+        }
+        this.lastParams = newParams;
 
         const graph = graphType === "import"
             ? this.data.importGraph

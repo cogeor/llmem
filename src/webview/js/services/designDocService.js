@@ -32,35 +32,53 @@ export class DesignDocService {
             // 1. Full path: "src/extension.html"
             // 2. Basename: "extension.html" (heuristic for flat structure mapping to folder name)
 
-            const candidates = [
-                currentPath,
-                currentPath.split('/').pop() // basename
-            ];
+            const candidates = [];
 
-            for (const baseName of candidates) {
-                if (!baseName) continue;
+            // 1. Full path (e.g. "src/extension")
+            candidates.push(currentPath);
 
-                const htmlKey = `${baseName}.html`;
-                const txtKey = `${baseName}.txt`;
+            // 2. Basename (e.g. "extension" from "src/extension")
+            // Only if different from full path
+            const baseName = currentPath.split('/').pop();
+            if (baseName && baseName !== currentPath) {
+                candidates.push(baseName);
+            }
 
-                // 1. Try bundled
+            // PHASE 1: Check Bundle (Priority)
+            // Verify all candidates in the bundle first to avoid unnecessary 404 network logs
+            for (const key of candidates) {
+                const htmlKey = `${key}.html`;
+                const txtKey = `${key}.txt`;
+
                 if (bundledDocs[htmlKey]) return bundledDocs[htmlKey];
                 if (bundledDocs[txtKey]) return bundledDocs[txtKey];
+            }
 
-                // 2. Try Fetch (for server mode)
-                // We prefer HTML if user says they are HTML
-                const extensions = ['.html', '.txt'];
-                for (const ext of extensions) {
-                    const archUrl = `arch/${baseName}${ext}`;
-                    try {
-                        const res = await fetch(archUrl);
-                        if (res.ok) {
-                            return await res.text();
+            // PHASE 2: Fetch (Fallthrough - ONLY if bundle is empty)
+            // If we have a populated bundle, we assume it's authoritative.
+            const hasBundle = Object.keys(bundledDocs).length > 0;
+            // DEBUG: Check if we are seeing the bundle
+            // console.log(`DesignDocService: hasBundle=${hasBundle}, count=${Object.keys(bundledDocs).length}`);
+
+            if (!hasBundle) {
+                // If no bundle, we must fetch
+                for (const key of candidates) {
+                    const extensions = ['.html', '.txt'];
+                    for (const ext of extensions) {
+                        const archUrl = `arch/${key}${ext}`;
+                        try {
+                            const res = await fetch(archUrl);
+                            if (res.ok) {
+                                return await res.text();
+                            }
+                        } catch (e) {
+                            // console.debug(`Fetch failed for ${archUrl}`);
                         }
-                    } catch (e) {
-                        // console.debug(`Fetch failed for ${archUrl}`);
                     }
                 }
+            } else {
+                // Bundle exists but file not found in it. Return null.
+                // console.log(`DesignDocService: Bundle active. '${currentPath}' not found in bundle. Skipping fetch.`);
             }
 
             if (currentPath === "") {

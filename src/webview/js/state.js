@@ -4,9 +4,9 @@
 export const initialState = {
     currentView: "design", // "design" | "graph"
     graphType: "import",   // "import" | "call"
-    selectedPath: null,    // string (path from worktree)
-    selectedType: null,    // "file" | "directory"
-    expandedFolders: new Set(), // Set<string>
+    selectedPath: "src",    // Default to src
+    selectedType: "directory", // Default type
+    expandedFolders: new Set(["src"]), // Expand src by default
 };
 
 class State {
