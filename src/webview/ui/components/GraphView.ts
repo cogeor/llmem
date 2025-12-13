@@ -1,49 +1,69 @@
-import { filterOneHopFromNode, filterFolderScope, filterFileScope } from "../graph/GraphFilter.js";
+
+import { filterOneHopFromNode, filterFolderScope, filterFileScope } from "../graph/GraphFilter";
+import { GraphDataService } from "../services/graphDataService";
+import { WorktreeService } from "../services/worktreeService";
+import { GraphRendererAdapter } from "../graph/GraphRendererAdapter";
+import { AppState, GraphData } from "../types";
+
+interface Props {
+    el: HTMLElement;
+    state: any;
+    graphDataService: GraphDataService;
+    worktreeService: WorktreeService;
+    graphRenderer: GraphRendererAdapter;
+}
+
+interface GraphParams {
+    selectedPath: string | null;
+    selectedType: string | null;
+    graphType: string;
+}
 
 export class GraphView {
-    constructor({ el, state, graphDataService, worktreeService, graphRenderer }) {
+    public el: HTMLElement;
+    private state: any;
+    private graphDataService: GraphDataService;
+    private worktreeService: WorktreeService;
+    private graphRenderer: GraphRendererAdapter;
+    private data: GraphData | null = null;
+    private unsubscribe?: () => void;
+    private lastParams?: GraphParams;
+
+    constructor({ el, state, graphDataService, worktreeService, graphRenderer }: Props) {
         this.el = el;
         this.state = state;
         this.graphDataService = graphDataService;
         this.worktreeService = worktreeService;
         this.graphRenderer = graphRenderer;
-        this.data = null; // cached graph data
     }
 
     async mount() {
         this.data = await this.graphDataService.load();
-        this.unsubscribe = this.state.subscribe((s) => this.onState(s));
+        this.unsubscribe = this.state.subscribe((s: AppState) => this.onState(s));
     }
 
-    onState({ currentView, graphType, selectedPath, selectedType }) {
+    onState({ currentView, graphType, selectedPath, selectedType }: AppState) {
         if (currentView !== "graph") {
             return;
         }
 
-
-        const msgEl = this.el.querySelector('.graph-message');
-        const canvasEl = this.el.querySelector('.graph-canvas');
+        const msgEl = this.el.querySelector('.graph-message') as HTMLElement;
+        const canvasEl = this.el.querySelector('.graph-canvas') as HTMLElement;
 
         if (!selectedPath) {
             msgEl.style.display = 'flex';
             canvasEl.style.display = 'none';
-            // clean up network if desired, or keep it hidden
             return;
         }
 
         msgEl.style.display = 'none';
-        canvasEl.style.display = 'block'; // Ensure block display
+        canvasEl.style.display = 'block';
 
-        // We need to make sure the renderer is using the correct container.
-        // In main.js we might have passed parent.
-        // We ensure here:
         if (this.graphRenderer.container !== canvasEl) {
             this.graphRenderer.container = canvasEl;
-            // Force re-creation of network because container changed
             this.graphRenderer.network = null;
         }
 
-        // Check if we need to re-render or if this is just a view toggle
         const newParams = { selectedPath, selectedType, graphType };
         const paramsChanged = !this.lastParams ||
             this.lastParams.selectedPath !== selectedPath ||
@@ -51,15 +71,15 @@ export class GraphView {
             this.lastParams.graphType !== graphType;
 
         if (!paramsChanged) {
-            // Just switching back to graph tab with same selection.
-            // We might need to handle resize if it was hidden.
-            // forcing a redraw without resetting position
             if (this.graphRenderer.network) {
                 this.graphRenderer.network.redraw();
             }
             return;
         }
         this.lastParams = newParams;
+
+        // Ensure data is loaded
+        if (!this.data) return;
 
         const graph = graphType === "import"
             ? this.data.importGraph
@@ -71,7 +91,7 @@ export class GraphView {
             if (graphType === "call") {
                 filtered = filterFileScope(graph, selectedPath);
             } else {
-                filtered = filterOneHopFromNode(graph, selectedPath); // Works for Import Graph where NodeID = FilePath
+                filtered = filterOneHopFromNode(graph, selectedPath);
             }
         } else {
             const dirNode = this.worktreeService.getNode(selectedPath);
@@ -83,18 +103,9 @@ export class GraphView {
             }
         }
 
-        // Clone and Relativize Labels
-        // Clone and Relativize Labels
-        // Determine Base Directory for relative path calculation
         let baseDir = selectedPath;
 
-        // Heuristic: If selectedPath looks absolute (starts with C:/ or /) and nodes use src/...
-        // We try to convert baseDir to relative by matching with node IDs or finding common suffix.
         if (selectedPath && (selectedPath.startsWith('/') || selectedPath.match(/^[a-zA-Z]:/))) {
-            // Try to find a node that ends with this path? No, path is longer.
-            // Try to find if selectedPath ends with a node ID?
-            // Graph nodes usually start with src/...
-            // We can try to strip prefix until it starts with src/?
             const srcIndex = selectedPath.indexOf('src/');
             if (srcIndex !== -1) {
                 baseDir = selectedPath.substring(srcIndex);
@@ -102,14 +113,13 @@ export class GraphView {
         }
 
         if (selectedType === 'file' && baseDir) {
-            // Strip filename to get directory
             const lastSlash = baseDir.lastIndexOf('/');
-            const lastBackSlash = baseDir.lastIndexOf('\\'); // Handle windows raw path if present
+            const lastBackSlash = baseDir.lastIndexOf('\\');
             const sep = Math.max(lastSlash, lastBackSlash);
             if (sep >= 0) {
                 baseDir = baseDir.substring(0, sep);
             } else {
-                baseDir = ""; // Root?
+                baseDir = "";
             }
         }
 
@@ -124,20 +134,15 @@ export class GraphView {
         });
     }
 
-    computeDisplayedName(nodeLabel, currentPath) {
+    computeDisplayedName(nodeLabel: string, currentPath: string | null): string {
         if (!currentPath) return nodeLabel;
 
-        // Normalize
         const normLabel = nodeLabel.replace(/\\/g, '/');
         const normPath = currentPath.replace(/\\/g, '/');
 
-        // Handle Call Graph labels which might be "path/to/file.ts:functionName"
-        // We only want to relativize the file path part.
         let filePath = normLabel;
         let suffix = "";
 
-        // Find the colon separator. 
-        // Note: Windows paths shouldn't have colons here because we use fileId which is relative from root.
         const colonIndex = normLabel.lastIndexOf(':');
         if (colonIndex !== -1) {
             filePath = normLabel.substring(0, colonIndex);
@@ -148,14 +153,13 @@ export class GraphView {
         return relative + suffix;
     }
 
-    getRelativePath(from, to) {
-        // Normalize slashes and split
-        const normalize = p => p ? p.replace(/\\/g, '/').split('/').filter(x => x.length > 0) : [];
+    getRelativePath(from: string, to: string): string {
+        const normalize = (p: string) => p ? p.replace(/\\/g, '/').split('/').filter(x => x.length > 0) : [];
         const fromParts = normalize(from);
         const toParts = normalize(to);
 
         let i = 0;
-        // Case-insensitive comparison for Windows robustness
+        // Case-insensitive comparison
         while (i < fromParts.length && i < toParts.length &&
             fromParts[i].toLowerCase() === toParts[i].toLowerCase()) {
             i++;
@@ -163,9 +167,6 @@ export class GraphView {
 
         const upMoves = fromParts.length - i;
         const downMoves = toParts.slice(i);
-
-        // If we are deep inside and want to go out, we need ../
-        // But if 'from' is empty (root), we just show the path.
 
         let result = "";
         if (upMoves > 0) {
@@ -175,7 +176,6 @@ export class GraphView {
         if (downMoves.length > 0) {
             result += downMoves.join('/');
         } else if (upMoves === 0) {
-            // Exact match (file selected)
             const lastPart = toParts[toParts.length - 1];
             return lastPart;
         }

@@ -1,13 +1,14 @@
+
+import { GraphData } from '../types';
+
 /**
  * Service to load and access graph data.
  * Assumes window.GRAPH_DATA or window.GRAPH_DATA_URL is populated by the generator.
  */
 export class GraphDataService {
-    constructor() {
-        this.data = null;
-    }
+    private data: GraphData | null = null;
 
-    async load() {
+    async load(): Promise<GraphData> {
         if (this.data) return this.data;
 
         if (window.GRAPH_DATA) {
@@ -25,6 +26,6 @@ export class GraphDataService {
             // Fallback/Mock
             this.data = { importGraph: { nodes: [], edges: [] }, callGraph: { nodes: [], edges: [] } };
         }
-        return this.data;
+        return this.data!;
     }
 }

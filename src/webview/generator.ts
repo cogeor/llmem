@@ -1,5 +1,7 @@
-import * as fs from 'fs';
+
+import * as fs from 'fs-extra';
 import * as path from 'path';
+import * as esbuild from 'esbuild';
 import { generateWorkTree } from './worktree';
 import { convertAllMarkdown } from './utils/md-converter';
 
@@ -25,7 +27,7 @@ export async function generateStaticWebview(
     const srcWebview = path.join(extensionRoot, 'src', 'webview');
 
     // 1. Copy Assets
-    // We need styles/ and js/ folders, and libs/vis-network.min.js
+    // We need styles/ and libs/vis-network.min.js
 
     // Copy styles folder
     const stylesSrc = path.join(srcWebview, 'styles');
@@ -36,19 +38,22 @@ export async function generateStaticWebview(
         console.warn(`Warning: styles folder not found at ${stylesSrc}`);
     }
 
-    // Copy js folder (useful for debugging, even though we use bundle)
-    const jsSrc = path.join(srcWebview, 'js');
-    const jsDest = path.join(destinationDir, 'js');
-    if (fs.existsSync(jsSrc)) {
-        fs.cpSync(jsSrc, jsDest, { recursive: true });
-    } else {
-        console.warn(`Warning: js folder not found at ${jsSrc}`);
+    // 2. Bundle Webview UI (TypeScript -> main.js)
+    console.log('Bundling webview UI...');
+    try {
+        await esbuild.build({
+            entryPoints: [path.join(srcWebview, 'ui', 'main.ts')],
+            bundle: true,
+            outfile: path.join(destinationDir, 'js', 'main.js'),
+            platform: 'browser',
+            target: 'es2020',
+            sourcemap: true,
+            minify: false, // Easier debugging
+        });
+    } catch (e) {
+        console.error("Esbuild failed:", e);
+        throw e;
     }
-
-    // Bundle JS - REMOVED per user request
-    // const jsEntry = path.join(srcWebview, 'js', 'main.js');
-    // const bundleDest = path.join(destinationDir, 'bundle.js');
-    // ... bundling logic removed ...
 
     // Copy libs
     const libsSrc = path.join(srcWebview, 'libs');
@@ -59,7 +64,7 @@ export async function generateStaticWebview(
         console.warn(`Warning: libs folder not found at ${libsSrc}`);
     }
 
-    // 1b. Copy .arch folder to arch
+    // 3. Copy .arch folder to arch
     const archSrc = path.join(extensionRoot, '.arch');
     const archDest = path.join(destinationDir, 'arch');
     if (fs.existsSync(archSrc)) {
@@ -75,13 +80,13 @@ export async function generateStaticWebview(
         console.warn(`Warning: .arch folder not found at ${archSrc}`);
     }
 
-    // 1c. Generate Folder Tree
+    // 4. Generate Folder Tree
     const workTree = await generateWorkTree(extensionRoot, path.join(extensionRoot, 'src'));
     const treePath = path.join(destinationDir, 'work_tree.js');
     const treeContent = `window.WORK_TREE = ${JSON.stringify(workTree, null, 2)};`;
     fs.writeFileSync(treePath, treeContent, 'utf8');
 
-    // 2. Read and Template HTML
+    // 5. Read and Template HTML
     const htmlPath = path.join(srcWebview, 'index.html');
     let htmlContent = fs.readFileSync(htmlPath, 'utf8');
 
@@ -93,7 +98,7 @@ export async function generateStaticWebview(
     const graphDataContent = `window.GRAPH_DATA = ${JSON.stringify(graphData, null, 2)};`;
     fs.writeFileSync(graphDataPath, graphDataContent, 'utf8');
 
-    // 1d. Bundle Design Docs (to avoid fetch() on file://)
+    // 6. Bundle Design Docs
     const designDocs: { [key: string]: string } = {};
     if (fs.existsSync(archDest)) {
         const readDocs = (dir: string, base: string) => {
@@ -124,7 +129,6 @@ export async function generateStaticWebview(
     <script src="design_docs.js"></script>
     `;
 
-    // Insert before <script src="main.js">
     // Insert before <script type="module" src="js/main.js">
     // We just inject the data scripts before the main module script
     htmlContent = htmlContent.replace('<script type="module" src="js/main.js"></script>', `${injectionScript}\n    <script type="module" src="js/main.js"></script>`);
