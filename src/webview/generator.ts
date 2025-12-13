@@ -25,29 +25,38 @@ export async function generateStaticWebview(
     const srcWebview = path.join(extensionRoot, 'src', 'webview');
 
     // 1. Copy Assets
-    // We need style.css, main.js, and libs/vis-network.min.js
-    const filesToCopy = [
-        { src: 'style.css', dest: 'style.css' },
-        { src: 'main.js', dest: 'main.js' },
-        { src: 'libs/vis-network.min.js', dest: 'libs/vis-network.min.js' }
-    ];
+    // We need styles/ and js/ folders, and libs/vis-network.min.js
 
-    // Ensure libs dir exists
-    const libsDir = path.join(destinationDir, 'libs');
-    if (!fs.existsSync(libsDir)) {
-        fs.mkdirSync(libsDir, { recursive: true });
+    // Copy styles folder
+    const stylesSrc = path.join(srcWebview, 'styles');
+    const stylesDest = path.join(destinationDir, 'styles');
+    if (fs.existsSync(stylesSrc)) {
+        fs.cpSync(stylesSrc, stylesDest, { recursive: true });
+    } else {
+        console.warn(`Warning: styles folder not found at ${stylesSrc}`);
     }
 
-    for (const file of filesToCopy) {
-        const srcPath = path.join(srcWebview, file.src);
-        const destPath = path.join(destinationDir, file.dest);
+    // Copy js folder (useful for debugging, even though we use bundle)
+    const jsSrc = path.join(srcWebview, 'js');
+    const jsDest = path.join(destinationDir, 'js');
+    if (fs.existsSync(jsSrc)) {
+        fs.cpSync(jsSrc, jsDest, { recursive: true });
+    } else {
+        console.warn(`Warning: js folder not found at ${jsSrc}`);
+    }
 
-        // Check if src exists (it should in the installed extension or src tree)
-        if (fs.existsSync(srcPath)) {
-            fs.copyFileSync(srcPath, destPath);
-        } else {
-            console.warn(`Warning: Asset not found: ${srcPath}`);
-        }
+    // Bundle JS - REMOVED per user request
+    // const jsEntry = path.join(srcWebview, 'js', 'main.js');
+    // const bundleDest = path.join(destinationDir, 'bundle.js');
+    // ... bundling logic removed ...
+
+    // Copy libs
+    const libsSrc = path.join(srcWebview, 'libs');
+    const libsDest = path.join(destinationDir, 'libs');
+    if (fs.existsSync(libsSrc)) {
+        fs.cpSync(libsSrc, libsDest, { recursive: true });
+    } else {
+        console.warn(`Warning: libs folder not found at ${libsSrc}`);
     }
 
     // 1b. Copy .arch folder to arch
@@ -68,8 +77,9 @@ export async function generateStaticWebview(
 
     // 1c. Generate Folder Tree
     const workTree = await generateWorkTree(extensionRoot, path.join(extensionRoot, 'src'));
-    const treePath = path.join(destinationDir, 'work_tree.json');
-    fs.writeFileSync(treePath, JSON.stringify(workTree, null, 2), 'utf8');
+    const treePath = path.join(destinationDir, 'work_tree.js');
+    const treeContent = `window.WORK_TREE = ${JSON.stringify(workTree, null, 2)};`;
+    fs.writeFileSync(treePath, treeContent, 'utf8');
 
     // 2. Read and Template HTML
     const htmlPath = path.join(srcWebview, 'index.html');
@@ -78,19 +88,46 @@ export async function generateStaticWebview(
     // Inject data
     // We inject a script tag before main.js that sets window.GRAPH_DATA_URL
 
-    // Write graph data to JSON file
-    const graphDataPath = path.join(destinationDir, 'graph_data.json');
-    fs.writeFileSync(graphDataPath, JSON.stringify(graphData, null, 2), 'utf8');
+    // Write graph data to JS file
+    const graphDataPath = path.join(destinationDir, 'graph_data.js');
+    const graphDataContent = `window.GRAPH_DATA = ${JSON.stringify(graphData, null, 2)};`;
+    fs.writeFileSync(graphDataPath, graphDataContent, 'utf8');
+
+    // 1d. Bundle Design Docs (to avoid fetch() on file://)
+    const designDocs: { [key: string]: string } = {};
+    if (fs.existsSync(archDest)) {
+        const readDocs = (dir: string, base: string) => {
+            const files = fs.readdirSync(dir, { withFileTypes: true });
+            for (const file of files) {
+                const fullPath = path.join(dir, file.name);
+                const relPath = path.posix.join(base, file.name);
+                if (file.isDirectory()) {
+                    readDocs(fullPath, relPath);
+                } else if (file.isFile() && (file.name.endsWith('.txt') || file.name.endsWith('.html'))) {
+                    // For now assuming .txt or .html
+                    const content = fs.readFileSync(fullPath, 'utf8');
+                    // Store with relative path relative to 'arch/'
+                    // e.g. "src/foo.txt"
+                    designDocs[relPath] = content;
+                }
+            }
+        };
+        readDocs(archDest, '');
+    }
+    const designDocsPath = path.join(destinationDir, 'design_docs.js');
+    const designDocsContent = `window.DESIGN_DOCS = ${JSON.stringify(designDocs, null, 2)};`;
+    fs.writeFileSync(designDocsPath, designDocsContent, 'utf8');
 
     const injectionScript = `
-    <script>
-        window.GRAPH_DATA_URL = 'graph_data.json';
-        window.WORK_TREE_URL = 'work_tree.json';
-    </script>
+    <script src="graph_data.js"></script>
+    <script src="work_tree.js"></script>
+    <script src="design_docs.js"></script>
     `;
 
     // Insert before <script src="main.js">
-    htmlContent = htmlContent.replace('<script src="main.js"></script>', `${injectionScript}\n    <script src="main.js"></script>`);
+    // Insert before <script type="module" src="js/main.js">
+    // We just inject the data scripts before the main module script
+    htmlContent = htmlContent.replace('<script type="module" src="js/main.js"></script>', `${injectionScript}\n    <script type="module" src="js/main.js"></script>`);
 
     // Write HTML
     const destHtmlPath = path.join(destinationDir, 'index.html');

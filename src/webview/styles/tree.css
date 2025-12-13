@@ -1,0 +1,69 @@
+.tree-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.tree-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    padding: 3px 12px;
+    user-select: none;
+    color: var(--foreground);
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.tree-item:hover {
+    background-color: var(--hover-background);
+}
+
+.tree-item.is-selected {
+    background-color: var(--selection-background);
+    color: var(--selection-foreground);
+}
+
+.tree-item .icon {
+    width: 16px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.tree-element {
+    /* Container for the actual DOM element of the item */
+}
+
+/* Indentation handling via padding-left usually calculated in JS or nested lists */
+.tree-children {
+    display: none;
+    padding-left: 0;
+    /* managed by nested hierarchy if we use ul/li */
+}
+
+.tree-children.is-expanded {
+    display: block;
+}
+
+.tree-arrow {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transform: rotate(0deg);
+    transition: transform 0.1s ease;
+    flex-shrink: 0;
+}
+
+.tree-arrow::before {
+    content: '▶';
+    font-size: 8px;
+}
+
+.is-expanded>.tree-content>.tree-arrow,
+.tree-item[aria-expanded="true"] .tree-arrow {
+    transform: rotate(90deg);
+}

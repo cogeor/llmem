@@ -31,18 +31,14 @@ const container = document.getElementById('mynetwork');
 window.addEventListener('load', () => {
     // Check for static injected data
     // Check for static injected data
-    if (window.GRAPH_DATA_URL) {
+    if (window.GRAPH_DATA) {
+        // Direct object loaded via script tag
+        renderGraphData(window.GRAPH_DATA);
+    } else if (window.GRAPH_DATA_URL) {
         fetch(window.GRAPH_DATA_URL)
             .then(response => response.json())
             .then(data => {
-                staticData = data;
-                // Default to importGraph if available
-                if (data.importGraph) {
-                    renderGraph(data.importGraph);
-                } else {
-                    renderGraph(data);
-                }
-                setStatus('Loaded graph data', 'idle');
+                renderGraphData(data);
             })
             .catch(err => {
                 console.error("Failed to load graph data", err);
@@ -50,13 +46,18 @@ window.addEventListener('load', () => {
             });
     } else if (window.INITIAL_DATA) {
         // Legacy support
-        if (window.INITIAL_DATA.importGraph) {
-            staticData = window.INITIAL_DATA;
-            renderGraph(staticData.importGraph);
+        renderGraphData(window.INITIAL_DATA);
+    }
+
+    // Helper to handle graph data structure
+    function renderGraphData(data) {
+        staticData = data;
+        if (data.importGraph) {
+            renderGraph(data.importGraph);
         } else {
-            renderGraph(window.INITIAL_DATA);
+            renderGraph(data);
         }
-        setStatus('Loaded static context', 'idle');
+        setStatus('Loaded graph data', 'idle');
     }
 
     // Restore state if needed
