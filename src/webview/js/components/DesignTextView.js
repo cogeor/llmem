@@ -3,34 +3,35 @@ export class DesignTextView {
         this.el = el;
         this.state = state;
         this.designDocService = designDocService;
+
+        // Use Shadow DOM for CSS Isolation of design docs
+        this.shadow = this.el.attachShadow({ mode: 'open' });
     }
 
     mount() {
         this.unsubscribe = this.state.subscribe((s) => this.onState(s));
     }
 
-    async onState({ currentView, selectedPath, selectedType }) {
-        if (currentView !== 'design') {
-            this.el.style.display = 'none';
-            return;
-        }
-        this.el.style.display = 'block';
+    async onState({ selectedPath, selectedType }) {
+        // Router handles visibility (display: none/block on this.el)
+        // We only care about content update here.
 
         if (!selectedPath) {
-            this.el.innerHTML = `<div class="detail-empty">Select a file or folder to view its design document.</div>`;
+            this.shadow.innerHTML = `<div class="detail-empty" style="padding: 20px; color: #888;">Select a file or folder to view its design document.</div>`;
             return;
         }
 
-        this.el.innerHTML = `<div class="detail-loading">Loading...</div>`;
+        this.shadow.innerHTML = `<div class="detail-loading" style="padding: 20px;">Loading...</div>`;
 
         const content = await this.designDocService.fetchDesignDoc(selectedPath, selectedType);
 
         if (content) {
-            // Content is expected to be HTML (from markdown conversion) or plain text?
-            // "Note: webview design texts are in webview/arch and already html. Use them as-is."
-            this.el.innerHTML = `<div class="detail-view">${content}</div>`;
+            // Content is full HTML with <style> tags. Shadow DOM isolates it.
+            // We might want to inject some base styles for the shadow root if needed, 
+            // but the doc usually has its own.
+            this.shadow.innerHTML = content;
         } else {
-            this.el.innerHTML = `<div class="detail-empty">There is no design file for this selection.</div>`;
+            this.shadow.innerHTML = `<div class="detail-empty" style="padding: 20px; color: #888;">There is no design file for this selection.</div>`;
         }
     }
 

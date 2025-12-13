@@ -92,16 +92,22 @@ This produces a “folder scope” view:
 * It includes all files *in the subtree*,
 * plus the **immediate boundary** nodes outside the subtree that connect to it.
 
-### 2.5 SPA-like behavior + structure
+### 2.5 SPA-like behavior + structure (Revised)
 
-* One page.
-* `router.js` switches the left pane between Design and Graph views (no reload).
+* One page, no reloads.
+* **Centralized Router (`router.js`)**:
+  * The single source of truth for "which view is active" in the main content area.
+  * Listens to `state.currentView`.
+  * Toggles visibility of registered view components (`GraphView`, `DesignTextView`).
+* **Component Architecture**:
+  * **DesignTextView**: Renders design documents (HTML) inside a **Shadow DOM** to isolate their CSS from the main application.
+  * **GraphView**: Renders the network graph; maintains its own canvas state but delegates visibility control to the Router.
 * JS split into components:
-
   * Worktree
-  * Graph/text view switch
-  * Graph view
-  * Text view
+  * Router
+  * ViewToggle / GraphTypeToggle
+  * GraphView
+  * DesignTextView
   * (plus services + filtering utilities)
 
 ### 2.6 Best practices

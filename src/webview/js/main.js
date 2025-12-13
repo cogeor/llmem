@@ -1,4 +1,5 @@
 import { state } from './state.js';
+import { Router } from './router.js';
 import { WorktreeService } from './services/worktreeService.js';
 import { GraphDataService } from './services/graphDataService.js';
 import { DesignDocService } from './services/designDocService.js';
@@ -37,6 +38,12 @@ const graphRenderer = new GraphRendererAdapter(elGraphView, (nodeId) => {
 });
 
 
+// Router
+const router = new Router({
+    state,
+    container: elContent
+});
+
 // Components
 const worktree = new Worktree({
     el: elWorktree,
@@ -68,13 +75,27 @@ const graphView = new GraphView({
     graphRenderer
 });
 
+// Register Routes
+router.registerRoute('design', designTextView);
+router.registerRoute('graph', graphView);
+
 // Bootstrap
 (async () => {
     try {
+        // Init Router FIRST to handle initial visibility
+        // This ensures containers are visible before GraphView tries to render (fixing vis.js centering)
+        router.init();
+
+        // Mount static components
         await Promise.all([
             worktree.mount(),
             viewToggle.mount(),
             graphTypeToggle.mount(),
+            // designTextView.mount(), // Managed by Router? 
+            // graphView.mount(),     // Managed by Router?
+            // Actually, components still need to 'mount' to subscribe to state if they have other logic?
+            // Yes, GraphView subscribes to update graph. DesignTextView subscribes to update content.
+            // So we DO mount them. The Router just handles visibility.
             designTextView.mount(),
             graphView.mount()
         ]);
