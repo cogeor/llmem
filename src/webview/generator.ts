@@ -75,7 +75,7 @@ export async function generateStaticWebview(
         fs.cpSync(archSrc, archDest, { recursive: true });
 
         // Convert Markdown to HTML
-        convertAllMarkdown(archDest);
+        await convertAllMarkdown(archDest);
     } else {
         console.warn(`Warning: .arch folder not found at ${archSrc}`);
     }

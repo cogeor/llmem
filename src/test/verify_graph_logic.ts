@@ -2,7 +2,7 @@
 // Mocking the class logic for testing (Updated with Fixes)
 
 class GraphViewLogic {
-    computeDisplayedName(nodeLabel, currentPath) {
+    computeDisplayedName(nodeLabel: string, currentPath: string | null): string {
         if (!currentPath) return nodeLabel;
 
         // Normalize
@@ -26,9 +26,9 @@ class GraphViewLogic {
         return relative + suffix;
     }
 
-    getRelativePath(from, to) {
+    getRelativePath(from: string, to: string): string {
         // Normalize slashes and split
-        const normalize = p => p ? p.replace(/\\/g, '/').split('/').filter(x => x.length > 0) : [];
+        const normalize = (p: string) => p ? p.replace(/\\/g, '/').split('/').filter(x => x.length > 0) : [];
         const fromParts = normalize(from);
         const toParts = normalize(to);
 
@@ -61,7 +61,13 @@ class GraphViewLogic {
 
 const logic = new GraphViewLogic();
 
-const testCases = [
+interface TestCase {
+    from: string;
+    to: string;
+    expect: string;
+}
+
+const testCases: TestCase[] = [
     { from: "src/webview", to: "src/webview/generator.ts", expect: "generator.ts" },
     { from: "src/webview", to: "src/graph/index.ts", expect: "../graph/index.ts" },
     { from: "src", to: "src/webview/generator.ts", expect: "webview/generator.ts" },

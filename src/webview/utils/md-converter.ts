@@ -1,8 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { marked } from 'marked';
 
-export function convertMarkdownFile(filePath: string): void {
+export async function convertMarkdownFile(filePath: string): Promise<void> {
+    const { marked } = await import('marked');
     const content = fs.readFileSync(filePath, 'utf8');
     const htmlContent = marked.parse(content);
 
@@ -31,7 +31,7 @@ export function convertMarkdownFile(filePath: string): void {
     fs.writeFileSync(destPath, template, 'utf8');
 }
 
-export function convertAllMarkdown(dirPath: string): void {
+export async function convertAllMarkdown(dirPath: string): Promise<void> {
     if (!fs.existsSync(dirPath)) return;
 
     const entries = fs.readdirSync(dirPath, { withFileTypes: true });
@@ -39,9 +39,9 @@ export function convertAllMarkdown(dirPath: string): void {
     for (const entry of entries) {
         const fullPath = path.join(dirPath, entry.name);
         if (entry.isDirectory()) {
-            convertAllMarkdown(fullPath);
+            await convertAllMarkdown(fullPath);
         } else if (entry.isFile() && entry.name.endsWith('.md')) {
-            convertMarkdownFile(fullPath);
+            await convertMarkdownFile(fullPath);
         }
     }
 }
