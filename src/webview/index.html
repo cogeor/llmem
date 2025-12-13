@@ -4,53 +4,55 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LLMem Context</title>
-    <link rel="stylesheet" href="style.css">
-    <!-- Local Vis.js (will be injected or loaded from libs) -->
+    <title>Project View</title>
+    <!-- CSS will be copied here -->
+    <link rel="stylesheet" href="styles/base.css">
+    <link rel="stylesheet" href="styles/layout.css">
+    <link rel="stylesheet" href="styles/tree.css">
+    <link rel="stylesheet" href="styles/detail.css">
+    <link rel="stylesheet" href="styles/graph.css">
+    <!-- Vis.js -->
     <script src="libs/vis-network.min.js"></script>
 </head>
 
 <body>
-    <div class="container">
-        <!-- Sidebar / Top Control Bar -->
-        <div class="controls">
-            <div class="header">
-                <h2>Context Graph</h2>
+    <div id="app">
+        <!-- Left Pane: Explorer -->
+        <div class="left-pane">
+            <div class="pane-header">
+                <span class="pane-title">Explorer</span>
             </div>
-            <div class="actions">
-                <button id="btn-update" class="primary">Update Context</button>
-                <select id="select-graph-type">
-                    <option value="import">Import Graph</option>
-                    <option value="call">Call Graph</option>
-                </select>
-                <div id="status-indicator">Idle</div>
+            <div class="pane-content" id="worktree-root">
+                <!-- Tree rendered here -->
             </div>
         </div>
 
-        <!-- Split View -->
-        <div class="split-view">
-            <!-- Left: Graph Area -->
-            <div class="graph-pane">
-                <div id="mynetwork"></div>
+        <!-- Right Pane: Detail / Graph -->
+        <div class="right-pane">
+            <div class="pane-header">
+                <span class="pane-title">Inspector</span>
+                <div class="toolbar">
+                    <div id="graph-type-toggle"></div>
+                    <div id="view-toggle"></div>
+                </div>
             </div>
-
-            <!-- Right: Chat Area -->
-            <div class="chat-pane">
-                <div class="chat-header">
-                    <h3>Antigravity Chat</h3>
-                    <button id="btn-clear-chat" class="icon-btn" title="Clear Chat">🗑️</button>
-                </div>
-                <div id="chat-history" class="chat-history">
-                    <!-- Messages go here -->
-                </div>
-                <div class="chat-input-area">
-                    <textarea id="chat-input" placeholder="Ask about the codebase..."></textarea>
-                    <button id="btn-send">Send</button>
+            <div class="pane-content">
+                <!-- Views -->
+                <div id="design-view" class="detail-view"></div>
+                <div id="graph-view" class="graph-container" style="display:none">
+                    <div class="graph-message detail-empty">Select a file or folder to see graph connections.</div>
+                    <div class="graph-canvas" style="display:none"></div>
                 </div>
             </div>
         </div>
     </div>
-    <script src="main.js"></script>
+
+    <!-- Data Injection Scripts (inserted by generator) -->
+    <!-- <script src="work_tree.js"></script> -->
+    <!-- <script src="graph_data.js"></script> -->
+
+    <!-- Main Module -->
+    <script type="module" src="js/main.js"></script>
 </body>
 
 </html>

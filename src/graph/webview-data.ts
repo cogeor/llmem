@@ -8,6 +8,7 @@ export interface VisNode {
     group: string;
     title?: string;
     color?: string;
+    fileId?: string;
 }
 
 export interface VisEdge {
@@ -61,7 +62,8 @@ export async function prepareWebviewData(artifactDir: string): Promise<WebviewGr
         label: n.name || n.label || n.id, // Ensure label exists
         group: 'function',
         title: n.id,
-        color: callColors.get(n.id)
+        color: callColors.get(n.id),
+        fileId: n.fileId
     }));
 
     const callEdges: VisEdge[] = callGraph.edges.map((e: any) => ({
