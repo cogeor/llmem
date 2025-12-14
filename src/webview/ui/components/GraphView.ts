@@ -54,11 +54,12 @@ export class GraphView {
         // Listen for theme changes
         window.addEventListener('theme-changed', this.handleThemeChange);
 
-        // Initial render based on current state
+        // Initial render
         const initialState = this.state.get() as AppState;
-        if (initialState.currentView === 'graph') {
-            this.onState(initialState);
-        }
+        this.onState(initialState);
+
+
+        this.setupResizeObserver();
     }
 
     /**
@@ -78,14 +79,12 @@ export class GraphView {
 
         // Clean up previous renderer if graph type changed
         if (this.graphRenderer && this.currentGraphType !== graphType) {
-            console.log('[GraphView] Destroying previous renderer (graph type changed)');
             this.graphRenderer.destroy();
             this.graphRenderer = null;
             this.isRendered = false;
         }
 
         if (this.isRendered) {
-            console.log('[GraphView] Already rendered, skipping');
             return;
         }
 
@@ -112,29 +111,29 @@ export class GraphView {
             ? this.data.importGraph
             : this.data.callGraph;
 
-        console.log('[GraphView] Rendering graph:', {
-            nodes: graph.nodes.length,
-            edges: graph.edges.length
-        });
+        try {
+            // Render the full graph
+            this.graphRenderer.render(graph, this.worktree, graphType as 'import' | 'call');
 
-        // Render the full graph
-        this.graphRenderer.render(graph, this.worktree, graphType as 'import' | 'call');
+            this.currentGraphType = graphType;
+            this.isRendered = true;
 
-        this.currentGraphType = graphType;
-        this.isRendered = true;
-
-        console.log('[GraphView] Graph rendered successfully');
+            console.log('[GraphView] Graph rendered successfully');
+        } catch (err: any) {
+            console.error('[GraphView] Render error:', err);
+            canvasEl.innerHTML = `<div style="padding:20px; color:red">Error rendering graph: ${err.message}<br><pre>${err.stack}</pre></div>`;
+            canvasEl.style.display = 'block';
+        }
     }
 
     /**
      * Handle state changes - pan camera and highlight as needed.
      */
     onState({ currentView, graphType, selectedPath, selectedType }: AppState) {
-        if (currentView !== "graph") {
-            return;
-        }
+        // In 3-column layout, graph is always visible
+        // if (currentView !== "graph") { return; }
 
-        const msgEl = this.el.querySelector('.graph-message') as HTMLElement;
+
         const canvasEl = this.el.querySelector('.graph-canvas') as HTMLElement;
 
         // If graph type changed, re-initialize
@@ -149,17 +148,15 @@ export class GraphView {
         if (!this.isRendered) {
             this.initializeGraph(graphType);
             // Clear any default selection from design view - graph starts fresh
-            msgEl.style.display = 'flex';
             return;
         }
 
         if (!selectedPath) {
-            // Show message overlay on top of graph
-            msgEl.style.display = 'flex';
+            // Show message overlay on top of graph - REMOVED
             return;
         }
 
-        msgEl.style.display = 'none';
+        // msgEl.style.display = 'none'; // REMOVED
 
         if (!this.graphRenderer) return;
 
@@ -239,6 +236,57 @@ export class GraphView {
     unmount() {
         this.unsubscribe?.();
         window.removeEventListener('theme-changed', this.handleThemeChange);
+        this.resizeObserver?.disconnect();
         this.graphRenderer?.destroy();
+    }
+
+    // --- Resize Handling ---
+    private resizeObserver: ResizeObserver | null = null;
+    private resizeTimeout: any = null;
+
+    private setupResizeObserver() {
+        if (this.resizeObserver) return;
+
+        const container = this.el.parentElement; // The pane
+        if (!container) return;
+
+        this.resizeObserver = new ResizeObserver(entries => {
+            for (const entry of entries) {
+                if (entry.target === container) {
+                    this.handleResize();
+                }
+            }
+        });
+
+        this.resizeObserver.observe(container);
+    }
+
+    private handleResize() {
+        if (this.resizeTimeout) clearTimeout(this.resizeTimeout);
+        this.resizeTimeout = setTimeout(() => {
+            // Force measurement or default
+            let width = this.el.clientWidth;
+            let height = this.el.clientHeight;
+
+            // If hidden or 0, use defaults to prevent collapse
+            if (width === 0) width = 1000;
+            if (height === 0) height = 800;
+
+            console.log('[GraphView] handleResize:', { width, height, time: Date.now() });
+
+            if (this.graphRenderer) {
+                this.graphRenderer.resize(width, height);
+                // Re-render to update layout (binning)
+                if (this.data && this.worktree) {
+                    const graph = this.currentGraphType === "import"
+                        ? this.data.importGraph
+                        : this.data.callGraph;
+                    this.graphRenderer.render(graph, this.worktree, this.currentGraphType as any);
+                }
+            } else {
+                // If resize happens before initial render, we might need to kick it
+                console.log('[GraphView] Resize triggered but no renderer yet');
+            }
+        }, 100); // 100ms debounce
     }
 }

@@ -44,6 +44,15 @@ export class CameraController {
     }
 
     /**
+     * Resize the camera viewport.
+     */
+    resize(width: number, height: number): void {
+        this.width = width;
+        this.height = height;
+        // Optionally adjust pan/zoom to keep center, or just let it be
+    }
+
+    /**
      * Check if the last mouse interaction was a drag (not a click).
      */
     wasDrag(): boolean {

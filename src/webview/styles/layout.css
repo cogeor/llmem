@@ -1,39 +1,32 @@
-#app {
-    display: grid;
-    grid-template-columns: 300px 1fr;
+/* Main App Container - Flex Row */
+.layout-row {
+    display: flex;
+    flex-direction: row;
     height: 100vh;
     width: 100vw;
+    overflow: hidden;
 }
 
-.left-pane {
+/* Generic Pane Style */
+.pane {
     display: flex;
     flex-direction: column;
-    border-right: 1px solid var(--border-color);
-    overflow: hidden;
-    min-width: 0;
-    /* Enable flex shrinking */
-}
-
-.right-pane {
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+    min-width: 150px;
+    /* Minimum width for any pane */
     background-color: var(--background);
+    position: relative;
+    /* transition: width 0.1s; // Too choppy for resize */
 }
 
+/* Pane Header */
 .pane-header {
     height: 40px;
     display: flex;
     align-items: center;
-    padding: 0 var(--spacing-sm);
+    padding: 0 12px;
     border-bottom: 1px solid var(--border-color);
     flex-shrink: 0;
-}
-
-.pane-content {
-    flex: 1;
-    overflow: auto;
-    position: relative;
+    background-color: var(--header-bg, var(--background));
 }
 
 .pane-title {
@@ -43,8 +36,67 @@
     opacity: 0.8;
 }
 
+/* Pane Content */
+.pane-content {
+    flex: 1;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    /* Crucial for nested flex scrolling */
+    min-width: 0;
+    overflow: auto;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Splitter Bar */
+.splitter {
+    width: 5px;
+    cursor: col-resize;
+    background-color: var(--border-color);
+    flex-shrink: 0;
+    transition: background-color 0.2s;
+    z-index: 10;
+}
+
+.splitter:hover,
+.splitter.active {
+    background-color: var(--focus-border, #007fd4);
+}
+
+/* Toolbar items */
 .toolbar {
     display: flex;
-    gap: var(--spacing-sm);
+    gap: 8px;
     margin-left: auto;
+}
+
+.graph-pane-content {
+    overflow: hidden !important;
+    /* Override .pane-content overflow: auto */
+}
+
+/* Graph container needs to fill space */
+.graph-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
+
+.graph-canvas {
+    width: 100%;
+    height: 100%;
+}
+
+.detail-empty {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    opacity: 0.5;
+    pointer-events: none;
 }

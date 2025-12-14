@@ -49,14 +49,14 @@ export class Router {
             return;
         }
 
-        // Toggle visibility
-        Object.entries(this.routes).forEach(([name, comp]) => {
-            if (name === viewName) {
-                if (comp.el) comp.el.style.display = 'block';
-            } else {
-                if (comp.el) comp.el.style.display = 'none';
-            }
-        });
+        // Toggle visibility - DISABLED for 3-column layout
+        // Object.entries(this.routes).forEach(([name, comp]) => {
+        //     if (name === viewName) {
+        //         if (comp.el) comp.el.style.display = 'block';
+        //     } else {
+        //         if (comp.el) comp.el.style.display = 'none';
+        //     }
+        // });
     }
 
     unmount() {

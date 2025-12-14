@@ -73,6 +73,10 @@ export class HierarchicalLayout {
         this.computeSizesFromPositions(root);
 
         // Step 3: Arrange folders using shelf packing
+
+        // FORCE ROOT WIDTH: make the root folder fill the container
+        root.width = Math.max(root.width, this.width - PADDING * 2);
+
         this.arrangeFolders(root, PADDING, PADDING, this.width - PADDING * 2);
 
         // Step 4: Finalize node positions (add folder offset)
@@ -291,6 +295,18 @@ export class HierarchicalLayout {
         // Minimum size
         folder.width = Math.max(folder.width, 60);
         folder.height = Math.max(folder.height, 40);
+
+        // ROOT ADJUSTMENT:
+        // If this is the root folder (empty path or depth 0), force it to take the full container width
+        // This ensures the "src box" matches the pane size and binning fills it.
+        // We do this by artificially setting the width, which the arrange step will respect.
+        // Note: arrangeFolders uses 'maxWidth' arg, but we want the root BOX itself to be wide.
+        if (folder.depth === 0) {
+            // Available width minus safety/margin
+            // The container width is passed to the constructor and resize()
+            // layout.width is available here via this.width? No, this is a recursive function.
+            // We need to access the class property, but 'this' is available.
+        }
     }
 
     /**

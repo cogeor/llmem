@@ -10,14 +10,30 @@ import { ViewToggle } from './components/ViewToggle';
 import { GraphTypeToggle } from './components/GraphTypeToggle';
 import { DesignTextView } from './components/DesignTextView';
 import { GraphView } from './components/GraphView';
+import { Splitter } from './libs/Splitter';
+
 
 // Elements
 const elWorktree = document.getElementById('worktree-root') as HTMLElement;
 const elViewToggle = document.getElementById('view-toggle') as HTMLElement;
 const elGraphToggle = document.getElementById('graph-type-toggle') as HTMLElement;
-const elContent = document.getElementById('content-area') as HTMLElement;
+const elContent = document.getElementById('content-area'); // Removed in new layout
 const elDesignView = document.getElementById('design-view') as HTMLElement;
 const elGraphView = document.getElementById('graph-view') as HTMLElement;
+
+// Splitters
+const elSplitter1 = document.getElementById('splitter-1') as HTMLElement;
+const elSplitter2 = document.getElementById('splitter-2') as HTMLElement;
+const elExplorerPane = document.getElementById('explorer-pane') as HTMLElement;
+const elDesignPane = document.getElementById('design-pane') as HTMLElement;
+
+// Init Splitters
+if (elSplitter1 && elExplorerPane) {
+    new Splitter(elSplitter1, elExplorerPane, 'left');
+}
+if (elSplitter2 && elDesignPane) {
+    new Splitter(elSplitter2, elDesignPane, 'left');
+}
 
 // Services
 const worktreeService = new WorktreeService();
@@ -27,7 +43,7 @@ const designDocService = new DesignDocService();
 // Router
 const router = new Router({
     state,
-    container: elContent
+    container: document.body // Dummy container, we don't switch views anymore
 });
 
 // Components

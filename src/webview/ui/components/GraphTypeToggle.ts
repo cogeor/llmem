@@ -28,11 +28,7 @@ export class GraphTypeToggle {
     }
 
     render({ currentView, graphType }: AppState) {
-        if (currentView !== "graph") {
-            this.el.innerHTML = "";
-            this.el.style.display = 'none';
-            return;
-        }
+        // In 3-column layout, graph is always visible, so toggle should be too
 
         this.el.style.display = 'block';
         this.el.innerHTML = `
