@@ -86,6 +86,7 @@ export class CameraController {
         // Pan with mouse drag - listen on svg
         this.svg.addEventListener('mousedown', (e) => {
             if (e.button === 0) {
+                e.preventDefault(); // Prevent text selection
                 this.isPanning = true;
                 this.lastX = e.clientX;
                 this.lastY = e.clientY;
