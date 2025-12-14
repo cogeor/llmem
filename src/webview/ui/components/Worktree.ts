@@ -1,28 +1,33 @@
 
-import { WorktreeService } from '../services/worktreeService';
+import { DataProvider } from '../services/dataProvider';
 import { WorkTreeNode, DirectoryNode, AppState } from '../types';
 
 interface Props {
     el: HTMLElement;
     state: any; // State class
-    worktreeService: WorktreeService;
+    dataProvider: DataProvider;
 }
 
+/**
+ * Worktree Component
+ * Displays the file system tree and handles selection.
+ */
 export class Worktree {
     private el: HTMLElement;
     private state: any;
-    private worktreeService: WorktreeService;
+    private dataProvider: DataProvider;
+    private tree: WorkTreeNode | null = null;
     private unsubscribe?: () => void;
 
-    constructor({ el, state, worktreeService }: Props) {
+    constructor({ el, state, dataProvider }: Props) {
         this.el = el;
         this.state = state;
-        this.worktreeService = worktreeService;
+        this.dataProvider = dataProvider;
     }
 
     async mount() {
-        const tree = await this.worktreeService.load();
-        this.render(tree);
+        this.tree = await this.dataProvider.loadWorkTree();
+        this.render(this.tree);
 
         // Listen for clicks
         this.el.addEventListener('click', (e) => this.handleClick(e));
@@ -107,5 +112,41 @@ export class Worktree {
                 }
             }
         }
+    }
+
+    /**
+     * Get a node by path from the loaded tree
+     */
+    getNode(path: string): WorkTreeNode | undefined {
+        if (!this.tree) return undefined;
+        return this.findNode(this.tree, path);
+    }
+
+    private findNode(node: WorkTreeNode, path: string): WorkTreeNode | undefined {
+        if (node.path === path) return node;
+        if (node.type === 'directory' && (node as DirectoryNode).children) {
+            for (const child of (node as DirectoryNode).children) {
+                const found = this.findNode(child, path);
+                if (found) return found;
+            }
+        }
+        return undefined;
+    }
+
+    /**
+     * Collect all file paths in a subtree
+     */
+    collectSubtreeFiles(dirNode: WorkTreeNode): Set<string> {
+        const files = new Set<string>();
+        const walk = (node: WorkTreeNode) => {
+            if (!node) return;
+            if (node.type === "file") {
+                files.add(node.path);
+            } else if (node.type === "directory" && (node as DirectoryNode).children) {
+                (node as DirectoryNode).children.forEach(walk);
+            }
+        };
+        walk(dirNode);
+        return files;
     }
 }

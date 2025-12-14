@@ -7,22 +7,19 @@
  */
 
 import { GraphRenderer } from "../graph/GraphRenderer";
-import { GraphDataService } from "../services/graphDataService";
-import { WorktreeService } from "../services/worktreeService";
-import { AppState, GraphData, WorkTreeNode } from "../types";
+import { DataProvider } from "../services/dataProvider";
+import { AppState, GraphData, WorkTreeNode, DirectoryNode } from "../types";
 
 interface Props {
     el: HTMLElement;
     state: any;
-    graphDataService: GraphDataService;
-    worktreeService: WorktreeService;
+    dataProvider: DataProvider;
 }
 
 export class GraphView {
     public el: HTMLElement;
     private state: any;
-    private graphDataService: GraphDataService;
-    private worktreeService: WorktreeService;
+    private dataProvider: DataProvider;
     private graphRenderer: GraphRenderer | null = null;
     private data: GraphData | null = null;
     private worktree: WorkTreeNode | null = null;
@@ -30,17 +27,16 @@ export class GraphView {
     private isRendered: boolean = false;
     private currentGraphType: string = 'import';
 
-    constructor({ el, state, graphDataService, worktreeService }: Props) {
+    constructor({ el, state, dataProvider }: Props) {
         this.el = el;
         this.state = state;
-        this.graphDataService = graphDataService;
-        this.worktreeService = worktreeService;
+        this.dataProvider = dataProvider;
     }
 
     async mount() {
         // Load data
-        this.data = await this.graphDataService.load();
-        this.worktree = await this.worktreeService.load();
+        this.data = await this.dataProvider.loadGraphData();
+        this.worktree = await this.dataProvider.loadWorkTree();
 
         console.log('[GraphView] Data loaded:', {
             importNodes: this.data?.importGraph?.nodes?.length,
@@ -57,7 +53,6 @@ export class GraphView {
         // Initial render
         const initialState = this.state.get() as AppState;
         this.onState(initialState);
-
 
         this.setupResizeObserver();
     }
@@ -130,10 +125,6 @@ export class GraphView {
      * Handle state changes - pan camera and highlight as needed.
      */
     onState({ currentView, graphType, selectedPath, selectedType }: AppState) {
-        // In 3-column layout, graph is always visible
-        // if (currentView !== "graph") { return; }
-
-
         const canvasEl = this.el.querySelector('.graph-canvas') as HTMLElement;
 
         // If graph type changed, re-initialize
@@ -141,22 +132,18 @@ export class GraphView {
             this.isRendered = false;
         }
 
-        // Always show the canvas when in graph view, initialize graph first
+        // Always show the canvas
         canvasEl.style.display = 'block';
 
         // Initialize graph if not yet rendered
         if (!this.isRendered) {
             this.initializeGraph(graphType);
-            // Clear any default selection from design view - graph starts fresh
             return;
         }
 
         if (!selectedPath) {
-            // Show message overlay on top of graph - REMOVED
             return;
         }
-
-        // msgEl.style.display = 'none'; // REMOVED
 
         if (!this.graphRenderer) return;
 
@@ -165,8 +152,6 @@ export class GraphView {
 
         // Pan camera and highlight based on selection type
         if (selectedType === "file") {
-            // For call graphs, files are containers - highlight the file box
-            // For import graphs, files ARE the nodes - highlight neighbors
             if (graphType === 'call') {
                 this.graphRenderer.highlightFile(selectedPath);
             } else {
@@ -183,16 +168,12 @@ export class GraphView {
      * Handle node click from graph.
      */
     private handleNodeClick(nodeId: string): void {
-        // For call graph nodes, ID is like "src/file.ts#functionName"
-        // Extract the file path by removing the function part (after #)
         let filePath = nodeId;
         const hashIndex = nodeId.lastIndexOf('#');
         if (hashIndex > 0) {
-            // Has a hash separator - extract file path
             filePath = nodeId.substring(0, hashIndex);
         }
 
-        // Update app state to reflect selection
         this.state.set({
             selectedPath: filePath,
             selectedType: 'file'
@@ -203,7 +184,6 @@ export class GraphView {
      * Handle folder click from graph.
      */
     private handleFolderClick(folderPath: string): void {
-        // Update app state to reflect folder selection
         this.state.set({
             selectedPath: folderPath,
             selectedType: 'directory'
@@ -214,7 +194,6 @@ export class GraphView {
      * Handle file click from graph.
      */
     private handleFileClick(filePath: string): void {
-        // Update app state to reflect file selection - this will highlight in explorer
         this.state.set({
             selectedPath: filePath,
             selectedType: 'file'
@@ -222,12 +201,10 @@ export class GraphView {
     }
 
     /**
-     * Handle theme changes - re-render graph with new colors.
+     * Handle theme changes.
      */
     private handleThemeChange = () => {
-        // For theme changes, we'd need to update CSS variables
-        // The SVG elements use CSS variables so they should update automatically
-        // But we might need to force a redraw for some elements
+        // SVG elements use CSS variables so they should update automatically
     };
 
     /**
@@ -240,6 +217,38 @@ export class GraphView {
         this.graphRenderer?.destroy();
     }
 
+    // --- Worktree helpers ---
+
+    getNode(path: string): WorkTreeNode | undefined {
+        if (!this.worktree) return undefined;
+        return this.findNode(this.worktree, path);
+    }
+
+    private findNode(node: WorkTreeNode, path: string): WorkTreeNode | undefined {
+        if (node.path === path) return node;
+        if (node.type === 'directory' && (node as DirectoryNode).children) {
+            for (const child of (node as DirectoryNode).children) {
+                const found = this.findNode(child, path);
+                if (found) return found;
+            }
+        }
+        return undefined;
+    }
+
+    collectSubtreeFiles(dirNode: WorkTreeNode): Set<string> {
+        const files = new Set<string>();
+        const walk = (node: WorkTreeNode) => {
+            if (!node) return;
+            if (node.type === "file") {
+                files.add(node.path);
+            } else if (node.type === "directory" && (node as DirectoryNode).children) {
+                (node as DirectoryNode).children.forEach(walk);
+            }
+        };
+        walk(dirNode);
+        return files;
+    }
+
     // --- Resize Handling ---
     private resizeObserver: ResizeObserver | null = null;
     private resizeTimeout: any = null;
@@ -247,7 +256,7 @@ export class GraphView {
     private setupResizeObserver() {
         if (this.resizeObserver) return;
 
-        const container = this.el.parentElement; // The pane
+        const container = this.el.parentElement;
         if (!container) return;
 
         this.resizeObserver = new ResizeObserver(entries => {
@@ -264,11 +273,9 @@ export class GraphView {
     private handleResize() {
         if (this.resizeTimeout) clearTimeout(this.resizeTimeout);
         this.resizeTimeout = setTimeout(() => {
-            // Force measurement or default
             let width = this.el.clientWidth;
             let height = this.el.clientHeight;
 
-            // If hidden or 0, use defaults to prevent collapse
             if (width === 0) width = 1000;
             if (height === 0) height = 800;
 
@@ -276,7 +283,6 @@ export class GraphView {
 
             if (this.graphRenderer) {
                 this.graphRenderer.resize(width, height);
-                // Re-render to update layout (binning)
                 if (this.data && this.worktree) {
                     const graph = this.currentGraphType === "import"
                         ? this.data.importGraph
@@ -284,9 +290,8 @@ export class GraphView {
                     this.graphRenderer.render(graph, this.worktree, this.currentGraphType as any);
                 }
             } else {
-                // If resize happens before initial render, we might need to kick it
                 console.log('[GraphView] Resize triggered but no renderer yet');
             }
-        }, 100); // 100ms debounce
+        }, 100);
     }
 }

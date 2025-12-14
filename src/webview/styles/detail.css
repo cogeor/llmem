@@ -49,3 +49,16 @@
         padding: 0;
         border: none;
     }
+}
+
+.detail-empty {
+    padding: var(--spacing-lg);
+    color: var(--foreground-muted);
+    text-align: center;
+    font-style: italic;
+}
+
+.detail-loading {
+    padding: var(--spacing-lg);
+    color: var(--foreground-muted);
+}

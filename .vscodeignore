@@ -1,13 +1,32 @@
+# VS Code Extension Package Ignore
+
+# Development files
 .vscode/**
 .gitignore
 tsconfig.json
-src/**
-!src/webview/**
 plan/**
 *.log
 .github/**
 .env
 .env.example
 scripts/**
-**/*.ts
 .artifacts/**
+.arch/**
+
+# Source files (we include dist/ instead)
+src/**
+
+# But include styles for runtime loading by panel.ts
+!src/webview/styles/**
+
+# Exclude TypeScript source files
+**/*.ts
+
+# Development artifacts
+*.vsix
+
+# Exclude only type definitions from node_modules (not runtime deps)
+node_modules/.bin/**
+node_modules/@types/**
+node_modules/@typescript-eslint/**
+node_modules/eslint/**

@@ -1,28 +1,37 @@
 
-import { DesignDocService } from '../services/designDocService';
+import { DataProvider } from '../services/dataProvider';
 import { AppState } from '../types';
 
 interface DesignTextViewProps {
     el: HTMLElement;
-    state: any; // Using explicit Type wrapper below or assume State class
-    designDocService: DesignDocService;
+    state: any;
+    dataProvider: DataProvider;
 }
 
+/**
+ * DesignTextView Component
+ * Displays design documentation for the selected file/folder.
+ */
 export class DesignTextView {
     public el: HTMLElement;
-    private state: any; // Type for State class instance
-    private designDocService: DesignDocService;
+    private state: any;
+    private dataProvider: DataProvider;
     private shadow: ShadowRoot;
     private unsubscribe?: () => void;
+    private designDocs: Record<string, string> = {};
 
-    constructor({ el, state, designDocService }: DesignTextViewProps) {
+    constructor({ el, state, dataProvider }: DesignTextViewProps) {
         this.el = el;
         this.state = state;
-        this.designDocService = designDocService;
+        this.dataProvider = dataProvider;
         this.shadow = this.el.attachShadow({ mode: 'open' });
     }
 
-    mount() {
+    async mount() {
+        // Load design docs
+        this.designDocs = await this.dataProvider.loadDesignDocs();
+
+        // Subscribe to state changes
         this.unsubscribe = this.state.subscribe((s: AppState) => this.onState(s));
     }
 
@@ -37,7 +46,7 @@ export class DesignTextView {
             <div class="detail-loading" style="padding: 20px;">Loading...</div>
         `;
 
-        const content = await this.designDocService.fetchDesignDoc(selectedPath, selectedType);
+        const content = this.fetchDesignDoc(selectedPath, selectedType);
 
         if (content) {
             this.shadow.innerHTML = `
@@ -54,5 +63,59 @@ export class DesignTextView {
         }
     }
 
-    unmount() { this.unsubscribe?.(); }
+    /**
+     * Fetch design doc content from the loaded docs.
+     * Tries various path patterns to find a match.
+     */
+    private fetchDesignDoc(selectedPath: string | null, selectedType: "file" | "directory" | null): string | null {
+        if (!selectedPath) return null;
+
+        // Normalize path
+        let currentPath: string | null = selectedPath.replace(/\\/g, '/');
+        if (selectedType === 'file') {
+            const lastDotIndex = currentPath.lastIndexOf('.');
+            if (lastDotIndex > 0) {
+                currentPath = currentPath.substring(0, lastDotIndex);
+            }
+        }
+
+        // Loop to find doc or parent doc
+        while (currentPath !== null) {
+            const candidates: string[] = [];
+
+            // Full path
+            candidates.push(currentPath);
+
+            // Basename
+            const baseName = currentPath.split('/').pop();
+            if (baseName && baseName !== currentPath) {
+                candidates.push(baseName);
+            }
+
+            // Check each candidate
+            for (const key of candidates) {
+                const htmlKey = `${key}.html`;
+                const txtKey = `${key}.txt`;
+
+                if (this.designDocs[htmlKey]) return this.designDocs[htmlKey];
+                if (this.designDocs[txtKey]) return this.designDocs[txtKey];
+            }
+
+            if (currentPath === "") break;
+
+            // Move to parent
+            const lastSlash = currentPath.lastIndexOf('/');
+            if (lastSlash === -1) {
+                currentPath = "";
+            } else {
+                currentPath = currentPath.substring(0, lastSlash);
+            }
+        }
+
+        return null;
+    }
+
+    unmount() {
+        this.unsubscribe?.();
+    }
 }

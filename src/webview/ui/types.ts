@@ -50,9 +50,9 @@ export interface AppState {
 
 declare global {
     interface Window {
-        GRAPH_DATA: GraphData;
-        WORK_TREE: WorkTreeNode; // Root node
-        DESIGN_DOCS: { [key: string]: string };
+        GRAPH_DATA?: GraphData;
+        WORK_TREE?: WorkTreeNode; // Root node
+        DESIGN_DOCS?: { [key: string]: string };
         GRAPH_DATA_URL?: string; // Optional if loading via URL
     }
 }

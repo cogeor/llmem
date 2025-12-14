@@ -1,238 +1,204 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import * as fs from 'fs';
-import { ensureArtifacts } from '../artifact/service';
-import { buildGraphs } from '../graph';
-import { Config, getConfig } from './config';
+import { HotReloadService } from './hot-reload';
+import { getConfig } from './config';
+import { WebviewDataService } from '../webview/data-service';
 
 /**
  * Manages the LLMem Webview Panel
+ * 
+ * Serves the bundled webview UI from dist/webview/ and integrates with
+ * HotReloadService to push data updates when files change.
  */
 export class LLMemPanel {
     public static currentPanel: LLMemPanel | undefined;
     private readonly _panel: vscode.WebviewPanel;
     private readonly _extensionUri: vscode.Uri;
     private _disposables: vscode.Disposable[] = [];
+    private _hotReload: HotReloadService | undefined;
 
     private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
         this._panel = panel;
         this._extensionUri = extensionUri;
 
-        // Set the webview's initial html content
-        this._update();
+        this._panel.webview.html = this._getHtmlForWebview();
 
-        // Listen for when the panel is disposed
-        // This happens when the user closes the panel or when the panel is closed programmatically
         this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
-
-        // Handle messages from the webview
         this._panel.webview.onDidReceiveMessage(
-            message => {
-                switch (message.command) {
-                    case 'webview:ready':
-                        this._attemptInitialLoad();
-                        return;
-                    case 'action:generate_context':
-                        this._generateContext();
-                        return;
-                    case 'chat:send':
-                        this._handleChat(message.text);
-                        return;
-                    case 'action:switch_graph':
-                        // TODO: Implement switching between graphs (cached)
-                        return;
-                }
-            },
+            msg => this._handleMessage(msg),
             null,
             this._disposables
         );
     }
 
     public static createOrShow(extensionUri: vscode.Uri) {
-        const column = vscode.window.activeTextEditor
-            ? vscode.window.activeTextEditor.viewColumn
-            : undefined;
+        const column = vscode.window.activeTextEditor?.viewColumn;
 
-        // If we already have a panel, show it.
         if (LLMemPanel.currentPanel) {
             LLMemPanel.currentPanel._panel.reveal(column);
             return;
         }
 
-        // Otherwise, create a new panel.
         const panel = vscode.window.createWebviewPanel(
             'llmemPanel',
-            'LLMem Context',
+            'LLMem',
             column || vscode.ViewColumn.One,
             {
-                // Enable javascript in the webview
                 enableScripts: true,
-                // And restrict the webview to only loading content from our extension's `src/webview` directory.
-                localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'src', 'webview')]
+                retainContextWhenHidden: true,
+                localResourceRoots: [
+                    vscode.Uri.joinPath(extensionUri, 'dist', 'webview'),
+                    vscode.Uri.joinPath(extensionUri, 'src', 'webview', 'styles')
+                ]
             }
         );
 
         LLMemPanel.currentPanel = new LLMemPanel(panel, extensionUri);
     }
 
+    private _getHtmlForWebview(): string {
+        const webview = this._panel.webview;
+        const distWebview = vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview');
+        const srcStyles = vscode.Uri.joinPath(this._extensionUri, 'src', 'webview', 'styles');
+
+        // Asset URIs
+        const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(distWebview, 'main.js'));
+        const baseStyle = webview.asWebviewUri(vscode.Uri.joinPath(srcStyles, 'base.css'));
+        const layoutStyle = webview.asWebviewUri(vscode.Uri.joinPath(srcStyles, 'layout.css'));
+        const treeStyle = webview.asWebviewUri(vscode.Uri.joinPath(srcStyles, 'tree.css'));
+        const detailStyle = webview.asWebviewUri(vscode.Uri.joinPath(srcStyles, 'detail.css'));
+        const graphStyle = webview.asWebviewUri(vscode.Uri.joinPath(srcStyles, 'graph.css'));
+
+        const nonce = this._getNonce();
+
+        return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="
+        default-src 'none';
+        style-src ${webview.cspSource} 'unsafe-inline';
+        script-src 'nonce-${nonce}';
+        font-src ${webview.cspSource};
+        img-src ${webview.cspSource} https: data:;
+    ">
+    <link rel="stylesheet" href="${baseStyle}">
+    <link rel="stylesheet" href="${layoutStyle}">
+    <link rel="stylesheet" href="${treeStyle}">
+    <link rel="stylesheet" href="${detailStyle}">
+    <link rel="stylesheet" href="${graphStyle}">
+    <title>LLMem</title>
+</head>
+<body>
+    <div id="app" class="layout-row">
+        <div id="explorer-pane" class="pane" style="width: 250px;">
+            <div class="pane-header">
+                <span class="pane-title">Explorer</span>
+                <div class="toolbar">
+                    <button id="theme-toggle" class="icon-btn" title="Toggle Theme">☀️</button>
+                </div>
+            </div>
+            <div class="pane-content" id="worktree-root"></div>
+        </div>
+        <div class="splitter" id="splitter-1"></div>
+        <div id="design-pane" class="pane" style="flex: 1;">
+            <div class="pane-header">
+                <span class="pane-title">Design</span>
+                <div class="toolbar"><div id="view-toggle" style="display:none"></div></div>
+            </div>
+            <div class="pane-content">
+                <div id="design-view" class="detail-view"></div>
+            </div>
+        </div>
+        <div class="splitter" id="splitter-2"></div>
+        <div id="graph-pane" class="pane" style="flex: 1;">
+            <div class="pane-header">
+                <span class="pane-title">Graph</span>
+                <div class="toolbar"><div id="graph-type-toggle"></div></div>
+            </div>
+            <div class="pane-content graph-pane-content">
+                <div id="graph-view" class="graph-container">
+                    <div class="graph-canvas"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script nonce="${nonce}" src="${scriptUri}"></script>
+</body>
+</html>`;
+    }
+
+    private async _handleMessage(message: any) {
+        switch (message.command) {
+            case 'webview:ready':
+                await this._startHotReloadAndSendInitialData();
+                break;
+        }
+    }
+
+    private async _startHotReloadAndSendInitialData() {
+        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!workspaceRoot) {
+            console.error('[LLMemPanel] No workspace root');
+            return;
+        }
+
+        const config = getConfig();
+        const artifactRoot = path.join(workspaceRoot, config.artifactRoot);
+
+        // Start hot reload service
+        this._hotReload = new HotReloadService(
+            artifactRoot,
+            workspaceRoot,
+            (data) => {
+                this._panel.webview.postMessage({
+                    type: 'data:refresh',
+                    data: data
+                });
+            }
+        );
+
+        this._hotReload.start();
+        this._disposables.push({ dispose: () => this._hotReload?.stop() });
+
+        // Send initial data
+        try {
+            console.log('[LLMemPanel] Collecting initial data...');
+            const data = await WebviewDataService.collectData(workspaceRoot, artifactRoot);
+            this._panel.webview.postMessage({
+                type: 'data:init',
+                data: data
+            });
+            console.log('[LLMemPanel] Initial data sent');
+        } catch (e) {
+            console.error('[LLMemPanel] Initial data load failed:', e);
+            this._panel.webview.postMessage({
+                type: 'data:init',
+                data: {
+                    graphData: { importGraph: { nodes: [], edges: [] }, callGraph: { nodes: [], edges: [] } },
+                    workTree: { name: 'root', path: '', type: 'directory', children: [] },
+                    designDocs: {}
+                }
+            });
+        }
+    }
+
+    private _getNonce(): string {
+        let text = '';
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        for (let i = 0; i < 32; i++) {
+            text += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return text;
+    }
+
     public dispose() {
         LLMemPanel.currentPanel = undefined;
-
-        // Clean up our resources
+        this._hotReload?.stop();
         this._panel.dispose();
-
         while (this._disposables.length) {
-            const x = this._disposables.pop();
-            if (x) {
-                x.dispose();
-            }
+            this._disposables.pop()?.dispose();
         }
-    }
-
-    private _update() {
-        const webview = this._panel.webview;
-        this._panel.webview.html = this._getHtmlForWebview(webview);
-    }
-
-    private _getHtmlForWebview(webview: vscode.Webview) {
-        // Local path to main script run in the webview
-        const scriptPathOnDisk = vscode.Uri.joinPath(this._extensionUri, 'src', 'webview', 'main.js');
-        const scriptUri = webview.asWebviewUri(scriptPathOnDisk);
-
-        // Local path to css styles
-        const stylePathOnDisk = vscode.Uri.joinPath(this._extensionUri, 'src', 'webview', 'style.css');
-        const styleUri = webview.asWebviewUri(stylePathOnDisk);
-
-        // Local path to vis-network
-        const visPathOnDisk = vscode.Uri.joinPath(this._extensionUri, 'src', 'webview', 'libs', 'vis-network.min.js');
-        const visUri = webview.asWebviewUri(visPathOnDisk);
-
-        // Read the HTML file from disk
-        const htmlPath = path.join(this._extensionUri.fsPath, 'src', 'webview', 'index.html');
-        let htmlInfo = '';
-        try {
-            htmlInfo = fs.readFileSync(htmlPath, 'utf8');
-        } catch (e) {
-            htmlInfo = `<html><body>Error loading html: ${e}<br/>Path: ${htmlPath}</body></html>`;
-        }
-
-        // Inject URIs
-        // We replace the script/css tags with our webview URIs
-        // Note: Simple string replacement for now.
-
-        let html = htmlInfo
-            .replace('src="main.js"', `src="${scriptUri}"`)
-            .replace('href="style.css"', `href="${styleUri}"`)
-            .replace('src="libs/vis-network.min.js"', `src="${visUri}"`);
-
-        return html;
-    }
-
-    private async _generateContext() {
-        this._postMessage({ type: 'status:update', status: 'working', message: 'Generating artifacts...' });
-
-        try {
-            const config = getConfig();
-            const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-
-            if (!workspaceRoot) {
-                throw new Error('No workspace open');
-            }
-
-            // We assume ArtifactService is initialized by the extension.ts on activation.
-            // If the user hasn't opened a workspace, we caught it above.
-
-            // 1. Artifacts
-            // Recursively ensure artifacts for the current workspace
-            await ensureArtifacts('.', true);
-
-            this._postMessage({ type: 'status:update', status: 'working', message: 'Building graph...' });
-
-            // 2. Build Graphs
-            const { importGraph, callGraph } = await buildGraphs(config.artifactRoot);
-
-            // 3. Send Data (Import Graph by default)
-            const visData = this._convertGraphToVis(importGraph);
-
-            this._postMessage({ type: 'plot:data', data: visData });
-            this._postMessage({ type: 'status:update', status: 'idle', message: 'Context updated' });
-
-        } catch (error) {
-            const msg = error instanceof Error ? error.message : String(error);
-            this._postMessage({ type: 'status:update', status: 'idle', message: `Error: ${msg}` });
-            vscode.window.showErrorMessage(`Context Generation Failed: ${msg}`);
-        }
-    }
-
-    private async _attemptInitialLoad() {
-        try {
-            const config = getConfig();
-            const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-
-            if (!workspaceRoot) {
-                return; // No workspace, nothing to load.
-            }
-
-            const artifactDir = path.join(workspaceRoot, config.artifactRoot);
-
-            // simple check if directory exists and is not empty
-            if (!fs.existsSync(artifactDir)) {
-                return; // No artifacts, wait for user to generate.
-            }
-
-            // Optional: check if directory has files before trying
-            // but buildGraphs handles partial data gracefully (empty arrays)
-
-            this._postMessage({ type: 'status:update', status: 'working', message: 'Loading existing context...' });
-
-            const { importGraph } = await buildGraphs(config.artifactRoot);
-
-            // Only send if we actually got something
-            if (importGraph.nodes.size > 0) {
-                const visData = this._convertGraphToVis(importGraph);
-                this._postMessage({ type: 'plot:data', data: visData });
-                this._postMessage({ type: 'status:update', status: 'idle', message: 'Context loaded' });
-            } else {
-                this._postMessage({ type: 'status:update', status: 'idle', message: 'No nodes found in artifacts' });
-            }
-
-        } catch (error) {
-            const msg = error instanceof Error ? error.message : String(error);
-            console.error('Initial load failed:', msg);
-            // Don't show error toast on initial load, just update status
-            this._postMessage({ type: 'status:update', status: 'idle', message: 'Ready' });
-        }
-    }
-
-    private _convertGraphToVis(graph: any) {
-        // Simple conversion
-        const nodes = Array.from(graph.nodes.values()).map((n: any) => ({
-            id: n.id,
-            label: n.label,
-            group: n.kind || 'default',
-            title: n.label // Tooltip
-        }));
-
-        const edges = graph.edges.map((e: any) => ({
-            from: e.source,
-            to: e.target
-        }));
-
-        return { nodes, edges };
-    }
-
-    private _handleChat(text: string) {
-        // Placeholder for Antigravity Agent integration
-        setTimeout(() => {
-            this._postMessage({
-                type: 'chat:append',
-                role: 'assistant',
-                content: `I received your message: "${text}". Real agent integration is coming next.`
-            });
-        }, 500);
-    }
-
-    private _postMessage(message: any) {
-        this._panel.webview.postMessage(message);
     }
 }
