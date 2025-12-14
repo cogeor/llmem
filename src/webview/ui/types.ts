@@ -53,7 +53,6 @@ declare global {
         GRAPH_DATA: GraphData;
         WORK_TREE: WorkTreeNode; // Root node
         DESIGN_DOCS: { [key: string]: string };
-        vis: any; // Global from lib
         GRAPH_DATA_URL?: string; // Optional if loading via URL
     }
 }

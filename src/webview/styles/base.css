@@ -12,6 +12,8 @@
   --focus-outline: #007fd4;
   --description-foreground: #888888;
   --code-background: #1e1e1e;
+  --edge-color: #000000;
+  --node-label-color: #ffffff;
 
   --spacing-xs: 4px;
   --spacing-sm: 8px;
@@ -30,6 +32,8 @@ body.light {
   --focus-outline: #007fd4;
   --description-foreground: #666666;
   --code-background: #f5f5f5;
+  --edge-color: #555555;
+  --node-label-color: #222222;
 }
 
 /* Ensure body uses valid variables */
