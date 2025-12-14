@@ -6,6 +6,13 @@
             "script": "compile",
             "problemMatcher": "$tsc",
             "label": "npm: compile",
+            "group": "build"
+        },
+        {
+            "type": "npm",
+            "script": "build",
+            "problemMatcher": "$tsc",
+            "label": "npm: build",
             "group": {
                 "kind": "build",
                 "isDefault": true

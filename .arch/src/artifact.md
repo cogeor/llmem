@@ -1,6 +1,5 @@
 # Artifact Service Implementation Plan (Architectural Helper)
 # Component: src/artifact/
-
 ================================================================================
 ## PURPOSE
 ================================================================================

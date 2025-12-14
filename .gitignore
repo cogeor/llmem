@@ -6,7 +6,7 @@ draft.txt
 node_modules/
 
 # Build output
-dist/
+dist
 *.vsix
 
 # Environment (contains API keys)
