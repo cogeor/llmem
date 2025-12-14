@@ -23,7 +23,7 @@ export class EdgeRenderer {
             </marker>
             <marker id="arrowhead-highlighted" viewBox="0 -5 10 10" refX="15" refY="0" 
                     markerWidth="6" markerHeight="6" orient="auto">
-                <path d="M0,-5L10,0L0,5" fill="var(--selection-foreground, #007acc)" />
+                <path d="M0,-5L10,0L0,5" fill="var(--edge-highlight-color, #007acc)" />
             </marker>
         `;
 
@@ -110,7 +110,7 @@ export class EdgeRenderer {
 
             if (isConnected) {
                 path.classList.add('highlighted');
-                path.setAttribute('stroke', 'var(--selection-foreground, #007acc)');
+                path.setAttribute('stroke', 'var(--edge-highlight-color, #007acc)');
                 path.setAttribute('stroke-width', '2');
                 path.setAttribute('stroke-opacity', '1');
                 path.setAttribute('marker-end', 'url(#arrowhead-highlighted)');
@@ -159,7 +159,7 @@ export class EdgeRenderer {
 
             if (isConnected) {
                 path.classList.add('highlighted');
-                path.setAttribute('stroke', 'var(--selection-foreground, #007acc)');
+                path.setAttribute('stroke', 'var(--edge-highlight-color, #007acc)');
                 path.setAttribute('stroke-width', '2');
                 path.setAttribute('stroke-opacity', '1');
                 path.setAttribute('marker-end', 'url(#arrowhead-highlighted)');

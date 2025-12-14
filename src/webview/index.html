@@ -14,33 +14,52 @@
 </head>
 
 <body>
-    <div id="app">
-        <!-- Left Pane: Explorer -->
-        <div class="left-pane">
+    <div id="app" class="layout-row">
+        <!-- Explorer Pane -->
+        <div id="explorer-pane" class="pane" style="width: 250px;">
             <div class="pane-header">
                 <span class="pane-title">Explorer</span>
+                <div class="toolbar">
+                    <button id="theme-toggle" class="icon-btn" title="Toggle Theme">☀️</button>
+                </div>
             </div>
             <div class="pane-content" id="worktree-root">
                 <!-- Tree rendered here -->
             </div>
         </div>
 
-        <!-- Right Pane: Detail / Graph -->
-        <div class="right-pane">
+        <!-- Splitter 1 -->
+        <div class="splitter" id="splitter-1"></div>
+
+        <!-- Design Pane -->
+        <div id="design-pane" class="pane" style="flex: 1;">
             <div class="pane-header">
-                <span class="pane-title">Inspector</span>
+                <span class="pane-title">Design</span>
                 <div class="toolbar">
-                    <button id="theme-toggle" class="icon-btn" title="Toggle Theme">☀️</button>
-                    <div id="graph-type-toggle"></div>
-                    <div id="view-toggle"></div>
+                    <!-- View toggle deprecated in 3-col layout but keeping element for now to avoid JS errors -->
+                    <div id="view-toggle" style="display:none"></div>
                 </div>
             </div>
             <div class="pane-content">
-                <!-- Views -->
                 <div id="design-view" class="detail-view"></div>
-                <div id="graph-view" class="graph-container" style="display:none">
-                    <div class="graph-message detail-empty">Select a file or folder to see graph connections.</div>
-                    <div class="graph-canvas" style="display:none"></div>
+            </div>
+        </div>
+
+        <!-- Splitter 2 -->
+        <div class="splitter" id="splitter-2"></div>
+
+        <!-- Graph Pane -->
+        <div id="graph-pane" class="pane" style="flex: 1;">
+            <div class="pane-header">
+                <span class="pane-title">Graph</span>
+                <div class="toolbar">
+                    <div id="graph-type-toggle"></div>
+                </div>
+            </div>
+            <div class="pane-content graph-pane-content">
+                <!-- Graph needs hidden overflow for pan/zoom -->
+                <div id="graph-view" class="graph-container">
+                    <div class="graph-canvas"></div>
                 </div>
             </div>
         </div>

@@ -88,6 +88,20 @@ export class GraphRenderer {
     }
 
     /**
+     * Resize the graph and re-render if needed.
+     */
+    resize(width: number, height: number): void {
+        this.width = width;
+        this.height = height;
+
+        this.svg.setAttribute('viewBox', `0 0 ${this.width} ${this.height}`);
+        this.hierarchicalLayout = new HierarchicalLayout(this.width, this.height);
+        this.cameraController.resize(this.width, this.height);
+
+        // Note: Caller must call render() after resize to re-compute layout
+    }
+
+    /**
      * Render the graph.
      * @param graphType - 'import' or 'call' - file regions only shown for call graphs
      */
@@ -137,6 +151,9 @@ export class GraphRenderer {
             this.handleNodeClick.bind(this),
             undefined
         );
+
+        // 7. Fit to view
+        this.cameraController.fitAll(false);
     }
 
     /**

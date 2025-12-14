@@ -134,7 +134,7 @@
 }
 
 .edges-layer path.highlighted {
-    stroke: var(--selection-foreground) !important;
+    stroke: var(--edge-highlight-color) !important;
     stroke-width: 2px !important;
     opacity: 1 !important;
 }
