@@ -1,19 +1,38 @@
 :root {
+  /* Base Variables (Default Dark) */
   --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
-  --foreground: var(--vscode-foreground, #cccccc);
-  --background: var(--vscode-editor-background, #1e1e1e);
-  --border-color: var(--vscode-panel-border, #333333);
-  --hover-background: var(--vscode-list-hoverBackground, #2a2d2e);
-  --selection-background: var(--vscode-list-activeSelectionBackground, #094771);
-  --selection-foreground: var(--vscode-list-activeSelectionForeground, #ffffff);
-  --focus-outline: var(--vscode-focusBorder, #007fd4);
-  
+
+  /* Dark Theme (Default) */
+  --foreground: #cccccc;
+  --background: #1e1e1e;
+  --border-color: #333333;
+  --hover-background: #2a2d2e;
+  --selection-background: #094771;
+  --selection-foreground: #ffffff;
+  --focus-outline: #007fd4;
+  --description-foreground: #888888;
+  --code-background: #1e1e1e;
+
   --spacing-xs: 4px;
   --spacing-sm: 8px;
   --spacing-md: 16px;
   --spacing-lg: 24px;
 }
 
+/* Light Theme Variables */
+body.light {
+  --foreground: #111111;
+  --background: #ffffff;
+  --border-color: #e0e0e0;
+  --hover-background: #f0f0f0;
+  --selection-background: #007fd4;
+  --selection-foreground: #ffffff;
+  --focus-outline: #007fd4;
+  --description-foreground: #666666;
+  --code-background: #f5f5f5;
+}
+
+/* Ensure body uses valid variables */
 body {
   margin: 0;
   padding: 0;
@@ -23,9 +42,12 @@ body {
   height: 100vh;
   overflow: hidden;
   box-sizing: border-box;
+  transition: background-color 0.3s, color 0.3s;
 }
 
-*, *:before, *:after {
+*,
+*:before,
+*:after {
   box-sizing: inherit;
 }
 

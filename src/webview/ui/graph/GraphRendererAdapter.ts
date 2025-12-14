@@ -34,13 +34,17 @@ export class GraphRendererAdapter {
         this.currentData = data;
         const { selectedId } = options;
 
+        // Get current theme color from CSS variable
+        const style = getComputedStyle(document.body);
+        const textColor = style.getPropertyValue('--foreground').trim() || '#cccccc';
+
         const visOptions = {
             nodes: {
                 shape: 'dot',
                 size: 16,
                 font: {
                     size: 14,
-                    color: '#cccccc', // fallback, should match theme
+                    color: textColor,
                     face: 'sans-serif'
                 },
                 borderWidth: 2,
@@ -81,6 +85,7 @@ export class GraphRendererAdapter {
         };
 
         if (this.network) {
+            this.network.setOptions(visOptions);
             this.network.setData(displayData);
         } else {
             this.network = new window.vis.Network(this.container, displayData, visOptions);
