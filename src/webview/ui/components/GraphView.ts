@@ -40,7 +40,25 @@ export class GraphView {
     async mount() {
         this.data = await this.graphDataService.load();
         this.unsubscribe = this.state.subscribe((s: AppState) => this.onState(s));
+
+        // Listen for theme changes to redraw graph with new colors
+        window.addEventListener('theme-changed', this.handleThemeChange);
     }
+
+    private handleThemeChange = () => {
+        // Re-render if graph is visible
+        if (this.el.querySelector('.graph-canvas')?.getAttribute('style')?.includes('block')) {
+            // Force re-render with current state
+            if (this.graphRenderer && this.data) {
+                // We need to re-call render to pick up new colors
+                // Simplest way is re-triggering onState or just calling renderer directly if we tracked params
+                // Since onState checks for changes, we might need to invalidate lastParams or just call renderer
+                this.graphRenderer.render(this.graphRenderer.currentData, {
+                    selectedId: this.state.get().selectedType === "file" ? this.state.get().selectedPath : null
+                });
+            }
+        }
+    };
 
     onState({ currentView, graphType, selectedPath, selectedType }: AppState) {
         if (currentView !== "graph") {
@@ -183,5 +201,8 @@ export class GraphView {
         return result;
     }
 
-    unmount() { this.unsubscribe?.(); }
+    unmount() {
+        this.unsubscribe?.();
+        window.removeEventListener('theme-changed', this.handleThemeChange);
+    }
 }

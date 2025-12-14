@@ -1,5 +1,6 @@
 
 import { state } from './state';
+import { ThemeManager } from './theme';
 import { Router } from './router';
 import { WorktreeService } from './services/worktreeService';
 import { GraphDataService } from './services/graphDataService';
@@ -73,8 +74,13 @@ router.registerRoute('graph', graphView);
 // Bootstrap
 (async () => {
     try {
+
         // Init Router FIRST to handle initial visibility
         router.init();
+
+        // Theme
+        const themeManager = new ThemeManager();
+        document.getElementById('theme-toggle')?.addEventListener('click', () => themeManager.toggle());
 
         // Mount static components
         await Promise.all([

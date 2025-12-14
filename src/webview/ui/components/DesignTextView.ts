@@ -32,14 +32,25 @@ export class DesignTextView {
             return;
         }
 
-        this.shadow.innerHTML = `<div class="detail-loading" style="padding: 20px;">Loading...</div>`;
+        this.shadow.innerHTML = `
+            <link rel="stylesheet" href="styles/detail.css">
+            <div class="detail-loading" style="padding: 20px;">Loading...</div>
+        `;
 
         const content = await this.designDocService.fetchDesignDoc(selectedPath, selectedType);
 
         if (content) {
-            this.shadow.innerHTML = content;
+            this.shadow.innerHTML = `
+                <link rel="stylesheet" href="styles/detail.css">
+                <div class="detail-view">
+                    ${content}
+                </div>
+            `;
         } else {
-            this.shadow.innerHTML = `<div class="detail-empty" style="padding: 20px; color: #888;">There is no design file for this selection.</div>`;
+            this.shadow.innerHTML = `
+                <link rel="stylesheet" href="styles/detail.css">
+                <div class="detail-empty">There is no design file for this selection.</div>
+            `;
         }
     }
 
