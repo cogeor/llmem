@@ -10,7 +10,6 @@ import { ViewToggle } from './components/ViewToggle';
 import { GraphTypeToggle } from './components/GraphTypeToggle';
 import { DesignTextView } from './components/DesignTextView';
 import { GraphView } from './components/GraphView';
-import { GraphRendererAdapter } from './graph/GraphRendererAdapter';
 
 // Elements
 const elWorktree = document.getElementById('worktree-root') as HTMLElement;
@@ -24,11 +23,6 @@ const elGraphView = document.getElementById('graph-view') as HTMLElement;
 const worktreeService = new WorktreeService();
 const graphDataService = new GraphDataService();
 const designDocService = new DesignDocService();
-
-// Renderer
-const graphRenderer = new GraphRendererAdapter(elGraphView, (nodeId: string) => {
-    state.set({ selectedPath: nodeId, selectedType: 'file' });
-});
 
 // Router
 const router = new Router({
@@ -63,8 +57,7 @@ const graphView = new GraphView({
     el: elGraphView,
     state,
     graphDataService,
-    worktreeService,
-    graphRenderer
+    worktreeService
 });
 
 // Register Routes

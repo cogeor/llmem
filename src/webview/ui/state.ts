@@ -4,8 +4,8 @@ import { AppState } from './types';
 export const initialState: AppState = {
     currentView: "design", // "design" | "graph"
     graphType: "import",   // "import" | "call"
-    selectedPath: "src",    // Default to src
-    selectedType: "directory", // Default type
+    selectedPath: "src",   // Default to src for design view
+    selectedType: "directory",
     expandedFolders: new Set(["src"]), // Expand src by default
 };
 

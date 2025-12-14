@@ -1,22 +1,21 @@
+/**
+ * Graph View Component
+ * 
+ * Displays the hierarchical graph visualization using D3.js.
+ * The graph is rendered once on mount, then navigation only
+ * moves the camera and highlights neighbors.
+ */
 
-import { filterOneHopFromNode, filterFolderScope, filterFileScope } from "../graph/GraphFilter";
+import { GraphRenderer } from "../graph/GraphRenderer";
 import { GraphDataService } from "../services/graphDataService";
 import { WorktreeService } from "../services/worktreeService";
-import { GraphRendererAdapter } from "../graph/GraphRendererAdapter";
-import { AppState, GraphData } from "../types";
+import { AppState, GraphData, WorkTreeNode } from "../types";
 
 interface Props {
     el: HTMLElement;
     state: any;
     graphDataService: GraphDataService;
     worktreeService: WorktreeService;
-    graphRenderer: GraphRendererAdapter;
-}
-
-interface GraphParams {
-    selectedPath: string | null;
-    selectedType: string | null;
-    graphType: string;
 }
 
 export class GraphView {
@@ -24,42 +23,112 @@ export class GraphView {
     private state: any;
     private graphDataService: GraphDataService;
     private worktreeService: WorktreeService;
-    private graphRenderer: GraphRendererAdapter;
+    private graphRenderer: GraphRenderer | null = null;
     private data: GraphData | null = null;
+    private worktree: WorkTreeNode | null = null;
     private unsubscribe?: () => void;
-    private lastParams?: GraphParams;
+    private isRendered: boolean = false;
+    private currentGraphType: string = 'import';
 
-    constructor({ el, state, graphDataService, worktreeService, graphRenderer }: Props) {
+    constructor({ el, state, graphDataService, worktreeService }: Props) {
         this.el = el;
         this.state = state;
         this.graphDataService = graphDataService;
         this.worktreeService = worktreeService;
-        this.graphRenderer = graphRenderer;
     }
 
     async mount() {
+        // Load data
         this.data = await this.graphDataService.load();
+        this.worktree = await this.worktreeService.load();
+
+        console.log('[GraphView] Data loaded:', {
+            importNodes: this.data?.importGraph?.nodes?.length,
+            callNodes: this.data?.callGraph?.nodes?.length,
+            worktree: this.worktree?.name
+        });
+
+        // Subscribe to state changes
         this.unsubscribe = this.state.subscribe((s: AppState) => this.onState(s));
 
-        // Listen for theme changes to redraw graph with new colors
+        // Listen for theme changes
         window.addEventListener('theme-changed', this.handleThemeChange);
+
+        // Initial render based on current state
+        const initialState = this.state.get() as AppState;
+        if (initialState.currentView === 'graph') {
+            this.onState(initialState);
+        }
     }
 
-    private handleThemeChange = () => {
-        // Re-render if graph is visible
-        if (this.el.querySelector('.graph-canvas')?.getAttribute('style')?.includes('block')) {
-            // Force re-render with current state
-            if (this.graphRenderer && this.data) {
-                // We need to re-call render to pick up new colors
-                // Simplest way is re-triggering onState or just calling renderer directly if we tracked params
-                // Since onState checks for changes, we might need to invalidate lastParams or just call renderer
-                this.graphRenderer.render(this.graphRenderer.currentData, {
-                    selectedId: this.state.get().selectedType === "file" ? this.state.get().selectedPath : null
-                });
-            }
+    /**
+     * Initialize the D3 graph renderer and render the graph.
+     */
+    private initializeGraph(graphType: string): void {
+        if (!this.data || !this.worktree) {
+            console.warn('[GraphView] Cannot initialize: data or worktree not loaded');
+            return;
         }
-    };
 
+        const canvasEl = this.el.querySelector('.graph-canvas') as HTMLElement;
+        if (!canvasEl) {
+            console.warn('[GraphView] Cannot initialize: canvas element not found');
+            return;
+        }
+
+        // Clean up previous renderer if graph type changed
+        if (this.graphRenderer && this.currentGraphType !== graphType) {
+            console.log('[GraphView] Destroying previous renderer (graph type changed)');
+            this.graphRenderer.destroy();
+            this.graphRenderer = null;
+            this.isRendered = false;
+        }
+
+        if (this.isRendered) {
+            console.log('[GraphView] Already rendered, skipping');
+            return;
+        }
+
+        // Get canvas dimensions - use defaults if hidden
+        const width = canvasEl.clientWidth || 1200;
+        const height = canvasEl.clientHeight || 800;
+
+        console.log('[GraphView] Initializing graph:', { graphType, width, height });
+
+        // Clear canvas
+        canvasEl.innerHTML = '';
+
+        // Create new renderer
+        this.graphRenderer = new GraphRenderer(canvasEl, {
+            width,
+            height,
+            onNodeClick: (nodeId: string) => this.handleNodeClick(nodeId),
+            onFolderClick: (folderPath: string) => this.handleFolderClick(folderPath),
+            onFileClick: (filePath: string) => this.handleFileClick(filePath)
+        });
+
+        // Get the appropriate graph
+        const graph = graphType === "import"
+            ? this.data.importGraph
+            : this.data.callGraph;
+
+        console.log('[GraphView] Rendering graph:', {
+            nodes: graph.nodes.length,
+            edges: graph.edges.length
+        });
+
+        // Render the full graph
+        this.graphRenderer.render(graph, this.worktree, graphType as 'import' | 'call');
+
+        this.currentGraphType = graphType;
+        this.isRendered = true;
+
+        console.log('[GraphView] Graph rendered successfully');
+    }
+
+    /**
+     * Handle state changes - pan camera and highlight as needed.
+     */
     onState({ currentView, graphType, selectedPath, selectedType }: AppState) {
         if (currentView !== "graph") {
             return;
@@ -68,141 +137,108 @@ export class GraphView {
         const msgEl = this.el.querySelector('.graph-message') as HTMLElement;
         const canvasEl = this.el.querySelector('.graph-canvas') as HTMLElement;
 
-        if (!selectedPath) {
+        // If graph type changed, re-initialize
+        if (graphType !== this.currentGraphType) {
+            this.isRendered = false;
+        }
+
+        // Always show the canvas when in graph view, initialize graph first
+        canvasEl.style.display = 'block';
+
+        // Initialize graph if not yet rendered
+        if (!this.isRendered) {
+            this.initializeGraph(graphType);
+            // Clear any default selection from design view - graph starts fresh
             msgEl.style.display = 'flex';
-            canvasEl.style.display = 'none';
+            return;
+        }
+
+        if (!selectedPath) {
+            // Show message overlay on top of graph
+            msgEl.style.display = 'flex';
             return;
         }
 
         msgEl.style.display = 'none';
-        canvasEl.style.display = 'block';
 
-        if (this.graphRenderer.container !== canvasEl) {
-            this.graphRenderer.container = canvasEl;
-            this.graphRenderer.network = null;
-        }
+        if (!this.graphRenderer) return;
 
-        const newParams = { selectedPath, selectedType, graphType };
-        const paramsChanged = !this.lastParams ||
-            this.lastParams.selectedPath !== selectedPath ||
-            this.lastParams.selectedType !== selectedType ||
-            this.lastParams.graphType !== graphType;
+        // Clear previous highlights
+        this.graphRenderer.clearHighlight();
 
-        if (!paramsChanged) {
-            if (this.graphRenderer.network) {
-                this.graphRenderer.network.redraw();
-            }
-            return;
-        }
-        this.lastParams = newParams;
-
-        // Ensure data is loaded
-        if (!this.data) return;
-
-        const graph = graphType === "import"
-            ? this.data.importGraph
-            : this.data.callGraph;
-
-        let filtered;
-
+        // Pan camera and highlight based on selection type
         if (selectedType === "file") {
-            if (graphType === "call") {
-                filtered = filterFileScope(graph, selectedPath);
+            // For call graphs, files are containers - highlight the file box
+            // For import graphs, files ARE the nodes - highlight neighbors
+            if (graphType === 'call') {
+                this.graphRenderer.highlightFile(selectedPath);
             } else {
-                filtered = filterOneHopFromNode(graph, selectedPath);
+                this.graphRenderer.panTo(selectedPath, true);
+                this.graphRenderer.highlightNeighbors(selectedPath);
             }
-        } else {
-            const dirNode = this.worktreeService.getNode(selectedPath);
-            if (dirNode) {
-                const subtreeFiles = this.worktreeService.collectSubtreeFiles(dirNode);
-                filtered = filterFolderScope(graph, subtreeFiles);
-            } else {
-                filtered = { nodes: [], edges: [] };
-            }
+        } else if (selectedType === "directory") {
+            this.graphRenderer.panToFolder(selectedPath, true);
+            this.graphRenderer.highlightFolder(selectedPath);
+        }
+    }
+
+    /**
+     * Handle node click from graph.
+     */
+    private handleNodeClick(nodeId: string): void {
+        // For call graph nodes, ID is like "src/file.ts#functionName"
+        // Extract the file path by removing the function part (after #)
+        let filePath = nodeId;
+        const hashIndex = nodeId.lastIndexOf('#');
+        if (hashIndex > 0) {
+            // Has a hash separator - extract file path
+            filePath = nodeId.substring(0, hashIndex);
         }
 
-        let baseDir = selectedPath;
-
-        if (selectedPath && (selectedPath.startsWith('/') || selectedPath.match(/^[a-zA-Z]:/))) {
-            const srcIndex = selectedPath.indexOf('src/');
-            if (srcIndex !== -1) {
-                baseDir = selectedPath.substring(srcIndex);
-            }
-        }
-
-        if (selectedType === 'file' && baseDir) {
-            const lastSlash = baseDir.lastIndexOf('/');
-            const lastBackSlash = baseDir.lastIndexOf('\\');
-            const sep = Math.max(lastSlash, lastBackSlash);
-            if (sep >= 0) {
-                baseDir = baseDir.substring(0, sep);
-            } else {
-                baseDir = "";
-            }
-        }
-
-        const relativeNodes = filtered.nodes.map(n => {
-            let label = n.label || n.id;
-            label = this.computeDisplayedName(label, baseDir);
-            return { ...n, label };
-        });
-
-        this.graphRenderer.render({ nodes: relativeNodes, edges: filtered.edges }, {
-            selectedId: selectedType === "file" ? selectedPath : null
+        // Update app state to reflect selection
+        this.state.set({
+            selectedPath: filePath,
+            selectedType: 'file'
         });
     }
 
-    computeDisplayedName(nodeLabel: string, currentPath: string | null): string {
-        if (!currentPath) return nodeLabel;
-
-        const normLabel = nodeLabel.replace(/\\/g, '/');
-        const normPath = currentPath.replace(/\\/g, '/');
-
-        let filePath = normLabel;
-        let suffix = "";
-
-        const colonIndex = normLabel.lastIndexOf(':');
-        if (colonIndex !== -1) {
-            filePath = normLabel.substring(0, colonIndex);
-            suffix = normLabel.substring(colonIndex);
-        }
-
-        const relative = this.getRelativePath(normPath, filePath);
-        return relative + suffix;
+    /**
+     * Handle folder click from graph.
+     */
+    private handleFolderClick(folderPath: string): void {
+        // Update app state to reflect folder selection
+        this.state.set({
+            selectedPath: folderPath,
+            selectedType: 'directory'
+        });
     }
 
-    getRelativePath(from: string, to: string): string {
-        const normalize = (p: string) => p ? p.replace(/\\/g, '/').split('/').filter(x => x.length > 0) : [];
-        const fromParts = normalize(from);
-        const toParts = normalize(to);
-
-        let i = 0;
-        // Case-insensitive comparison
-        while (i < fromParts.length && i < toParts.length &&
-            fromParts[i].toLowerCase() === toParts[i].toLowerCase()) {
-            i++;
-        }
-
-        const upMoves = fromParts.length - i;
-        const downMoves = toParts.slice(i);
-
-        let result = "";
-        if (upMoves > 0) {
-            result += "../".repeat(upMoves);
-        }
-
-        if (downMoves.length > 0) {
-            result += downMoves.join('/');
-        } else if (upMoves === 0) {
-            const lastPart = toParts[toParts.length - 1];
-            return lastPart;
-        }
-
-        return result;
+    /**
+     * Handle file click from graph.
+     */
+    private handleFileClick(filePath: string): void {
+        // Update app state to reflect file selection - this will highlight in explorer
+        this.state.set({
+            selectedPath: filePath,
+            selectedType: 'file'
+        });
     }
 
+    /**
+     * Handle theme changes - re-render graph with new colors.
+     */
+    private handleThemeChange = () => {
+        // For theme changes, we'd need to update CSS variables
+        // The SVG elements use CSS variables so they should update automatically
+        // But we might need to force a redraw for some elements
+    };
+
+    /**
+     * Cleanup on unmount.
+     */
     unmount() {
         this.unsubscribe?.();
         window.removeEventListener('theme-changed', this.handleThemeChange);
+        this.graphRenderer?.destroy();
     }
 }

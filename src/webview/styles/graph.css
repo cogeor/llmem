@@ -7,6 +7,7 @@
 .graph-canvas {
     width: 100%;
     height: 100%;
+    overflow: hidden;
 }
 
 .graph-controls {
@@ -43,4 +44,106 @@
 
 .segmented button:hover:not(.is-active) {
     background: var(--hover-background);
+}
+
+/* D3 Graph SVG Container */
+.d3-graph-svg {
+    background: var(--background);
+}
+
+/* Folder Containers */
+.folders-layer .folder-group rect {
+    transition: fill 0.2s, stroke 0.2s, stroke-width 0.2s;
+}
+
+.folders-layer .folder-group:hover rect {
+    stroke-width: 2px;
+}
+
+.folders-layer .folder-group.highlighted rect {
+    stroke-width: 2.5px;
+    stroke: var(--vscode-list-activeSelectionBackground);
+    filter: brightness(1.1);
+}
+
+.folders-layer .folder-group.highlighted text {
+    fill: var(--vscode-list-activeSelectionForeground) !important;
+    font-weight: bold;
+    text-shadow: 0 0 5px var(--background);
+}
+
+.folders-layer .folder-group text {
+    font-family: var(--vscode-font-family, sans-serif);
+    pointer-events: none;
+    user-select: none;
+}
+
+/* File Containers */
+.file-group rect {
+    transition: all 0.2s ease;
+}
+
+.file-group.highlighted rect {
+    stroke: var(--vscode-list-activeSelectionBackground) !important;
+    stroke-width: 2px !important;
+    stroke-dasharray: none !important;
+    fill: var(--vscode-list-activeSelectionBackground) !important;
+    fill-opacity: 0.15 !important;
+}
+
+.file-group.highlighted text {
+    fill: var(--vscode-list-activeSelectionForeground) !important;
+    font-weight: bold;
+    text-shadow: 0 0 5px var(--background);
+}
+
+/* Node Groups */
+.nodes-layer .node-group circle {
+    transition: r 0.15s, stroke-width 0.15s;
+    cursor: pointer;
+}
+
+.nodes-layer .node-group:hover circle {
+    stroke-width: 3px;
+}
+
+.nodes-layer .node-group.highlighted circle {
+    stroke: var(--selection-foreground, #007acc);
+    stroke-width: 3px;
+}
+
+.nodes-layer .node-group.neighbor circle {
+    stroke-width: 2px;
+    filter: brightness(1.1);
+}
+
+.nodes-layer .node-group.faded {
+    opacity: 0.25;
+}
+
+.nodes-layer .node-group text {
+    font-family: var(--vscode-font-family, sans-serif);
+    pointer-events: none;
+    user-select: none;
+}
+
+/* Edges */
+.edges-layer path {
+    transition: stroke-width 0.2s, stroke 0.2s, opacity 0.2s;
+    fill: none;
+}
+
+.edges-layer path.highlighted {
+    stroke: var(--selection-foreground) !important;
+    stroke-width: 2px !important;
+    opacity: 1 !important;
+}
+
+.edges-layer path.faded {
+    opacity: 0.1;
+}
+
+/* Markers */
+#arrow-head path {
+    fill: var(--edge-color);
 }
