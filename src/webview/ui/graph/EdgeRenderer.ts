@@ -39,12 +39,28 @@ export class EdgeRenderer {
     ): void {
         this.svg.innerHTML = '';
 
+        let rendered = 0;
+        let skipped = 0;
+        const skippedSamples: string[] = [];
+
         for (const edge of edges) {
             const from = positions.get(edge.from);
             const to = positions.get(edge.to);
-            if (!from || !to) continue;
+            if (!from || !to) {
+                skipped++;
+                if (skippedSamples.length < 5) {
+                    skippedSamples.push(`${edge.from} -> ${edge.to} (from: ${!!from}, to: ${!!to})`);
+                }
+                continue;
+            }
 
             this.renderEdge(edge, from, to);
+            rendered++;
+        }
+
+        console.log(`[EdgeRenderer] Edges: ${rendered} rendered, ${skipped} skipped (total: ${edges.length})`);
+        if (skippedSamples.length > 0) {
+            console.log('[EdgeRenderer] Sample skipped edges:', skippedSamples);
         }
     }
 

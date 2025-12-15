@@ -27,7 +27,6 @@ export function buildCallGraph(artifacts: ArtifactBundle[]): CallGraph {
             // Only callable things + classes (as containers)
             if (['function', 'method', 'ctor', 'arrow', 'getter', 'setter', 'class'].includes(entity.kind)) {
                 const globalId = deriveEntityId(fileId, entity.id);
-                console.log(`DEBUG: Doing node for ${fileId}, entity ${entity.name}`);
                 const node: EntityNode = {
                     id: globalId,
                     label: `${fileId}:${entity.name}`,

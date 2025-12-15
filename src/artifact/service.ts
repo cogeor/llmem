@@ -83,7 +83,7 @@ export async function initializeArtifactService(root: string) {
 
     // Initialize TS Service
     tsService = new TypeScriptService(workspaceRoot);
-    tsExtractor = new TypeScriptExtractor(() => tsService.getProgram());
+    tsExtractor = new TypeScriptExtractor(() => tsService.getProgram(), workspaceRoot);
 
     // Initialize Registry
     registry = new ExtractorRegistry();
