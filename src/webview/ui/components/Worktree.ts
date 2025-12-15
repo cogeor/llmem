@@ -83,6 +83,7 @@ export class Worktree {
             }
         }
 
+
         // Update selection state
         this.state.set({
             selectedPath: path,
