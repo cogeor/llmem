@@ -1,136 +1,163 @@
-# MCP Server Implementation Plan (Architectural Helper)
-# Component: src/mcp/
+# MCP Refactor Design
 
-================================================================================
-## TOOLS
-================================================================================
+## Overview
 
-### 1. get_artifacts
-**Args**:
-- `path`: string (Folder path)
-- `recursive`: boolean (default false)
+Refactor the MCP to provide a single, focused tool: `file_info()`. This tool generates semantic documentation for source files by combining structural extraction with LLM-powered summarization.
 
-**Behavior**:
-1. Calls `artifact.ensureArtifacts(path, recursive)`.
-2. Groups signatures by folder.
-3. Returns `prompt_ready`.
-   - Prompt: "Analyze these modules... output a JSON map of folder summaries."
-   - Callback: `store_summaries`
+## Goals
 
-### 2. store_summaries (NEW)
-**Description**: Save multiple folder summaries at once.
-**Args**:
-- `summaries`: Record<string, string> (Map of "folder/path" -> "Markdown Summary")
+1. **Single Entry Point**: One tool (`file_info`) instead of 5 scattered tools
+2. **LLM-Powered Enrichment**: LLM reads source, summarizes each function
+3. **Semantic Understanding**: Output should be detailed enough to reimplement the function
+4. **Connection Awareness**: Document file's relationships (imports, callers)
 
-**Behavior**:
-1. Iterates keys.
-2. Calls `artifact.saveFolderSummary` for each.
+## MCP Flow
 
-================================================================================
-## INTERFACES
-================================================================================
+```mermaid
+sequenceDiagram
+    participant User
+    participant MCP as file_info()
+    participant Info as InfoExtractor
+    participant LLM as Host LLM
+    participant Store as Storage
+
+    User->>MCP: file_info(path)
+    MCP->>Info: generateFileInfo(path)
+    Info-->>MCP: {functions, classes, callers}
+    MCP->>LLM: prompt_ready (enrichment prompt)
+    LLM->>LLM: Read source, analyze each function
+    LLM->>MCP: report_file_info(enriched data)
+    MCP->>Store: Save enriched markdown
+    Store-->>User: Enriched file documentation
+```
+
+## Output Format (Enriched)
+
+```markdown
+# src/graph/builder.ts
+
+## Overview
+
+This file handles graph construction from parsed artifacts.
+It reads import/export data and builds node/edge structures.
+
+**Inputs**: Artifact bundles from `.artifacts/` directory
+**Outputs**: ImportGraph, CallGraph data structures
+**Connections**: Called by `src/graph/index.ts::buildGraphs`
+
+---
+
+## Functions
+
+### `buildCallGraph(artifacts: ArtifactBundle[]): CallGraph`
+
+**Purpose**: Constructs a call graph from parsed file artifacts.
+
+**Implementation Summary**:
+1. Creates nodes for each function/method entity
+2. Builds auxiliary indices for lookup
+3. Resolves call edges using import bindings
+4. Returns graph with resolved and unresolved calls
+
+**Called by:**
+- `buildGraphs` in `src/graph/index.ts`
+
+---
+
+## Classes
+
+### `ResolutionCache`
+
+**Purpose**: Caches resolved symbol lookups to avoid redundant computation.
+
+#### Methods
+
+##### `get(key: string): string | undefined`
+Retrieves cached resolution result.
+
+##### `set(key: string, value: string): void`
+Stores resolution result for future lookups.
+```
+
+## New Tool Schema
+
+### `file_info`
 
 ```typescript
-const StoreSummariesSchema = z.object({
-  summaries: z.record(z.string()).describe("Map of folder paths to markdown summaries"),
+FileInfoSchema = z.object({
+    path: z.string().describe('Path to file (relative to workspace root)')
 });
 ```
 
-## Purpose
+**Response**: `prompt_ready` with enrichment prompt
 
-Build a **cached, machine-readable index** of the codebase.
-Parse code → extract structure → store in queryable .artifact files.
+### `report_file_info` (callback)
 
-When users ask about code, the LLM queries pre-built artifacts instead of 
-re-parsing files each time. Artifacts contain functions, classes, methods - 
-structured data that's fast to query.
-
-## Core Workflow
-
-```
-CACHE WORKFLOW (on file change or first access):
-┌─────────────────────────────────────────────────────────────────┐
-│ 1. parse config.ts with tree-sitter                            │
-│ 2. extract: loadConfig, getConfig, resetConfig, isConfigLoaded │
-│ 3. save to .artifacts/src/extension/config.ts.artifact         │
-└─────────────────────────────────────────────────────────────────┘
-
-QUERY WORKFLOW (when LLM needs info):
-┌─────────────────────────────────────────────────────────────────┐
-│ User: "What does config.ts do?"                                │
-│                     │                                           │
-│                     ▼                                           │
-│ Host LLM → get_codebase_info("src/extension/config.ts")        │
-│                     │                                           │
-│                     ▼                                           │
-│ LLMem checks: artifact exists? → YES → return cached data      │
-│                                  NO  → parse, cache, return    │
-│                     │                                           │
-│                     ▼                                           │
-│ Returns: { functions: ["loadConfig", ...], classes: [], ... }  │
-└─────────────────────────────────────────────────────────────────┘
-
-ENRICHMENT WORKFLOW (optional LLM treatment):
-┌─────────────────────────────────────────────────────────────────┐
-│ User: "Explain dependencies in config.ts"                      │
-│                     │                                           │
-│                     ▼                                           │
-│ LLMem: artifact has structure, but needs LLM for explanation   │
-│        → returns prompt for host LLM to process                │
-│        → result saved back to artifact (enriched data)         │
-└─────────────────────────────────────────────────────────────────┘
+```typescript
+ReportFileInfoSchema = z.object({
+    path: z.string().describe('File path'),
+    overview: z.string().describe('File overview summary'),
+    inputs: z.string().optional().describe('What the file takes as input'),
+    outputs: z.string().optional().describe('What the file produces'),
+    functions: z.array(z.object({
+        name: z.string(),
+        purpose: z.string(),
+        implementation: z.string()
+    }))
+});
 ```
 
-## Tool Surface (~5 tools)
+**Response**: Saves enriched markdown to `.artifacts/src/<path>/file_name.md`
 
-| Tool | Purpose | Side Effects |
-|------|---------|--------------|
-| `get_codebase_info` | Fetch structure of file/folder | Read-only |
-| `get_artifact` | Retrieve saved artifact | Read-only |
-| `list_artifacts` | Query artifact index | Read-only |
-| `process_with_llm` | Request LLM treatment of code | Returns prompt |
-| `save_artifact` | Store analysis result | Write |
+## Prompt Template
 
-## Response Types
+```
+You are a Code Documentation Assistant.
 
-### Type A: Direct structured response
-```json
-{
-  "status": "success",
-  "data": {
-    "path": "src/extension/config.ts",
-    "functions": ["loadConfig", "getConfig", "resetConfig"],
-    "classes": [],
-    "summary": "Configuration module with 4 exported functions"
-  }
-}
+I have extracted the following structure for file: "{filePath}"
+
+## Structural Info:
+{fileInfoMarkdown}
+
+## Source Code:
+{sourceCode}
+
+## Task:
+1. Write a brief **Overview** of this file (2-3 sentences):
+   - What is its purpose?
+   - What are its main inputs/outputs?
+   - What files depend on it or does it depend on?
+
+2. For EACH function/method listed:
+   - Write a **Purpose** (1 sentence describing what it does)
+   - Write an **Implementation Summary** (3-5 bullet points, enough detail that someone could reimplement it)
+
+3. Call `report_file_info` with your enriched documentation.
 ```
 
-### Type B: With artifact save
-```json
-{
-  "status": "success",
-  "data": { ... },
-  "artifactSaved": ".artifacts/src/extension/config.ts.artifact"
-}
-```
+## Files to Change
 
-### Type C: Request LLM treatment
-When complex analysis needed (e.g., summarize dependencies, explain logic):
-```json
-{
-  "status": "needs_llm",
-  "promptForHost": "Given these functions from config.ts:\n- loadConfig()...\n\nExplain the dependency flow.",
-  "callbackTool": "save_artifact",
-  "callbackArgs": { "path": "...", "type": "analysis" }
-}
-```
+### Remove
+- `handleAnalyzeCodebase` (replaced by file_info)
+- `handleReportAnalysis` (replaced by report_file_info)
 
-## Best Practices Applied
+### Keep (modified)
+- `handleInspectSource` - Still useful for LLM to read specific lines
+- `handleSetWorkspaceRoot` - Still needed for standalone mode
+- `handleOpenWindow` - Keep for webview generation
 
-1. **Minimal tool surface** - 5 focused tools, not 20 endpoints
-2. **Structured responses** - JSON, not natural language
-3. **Zod schemas** - Validate all inputs
-4. **Reads vs writes** - Clearly separated (get_* vs save_*)
-5. **Bounded operations** - Timeouts, file size limits
-6. **Cache artifacts** - Avoid re-parsing unchanged files
+### Add
+- `handleFileInfo` - New primary entry point
+- `handleReportFileInfo` - New callback for LLM results
+
+## Integration with `src/info/`
+
+The new MCP will use:
+- `generateSingleFileInfo()` from `src/info/index.ts`
+- `buildReverseCallIndex()` for caller info
+- `readFile()` for source code
+
+## Storage
+
+Enriched files saved to: `.artifacts/src/<path>/file_name.md`
+(Same location as basic file_info, but with LLM enrichment)

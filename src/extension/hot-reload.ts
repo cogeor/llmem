@@ -2,22 +2,25 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { WebviewDataService, WebviewData } from '../webview/data-service';
-import { ensureArtifacts } from '../artifact/service';
+import { ensureArtifacts, ensureSingleFileArtifact } from '../artifact/service';
 import { buildGraphs } from '../graph';
 
 /**
  * Service to handle hot reloading of the webview data.
  * 
- * Two paths:
- * - Source files change (.ts, .js, etc.) -> Rebuild artifacts and graphs
+ * Three watch paths:
+ * - Source files change (.ts, .js, etc.) -> Rebuild artifact for that file + rebuild graphs
  * - .arch files change (.md) -> Re-convert markdown to HTML
+ * - Any file in project create/delete -> Refresh worktree
  */
 export class HotReloadService {
     private sourceWatcher: vscode.FileSystemWatcher | undefined;
     private archWatcher: vscode.FileSystemWatcher | undefined;
+    private treeWatcher: vscode.FileSystemWatcher | undefined;
     private disposables: vscode.Disposable[] = [];
 
-    private debounceTimers: { source?: NodeJS.Timeout; arch?: NodeJS.Timeout } = {};
+    private debounceTimers: { source?: NodeJS.Timeout; arch?: NodeJS.Timeout; tree?: NodeJS.Timeout } = {};
+    private pendingChangedFiles: Set<string> = new Set();
 
     private artifactRoot: string;
     private projectRoot: string;
@@ -44,19 +47,19 @@ export class HotReloadService {
         console.log('[HotReload]   Artifact root:', this.artifactRoot);
         console.log('[HotReload]   Arch root:', this.archRoot);
 
-        // Watch source files -> rebuild graphs
+        // Watch source files -> rebuild artifact for that file + graphs
         const srcPattern = new vscode.RelativePattern(
             vscode.Uri.file(this.projectRoot),
             'src/**/*.{ts,tsx,js,jsx}'
         );
         this.sourceWatcher = vscode.workspace.createFileSystemWatcher(srcPattern);
 
-        this.sourceWatcher.onDidChange(() => this.queueSourceRebuild());
-        this.sourceWatcher.onDidCreate(() => this.queueSourceRebuild());
-        this.sourceWatcher.onDidDelete(() => this.queueSourceRebuild());
+        this.sourceWatcher.onDidChange((uri) => this.queueSourceRebuild(uri));
+        this.sourceWatcher.onDidCreate((uri) => this.queueSourceRebuild(uri));
+        this.sourceWatcher.onDidDelete((uri) => this.queueSourceRebuild(uri));
         this.disposables.push(this.sourceWatcher);
 
-        // Watch .arch/src/*.md -> re-convert markdown
+        // Watch .arch/src/**/*.md -> re-convert markdown
         const archPattern = new vscode.RelativePattern(
             vscode.Uri.file(this.archRoot),
             'src/**/*.md'
@@ -68,6 +71,16 @@ export class HotReloadService {
         this.archWatcher.onDidDelete(() => this.queueArchConvert());
         this.disposables.push(this.archWatcher);
 
+        // Watch for any file/folder creation/deletion in the project -> refresh worktree
+        const treePattern = new vscode.RelativePattern(
+            vscode.Uri.file(this.projectRoot),
+            '**/*'
+        );
+        this.treeWatcher = vscode.workspace.createFileSystemWatcher(treePattern);
+        this.treeWatcher.onDidCreate(() => this.queueTreeRefresh());
+        this.treeWatcher.onDidDelete(() => this.queueTreeRefresh());
+        this.disposables.push(this.treeWatcher);
+
         console.log('[HotReload] Watchers started');
     }
 
@@ -76,17 +89,31 @@ export class HotReloadService {
         this.disposables = [];
         this.sourceWatcher = undefined;
         this.archWatcher = undefined;
+        this.treeWatcher = undefined;
         console.log('[HotReload] Watchers stopped');
     }
 
-    private queueSourceRebuild() {
+    private queueSourceRebuild(uri: vscode.Uri) {
+        // Track the changed file
+        const relativePath = path.relative(this.projectRoot, uri.fsPath).replace(/\\/g, '/');
+        this.pendingChangedFiles.add(relativePath);
+
         if (this.debounceTimers.source) clearTimeout(this.debounceTimers.source);
 
         this.debounceTimers.source = setTimeout(async () => {
-            console.log('[HotReload] Source changed - rebuilding graphs...');
+            const changedFiles = Array.from(this.pendingChangedFiles);
+            this.pendingChangedFiles.clear();
+
+            console.log('[HotReload] Source files changed:', changedFiles);
             try {
-                // Rebuild artifacts for changed source
-                await ensureArtifacts('.', true);
+                // Rebuild artifacts only for the changed files
+                for (const file of changedFiles) {
+                    try {
+                        await ensureSingleFileArtifact(file);
+                    } catch (e) {
+                        console.warn(`[HotReload] Failed to update artifact for ${file}:`, e);
+                    }
+                }
 
                 // Rebuild graphs
                 await buildGraphs(this.artifactRoot);
@@ -105,13 +132,24 @@ export class HotReloadService {
         this.debounceTimers.arch = setTimeout(async () => {
             console.log('[HotReload] Arch changed - refreshing design docs...');
             try {
-                // The DesignDocManager reads markdown dynamically, so we just need to
-                // trigger a data refresh. The conversion happens in collectData.
                 await this.sendUpdate();
             } catch (e) {
                 console.error('[HotReload] Arch refresh failed:', e);
             }
         }, 300);
+    }
+
+    private queueTreeRefresh() {
+        if (this.debounceTimers.tree) clearTimeout(this.debounceTimers.tree);
+
+        this.debounceTimers.tree = setTimeout(async () => {
+            console.log('[HotReload] File system changed - refreshing tree...');
+            try {
+                await this.sendUpdate();
+            } catch (e) {
+                console.error('[HotReload] Tree refresh failed:', e);
+            }
+        }, 500);
     }
 
     public async sendUpdate() {
