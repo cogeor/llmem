@@ -175,6 +175,9 @@ export class HierarchicalLayout {
 
         if (folder.nodes.length === 0) return;
 
+        // Step 1.5: Position nodes within each file group, then arrange file groups in a grid
+        // This prevents the "long horizontal strip" issue.
+
         // Group nodes by file
         const nodesByFile = new Map<string, VisNode[]>();
         for (const node of folder.nodes) {
@@ -185,10 +188,24 @@ export class HierarchicalLayout {
             nodesByFile.get(filePath)!.push(node);
         }
 
-        // Position each file's nodes relative to (0, 0)
-        let fileStartX = FILE_PADDING;
-        for (const [_filePath, fileNodes] of nodesByFile) {
+        // Compute local layout for each file
+        interface FileBlock {
+            path: string;
+            nodes: VisNode[];
+            width: number;
+            height: number;
+            x: number;
+            y: number;
+        }
+
+        const fileBlocks: FileBlock[] = [];
+        let totalFileArea = 0;
+
+        for (const [filePath, fileNodes] of nodesByFile) {
             const cols = Math.ceil(Math.sqrt(fileNodes.length));
+
+            let currentY = 0;
+            let maxRowEndX = 0;
 
             // Group nodes by row
             const nodeRows: VisNode[][] = [];
@@ -198,17 +215,13 @@ export class HierarchicalLayout {
                 nodeRows[row].push(fileNodes[i]);
             }
 
-            // Position nodes with dynamic X spacing
-            let currentY = FILE_PADDING;
-            let maxRowEndX = fileStartX;  // Track where the rightmost node ends (including label)
-
+            // Layout nodes locally
             for (const rowNodes of nodeRows) {
-                let currentX = fileStartX;
+                let currentX = 0;
                 for (let i = 0; i < rowNodes.length; i++) {
                     const node = rowNodes[i];
                     const labelLen = this.getLabelLength(node);
 
-                    // Average with neighbor if exists
                     let avgLen = labelLen;
                     if (i > 0) {
                         const prevLen = this.getLabelLength(rowNodes[i - 1]);
@@ -220,20 +233,66 @@ export class HierarchicalLayout {
                         NODE_SPACING + (avgLen - 10) * CHAR_SPACING_FACTOR
                     );
 
-                    (node as any)._relX = currentX + dynamicSpacing / 2;
-                    (node as any)._relY = currentY;
+                    // Store LOCAL coordinates temporarily
+                    (node as any)._localX = currentX + dynamicSpacing / 2;
+                    (node as any)._localY = currentY;
 
                     currentX += dynamicSpacing;
 
-                    // Track rightmost extent including label (4px per char)
                     const labelPadding = Math.max(20, labelLen * 4);
-                    maxRowEndX = Math.max(maxRowEndX, (node as any)._relX + labelPadding);
+                    maxRowEndX = Math.max(maxRowEndX, (node as any)._localX + labelPadding);
                 }
                 currentY += NODE_SPACING;
             }
 
-            // Move to next file's position with proper gap
-            fileStartX = maxRowEndX + FOLDER_GAP + FILE_PADDING;
+            const blockWidth = maxRowEndX + FILE_PADDING;
+            const blockHeight = currentY + FILE_PADDING;
+
+            fileBlocks.push({
+                path: filePath,
+                nodes: fileNodes,
+                width: blockWidth,
+                height: blockHeight,
+                x: 0,
+                y: 0
+            });
+
+            totalFileArea += blockWidth * blockHeight;
+        }
+
+        // Pack file blocks into a grid (aiming for square aspect ratio)
+        // If there's only one file, it just sits at 0,0
+        if (fileBlocks.length > 0) {
+            const targetWidth = Math.max(400, Math.sqrt(totalFileArea) * 1.5); // 1.5 factor for gap/padding
+            let currentX = FILE_PADDING;
+            let currentY = FILE_PADDING;
+            let rowHeight = 0;
+
+            // Sort by height to optimize packing? Optional, but keeps rows even.
+            // fileBlocks.sort((a, b) => b.height - a.height); 
+
+            for (const block of fileBlocks) {
+                if (currentX > FILE_PADDING && currentX + block.width > targetWidth) {
+                    // Wrap to next row
+                    currentX = FILE_PADDING;
+                    currentY += rowHeight + FOLDER_GAP;
+                    rowHeight = 0;
+                }
+
+                block.x = currentX;
+                block.y = currentY;
+
+                currentX += block.width + FOLDER_GAP;
+                rowHeight = Math.max(rowHeight, block.height);
+            }
+        }
+
+        // Apply final relative positions
+        for (const block of fileBlocks) {
+            for (const node of block.nodes) {
+                (node as any)._relX = block.x + (node as any)._localX;
+                (node as any)._relY = block.y + (node as any)._localY;
+            }
         }
     }
 

@@ -72,13 +72,34 @@ export class HotReloadService {
         this.disposables.push(this.archWatcher);
 
         // Watch for any file/folder creation/deletion in the project -> refresh worktree
-        const treePattern = new vscode.RelativePattern(
+        // Watch for any file/folder creation/deletion in the project -> refresh worktree
+        // We use two patterns to reliably catch both root files/folders and nested ones
+        const rootPattern = new vscode.RelativePattern(
+            vscode.Uri.file(this.projectRoot),
+            '*'
+        );
+        const nestedPattern = new vscode.RelativePattern(
             vscode.Uri.file(this.projectRoot),
             '**/*'
         );
-        this.treeWatcher = vscode.workspace.createFileSystemWatcher(treePattern);
-        this.treeWatcher.onDidCreate(() => this.queueTreeRefresh());
-        this.treeWatcher.onDidDelete(() => this.queueTreeRefresh());
+
+        const rootWatcher = vscode.workspace.createFileSystemWatcher(rootPattern);
+        rootWatcher.onDidCreate((uri) => {
+            console.log('[HotReload] Root creation detected:', uri.fsPath);
+            this.queueTreeRefresh();
+        });
+        rootWatcher.onDidDelete((uri) => {
+            console.log('[HotReload] Root deletion detected:', uri.fsPath);
+            this.queueTreeRefresh();
+        });
+        this.disposables.push(rootWatcher);
+
+        this.treeWatcher = vscode.workspace.createFileSystemWatcher(nestedPattern);
+        this.treeWatcher.onDidCreate((uri) => {
+            // Avoid double trigger if root watcher caught it (though debounce handles this)
+            this.queueTreeRefresh();
+        });
+        this.treeWatcher.onDidDelete((uri) => this.queueTreeRefresh());
         this.disposables.push(this.treeWatcher);
 
         console.log('[HotReload] Watchers started');
