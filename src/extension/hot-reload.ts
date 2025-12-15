@@ -2,7 +2,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { WebviewDataService, WebviewData } from '../webview/data-service';
-import { ensureArtifacts, ensureSingleFileArtifact } from '../artifact/service';
+import { ensureArtifacts, ensureSingleFileArtifact, getSupportedExtensions } from '../artifact/service';
 import { buildGraphs } from '../graph';
 
 /**
@@ -48,9 +48,14 @@ export class HotReloadService {
         console.log('[HotReload]   Arch root:', this.archRoot);
 
         // Watch source files -> rebuild artifact for that file + graphs
+        const extensions = getSupportedExtensions();
+        const extPattern = extensions.map(e => e.replace(/^\./, '')).join(',');
+
+        console.log(`[HotReload] Watching extensions: {${extPattern}}`);
+
         const srcPattern = new vscode.RelativePattern(
             vscode.Uri.file(this.projectRoot),
-            'src/**/*.{ts,tsx,js,jsx}'
+            `src/**/*.{${extPattern}}`
         );
         this.sourceWatcher = vscode.workspace.createFileSystemWatcher(srcPattern);
 
