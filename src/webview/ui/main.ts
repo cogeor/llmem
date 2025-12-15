@@ -25,14 +25,34 @@ const elSplitter1 = document.getElementById('splitter-1') as HTMLElement;
 const elSplitter2 = document.getElementById('splitter-2') as HTMLElement;
 const elExplorerPane = document.getElementById('explorer-pane') as HTMLElement;
 const elDesignPane = document.getElementById('design-pane') as HTMLElement;
+const elGraphPane = document.getElementById('graph-pane') as HTMLElement;
 
-// Init Splitters
-if (elSplitter1 && elExplorerPane) {
+// Helper to detect VS Code environment
+declare const acquireVsCodeApi: any;
+const isVsCode = typeof acquireVsCodeApi !== 'undefined';
+
+// Detect graph-only mode (no WORK_TREE means graph-only, but ONLY in standalone mode)
+// In VS Code, data might arrive later via messages, so we default to showing everything.
+const isGraphOnlyMode = !isVsCode && !window.WORK_TREE;
+
+if (isGraphOnlyMode) {
+    // Hide Explorer and Design panes, expand Graph to full width
+    if (elExplorerPane) elExplorerPane.style.display = 'none';
+    if (elDesignPane) elDesignPane.style.display = 'none';
+    if (elSplitter1) elSplitter1.style.display = 'none';
+    if (elSplitter2) elSplitter2.style.display = 'none';
+    if (elGraphPane) elGraphPane.style.flex = '1';
+    console.log('[Webview] Running in graph-only mode');
+}
+
+// Init Splitters (only if not in graph-only mode)
+if (!isGraphOnlyMode && elSplitter1 && elExplorerPane) {
     new Splitter(elSplitter1, elExplorerPane, 'left');
 }
-if (elSplitter2 && elDesignPane) {
+if (!isGraphOnlyMode && elSplitter2 && elDesignPane) {
     new Splitter(elSplitter2, elDesignPane, 'left');
 }
+
 
 // Router
 const router = new Router({
