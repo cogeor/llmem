@@ -48,9 +48,10 @@ export async function detectAvailableLanguages(): Promise<LanguageConfig[]> {
             }
 
             await exec(checkCmd);
+            console.log(`[LSP Detection] Found support for ${lang.id}: ${lang.lspCommand}`);
             available.push(lang);
         } catch (e) {
-            // Not found
+            console.log(`[LSP Detection] Missing support for ${lang.id}: '${lang.lspCommand}' not found in PATH.`);
         }
     }
     return available;

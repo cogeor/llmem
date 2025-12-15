@@ -9,6 +9,8 @@ import { artifactFilePath, sourceToArtifactDir, summaryFilePath } from './path-m
 import { readFile, writeFile, deleteFile, exists } from './storage';
 
 import { TypeScriptService, TypeScriptExtractor, ExtractorRegistry } from '../parser';
+import { detectAvailableLanguages } from '../parser/languages';
+import { LspExtractor } from '../parser/lsp/extractor';
 
 let index: ArtifactIndex;
 let tree: ArtifactTreeManager;
@@ -90,6 +92,22 @@ export async function initializeArtifactService(root: string) {
     registry.register('.ts', tsExtractor);
     registry.register('.tsx', tsExtractor);
 
+    // Dynamic Language Detection & Registration
+    const availableLangs = await detectAvailableLanguages();
+    for (const lang of availableLangs) {
+        if (lang.id === 'python' || lang.id === 'cpp' || lang.id === 'r') {
+            const lspExtractor = new LspExtractor(lang.lspCommand, lang.lspArgs, lang.id);
+            // We should start the LSP? Or start on demand?
+            // Starting process for every language might be heavy. Let's start it lazily in extractor.extract()
+            // The LspExtractor implementation already does start() lazily or we can rely on it.
+            // But we need to register extensions.
+            for (const ext of lang.extensions) {
+                registry.register(ext, lspExtractor);
+            }
+            console.log(`Registered LSP support for ${lang.id} (${lang.extensions.join(', ')})`);
+        }
+    }
+
     await index.load();
     tree.build(index.getAll());
     isInitialized = true;
@@ -98,6 +116,11 @@ export async function initializeArtifactService(root: string) {
 export function getWorkspaceRoot(): string {
     checkInitialized();
     return workspaceRoot;
+}
+
+export function getSupportedExtensions(): string[] {
+    checkInitialized();
+    return registry.getSupportedExtensions();
 }
 
 function checkInitialized() {

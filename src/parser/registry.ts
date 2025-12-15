@@ -19,4 +19,8 @@ export class ExtractorRegistry {
         }
         return undefined;
     }
+
+    getSupportedExtensions(): string[] {
+        return Array.from(this.extractors.keys());
+    }
 }
