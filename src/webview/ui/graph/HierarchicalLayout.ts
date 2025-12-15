@@ -88,6 +88,19 @@ export class HierarchicalLayout {
         const fileRegions: FileRegion[] = [];
         this.extractResults(root, nodePositions, folders, fileRegions);
 
+        // Diagnostic: Check for missing positions
+        const missingPositions: string[] = [];
+        for (const node of nodes) {
+            if (!nodePositions.has(node.id)) {
+                missingPositions.push(node.id);
+            }
+        }
+        if (missingPositions.length > 0) {
+            console.warn(`[HierarchicalLayout] ${missingPositions.length} nodes have no position!`);
+            console.warn('[HierarchicalLayout] Sample missing:', missingPositions.slice(0, 5));
+        }
+        console.log(`[HierarchicalLayout] Computed ${nodePositions.size}/${nodes.length} positions`);
+
         return { folders, fileRegions, nodePositions };
     }
 

@@ -4,7 +4,15 @@ import { FileArtifact, ImportSpec, ExportSpec, Entity, CallSite, Loc, EntityKind
 import { ArtifactExtractor } from './interfaces';
 
 export class TypeScriptExtractor implements ArtifactExtractor {
-    constructor(private programProvider: () => ts.Program | undefined) { }
+    private workspaceRoot: string;
+
+    constructor(
+        private programProvider: () => ts.Program | undefined,
+        workspaceRoot?: string
+    ) {
+        // Use provided workspace root, or fall back to cwd
+        this.workspaceRoot = workspaceRoot || process.cwd();
+    }
 
     public async extract(filePath: string, content?: string): Promise<FileArtifact | null> {
         let program = this.programProvider();
@@ -90,8 +98,8 @@ export class TypeScriptExtractor implements ArtifactExtractor {
                         // If it resolves to a file, get path. 
                         // Note: declaration might be a ambient module decl in .d.ts
                         if (decl.fileName) {
-                            // Make relative to workspace root (cwd) to match fileIds
-                            resolvedPath = path.relative(process.cwd(), decl.fileName).replace(/\\/g, '/');
+                            // Make relative to workspace root to match fileIds
+                            resolvedPath = path.relative(this.workspaceRoot, decl.fileName).replace(/\\/g, '/');
                         }
                     }
 
@@ -218,10 +226,8 @@ export class TypeScriptExtractor implements ArtifactExtractor {
                                     const decl = symbol.valueDeclaration;
                                     const sourceFile = decl.getSourceFile();
                                     if (sourceFile && sourceFile.fileName) {
-                                        // Use normalized relative path if possible, or keep absolute?
-                                        // Extractor usually outputs whatever. Builder normalizes?
-                                        // Let's use relative to be consistent with imports.
-                                        const relPath = path.relative(process.cwd(), sourceFile.fileName).replace(/\\/g, '/');
+                                        // Use normalized relative path to workspace root
+                                        const relPath = path.relative(this.workspaceRoot, sourceFile.fileName).replace(/\\/g, '/');
                                         resolvedDefinition = {
                                             file: relPath,
                                             name: symbol.name
@@ -285,7 +291,7 @@ export class TypeScriptExtractor implements ArtifactExtractor {
 
         visit(sourceFile);
 
-        const fileId = path.relative(process.cwd(), filePath).replace(/\\/g, '/');
+        const fileId = path.relative(this.workspaceRoot, filePath).replace(/\\/g, '/');
 
         return {
             schemaVersion: "ts-graph-v1",
