@@ -1,6 +1,7 @@
 import * as crypto from 'crypto';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import * as fsSync from 'fs';
 import { ArtifactMetadata, ArtifactRecord, ArtifactTree } from './types';
 import { ArtifactIndex } from './index';
 import { ArtifactTreeManager } from './tree';
@@ -16,11 +17,69 @@ let isInitialized = false;
 let registry: ExtractorRegistry;
 let tsService: TypeScriptService;
 let tsExtractor: TypeScriptExtractor;
+let gitignorePatterns: Set<string>;
+
+// Always ignored folders
+const ALWAYS_IGNORED = new Set([
+    'node_modules',
+    '.git',
+    '.artifacts',
+    '.vscode',
+    'dist',
+    'out',
+    '.DS_Store'
+]);
+
+/**
+ * Parse .gitignore and return a set of patterns.
+ */
+function parseGitignore(rootPath: string): Set<string> {
+    const patterns = new Set<string>();
+    const gitignorePath = path.join(rootPath, '.gitignore');
+
+    try {
+        if (fsSync.existsSync(gitignorePath)) {
+            const content = fsSync.readFileSync(gitignorePath, 'utf8');
+            for (const line of content.split('\n')) {
+                const trimmed = line.trim();
+                if (!trimmed || trimmed.startsWith('#')) continue;
+                let pattern = trimmed.replace(/\/$/, '');
+                if (pattern.startsWith('!')) continue;
+                patterns.add(pattern);
+            }
+        }
+    } catch (e) {
+        console.warn('Failed to parse .gitignore:', e);
+    }
+
+    return patterns;
+}
+
+/**
+ * Check if a path should be ignored.
+ */
+function shouldIgnore(name: string, relativePath: string): boolean {
+    if (ALWAYS_IGNORED.has(name)) return true;
+
+    for (const pattern of gitignorePatterns) {
+        if (pattern === name) return true;
+        if (relativePath === pattern || relativePath.startsWith(pattern + '/')) return true;
+        if (pattern.startsWith('*.')) {
+            const ext = pattern.slice(1);
+            if (name.endsWith(ext)) return true;
+        }
+    }
+
+    return false;
+}
 
 export async function initializeArtifactService(root: string) {
     workspaceRoot = root;
     index = new ArtifactIndex(workspaceRoot);
     tree = new ArtifactTreeManager();
+
+    // Parse .gitignore
+    gitignorePatterns = parseGitignore(root);
 
     // Initialize TS Service
     tsService = new TypeScriptService(workspaceRoot);
@@ -76,7 +135,74 @@ export async function createArtifact(sourcePath: string, type: string, content: 
 }
 
 /**
+ * Ensures that a single file has a corresponding mirror artifact.
+ * Used by hot reload for incremental updates.
+ */
+export async function ensureSingleFileArtifact(filePath: string): Promise<ArtifactRecord | null> {
+    checkInitialized();
+
+    // Normalize to relative path
+    const sourcePath = path.isAbsolute(filePath)
+        ? path.relative(workspaceRoot, filePath).replace(/\\/g, '/')
+        : filePath.replace(/\\/g, '/');
+
+    const fullPath = path.join(workspaceRoot, sourcePath);
+
+    // Check if should be ignored
+    const fileName = path.basename(sourcePath);
+    if (shouldIgnore(fileName, sourcePath)) {
+        return null;
+    }
+
+    // Check if file exists
+    if (!await exists(fullPath)) {
+        // File was deleted, remove artifact if exists
+        const all = index.getAll();
+        const existing = all.find(r => r.sourcePath === sourcePath && r.type === 'mirror');
+        if (existing) {
+            await deleteFile(existing.artifactPath);
+            index.removeRecord(existing.id);
+            await index.save();
+        }
+        return null;
+    }
+
+    // Generate or update artifact
+    const content = await readFile(fullPath);
+    if (content === null) return null;
+
+    const extractor = registry.get(fullPath);
+    if (!extractor) return null;
+
+    const artifact = await extractor.extract(fullPath);
+    if (!artifact) return null;
+
+    const artifactContent = JSON.stringify(artifact, null, 2);
+
+    // Check if already exists and update, or create new
+    const all = index.getAll();
+    let record = all.find(r => r.sourcePath === sourcePath && r.type === 'mirror');
+
+    if (record) {
+        // Update existing
+        await writeFile(record.artifactPath, artifactContent);
+    } else {
+        // Create new
+        record = await createArtifact(sourcePath, 'mirror', artifactContent);
+    }
+
+    const finalContent = await readFile(record.artifactPath);
+    if (finalContent === null) return null;
+
+    return {
+        metadata: record,
+        content: finalContent
+    };
+}
+
+/**
  * Ensures that all files in the given folder have corresponding mirror artifacts.
+ * Respects .gitignore and always-ignored folders.
  * Returns the list of artifacts (content + metadata) for the folder.
  */
 export async function ensureArtifacts(folderPath: string, recursive: boolean = false): Promise<ArtifactRecord[]> {
@@ -95,7 +221,12 @@ export async function ensureArtifacts(folderPath: string, recursive: boolean = f
     for (const entry of entries) {
         const fullPath = path.join(absFolderPath, entry.name);
         // Calculate relative path for ID/storage
-        const sourcePath = path.relative(workspaceRoot, fullPath);
+        const sourcePath = path.relative(workspaceRoot, fullPath).replace(/\\/g, '/');
+
+        // Check if should be ignored
+        if (shouldIgnore(entry.name, sourcePath)) {
+            continue;
+        }
 
         if (entry.isDirectory()) {
             if (recursive) {
@@ -111,7 +242,6 @@ export async function ensureArtifacts(folderPath: string, recursive: boolean = f
         let record = all.find(r => r.sourcePath === sourcePath && r.type === 'mirror');
 
         // Check if we need to generate it (if missing)
-        // TODO: In future, check lastModified vs source file to update stale artifacts
         if (!record) {
             // Generate it
             const content = await readFile(fullPath);
