@@ -129,9 +129,18 @@ export class GraphRenderer {
         this.cameraController.setPositions(layoutResult.nodePositions, layoutResult.folders);
 
         // 3. Render folders and file groups (file groups only for call graphs)
+        // Filter out the top-level container folder (usually 'src' or depth 1) if it's the only one
+        // This makes the "src" box effectively the canvas background
+        let foldersToRender = layoutResult.folders;
+        const topLevelFolders = layoutResult.folders.filter(f => f.depth === 1);
+        if (topLevelFolders.length === 1) {
+            const topFolder = topLevelFolders[0];
+            foldersToRender = layoutResult.folders.filter(f => f !== topFolder);
+        }
+
         const fileRegionsToRender = graphType === 'call' ? layoutResult.fileRegions : undefined;
         this.groupRenderer.render(
-            layoutResult.folders,
+            foldersToRender,
             this.handleFolderClick.bind(this),
             fileRegionsToRender,
             this.handleFileClick.bind(this)
@@ -152,8 +161,38 @@ export class GraphRenderer {
             undefined
         );
 
-        // 7. Fit to view
-        this.cameraController.fitAll(false);
+        // 7. Fit to view (width)
+        // Calculate content bounds
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+        // Use the full folder list for bounds calculation to ensure everything is visible
+        if (layoutResult.folders.length > 0) {
+            for (const f of layoutResult.folders) {
+                minX = Math.min(minX, f.x0);
+                minY = Math.min(minY, f.y0);
+                maxX = Math.max(maxX, f.x1);
+                maxY = Math.max(maxY, f.y1);
+            }
+        } else {
+            // Fallback to nodes if no folders (unlikely)
+            for (const pos of layoutResult.nodePositions.values()) {
+                minX = Math.min(minX, pos.x);
+                minY = Math.min(minY, pos.y);
+                maxX = Math.max(maxX, pos.x + 200);
+                maxY = Math.max(maxY, pos.y + 100);
+            }
+        }
+
+        if (minX !== Infinity && maxX !== -Infinity) {
+            const bounds = { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+
+            // Update camera bounds
+            this.cameraController.setBounds(bounds);
+
+            this.cameraController.fitToWidth(bounds);
+        } else {
+            this.cameraController.fitAll(false);
+        }
     }
 
     /**
