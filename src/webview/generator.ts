@@ -62,6 +62,7 @@ export async function generateStaticWebview(
             target: 'es2020',
             sourcemap: true,
             minify: false, // Easier debugging
+            format: 'iife', // Use IIFE for file:// support (no CORS on modules)
         });
     } catch (e) {
         console.error("Esbuild failed:", e);
@@ -153,7 +154,11 @@ export async function generateStaticWebview(
 
     // Insert before <script type="module" src="js/main.js">
     // We just inject the data scripts before the main module script
-    htmlContent = htmlContent.replace('<script type="module" src="js/main.js"></script>', `${injectionScript}\n    <script type="module" src="js/main.js"></script>`);
+    // AND remove type="module" because we are using IIFE for file:// compatibility
+    htmlContent = htmlContent.replace(
+        '<script type="module" src="js/main.js"></script>',
+        `${injectionScript}\n    <script src="js/main.js"></script>`
+    );
 
     // Write HTML
     const destHtmlPath = path.join(destinationDir, 'index.html');

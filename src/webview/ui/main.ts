@@ -36,13 +36,21 @@ const isVsCode = typeof acquireVsCodeApi !== 'undefined';
 const isGraphOnlyMode = !isVsCode && !window.WORK_TREE;
 
 if (isGraphOnlyMode) {
+
     // Hide Explorer and Design panes, expand Graph to full width
     if (elExplorerPane) elExplorerPane.style.display = 'none';
     if (elDesignPane) elDesignPane.style.display = 'none';
     if (elSplitter1) elSplitter1.style.display = 'none';
     if (elSplitter2) elSplitter2.style.display = 'none';
-    if (elGraphPane) elGraphPane.style.flex = '1';
+    if (elGraphPane) {
+        elGraphPane.style.flex = '1';
+        elGraphPane.style.width = '100%';
+        // Ensure proper flex behavior
+        elGraphPane.style.maxWidth = 'none';
+    }
     console.log('[Webview] Running in graph-only mode');
+    // Force graph view since design view is unavailable
+    state.set({ currentView: 'graph' });
 }
 
 // Init Splitters (only if not in graph-only mode)
@@ -61,26 +69,33 @@ const router = new Router({
 });
 
 // Components - inject dataProvider
-const worktree = new Worktree({
-    el: elWorktree,
-    state,
-    dataProvider
-});
+// We only init Worktree and DesignView if not in graph-only mode
+let worktree: Worktree | undefined;
+let viewToggle: ViewToggle | undefined;
+let designTextView: DesignTextView | undefined;
 
-const viewToggle = new ViewToggle({
-    el: elViewToggle,
-    state
-});
+if (!isGraphOnlyMode) {
+    worktree = new Worktree({
+        el: elWorktree,
+        state,
+        dataProvider
+    });
+
+    viewToggle = new ViewToggle({
+        el: elViewToggle,
+        state
+    });
+
+    designTextView = new DesignTextView({
+        el: elDesignView,
+        state,
+        dataProvider
+    });
+}
 
 const graphTypeToggle = new GraphTypeToggle({
     el: elGraphToggle,
     state
-});
-
-const designTextView = new DesignTextView({
-    el: elDesignView,
-    state,
-    dataProvider
 });
 
 const graphView = new GraphView({
@@ -90,17 +105,18 @@ const graphView = new GraphView({
 });
 
 // Register Routes
-router.registerRoute('design', designTextView);
+if (designTextView) {
+    router.registerRoute('design', designTextView);
+}
 router.registerRoute('graph', graphView);
 
 // Subscribe to refresh events (hot reload)
 dataProvider.onRefresh(async () => {
     console.log('[Webview] Refresh triggered - reloading components');
-    await Promise.all([
-        worktree.mount(),
-        graphView.mount(),
-        designTextView.mount()
-    ]);
+    const promises = [graphView.mount()];
+    if (worktree) promises.push(worktree.mount());
+    if (designTextView) promises.push(designTextView.mount());
+    await Promise.all(promises);
 });
 
 // Bootstrap
@@ -114,13 +130,18 @@ dataProvider.onRefresh(async () => {
         document.getElementById('theme-toggle')?.addEventListener('click', () => themeManager.toggle());
 
         // Mount all components
-        await Promise.all([
-            worktree.mount(),
-            viewToggle.mount(),
+        const mountPromises = [
             graphTypeToggle.mount(),
-            designTextView.mount(),
             graphView.mount()
-        ]);
+        ];
+
+        if (worktree) mountPromises.push(worktree.mount());
+        if (viewToggle) mountPromises.push(viewToggle.mount());
+        if (designTextView) mountPromises.push(designTextView.mount());
+
+        await Promise.all(mountPromises);
+
+        console.log("Webview initialized");
 
         console.log("Webview initialized");
     } catch (e) {

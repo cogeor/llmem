@@ -333,7 +333,19 @@ export class HierarchicalLayout {
             const childArray = Array.from(folder.children.values());
             childArray.sort((a, b) => b.height - a.height);
 
-            const maxRowWidth = Math.max(800, nodeGridWidth + PADDING * 2);
+            // Calculate total area to determine target square size to create a grid-like effect
+            let totalChildArea = 0;
+            for (const child of childArray) {
+                totalChildArea += child.width * child.height;
+            }
+
+            // Aim for a square aspect ratio (sqrt(area))
+            // Add slight padding factor (1.1) to account for gaps
+            const targetSquareWidth = Math.sqrt(totalChildArea * 1.1);
+
+            // Use the target width, but ensure it's at least as wide as the node grid
+            // and has a minimum sensible width (e.g. 300) to avoid tiny separate columns
+            const maxRowWidth = Math.max(300, targetSquareWidth, nodeGridWidth + PADDING * 2);
             let rowWidth = 0;
             let rowHeight = 0;
             let totalHeight = 0;
