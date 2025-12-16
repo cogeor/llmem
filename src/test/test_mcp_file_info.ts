@@ -8,6 +8,8 @@ import * as path from 'path';
 import { initializeArtifactService } from '../artifact/service';
 import { handleFileInfo, handleReportFileInfo } from '../mcp/tools';
 
+import * as fs from 'fs';
+
 const ROOT_DIR = path.resolve(__dirname, '../..');
 
 async function runTests() {
@@ -15,6 +17,30 @@ async function runTests() {
     console.log('MCP file_info Tool Test');
     console.log('='.repeat(60));
     console.log();
+
+    // Setup: Create mock artifact for CI environment
+    // The test expects an artifact for 'src/info/index.ts'
+    const artifactDir = path.join(ROOT_DIR, '.artifacts', 'src', 'info');
+    const mockArtifactPath = path.join(artifactDir, 'index.ts.artifact');
+
+    console.log(`Ensuring mock artifact exists at: ${mockArtifactPath}`);
+    if (!fs.existsSync(artifactDir)) {
+        fs.mkdirSync(artifactDir, { recursive: true });
+    }
+
+    // Always overwrite to ensure valid state
+    const mockArtifact = {
+        file: {
+            path: "src/info/index.ts",
+            classes: [],
+            functions: [],
+            exports: []
+        },
+        imports: [],
+        exports: []
+    };
+    fs.writeFileSync(mockArtifactPath, JSON.stringify(mockArtifact, null, 2));
+
 
     // Initialize
     console.log('Initializing artifact service...');
