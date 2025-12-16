@@ -63,6 +63,23 @@ LLMem exposes tools to the Antigravity Agent. You do not run these commands manu
 2. **`inspect_source`**: Allows the agent to read specific blocks of code for detailed inspection.
 3. **`report_analysis`**: The final step where the agent submits its generated summaries for storage.
 
+## 📊 Visualization
+
+![Graph Visualization](data/graph-preview.png)
+
+LLMem provides a generated visualization of your codebase structure.
+
+1. **Generate the graph**:
+   ```bash
+   npm run view:graph
+   ```
+2. **View the graph**:
+   Open `data/graph/index.html` in your browser.
+
+   > [!TIP]
+   > The graph provides an interactive view of imports and function calls, helping you visualize dependencies.
+
+
 ### Architecture
 The user flows from **User** -> **Antigravity Agent** -> **LLMem MCP Server**.
 
