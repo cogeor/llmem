@@ -17,8 +17,10 @@ import {
     logRequest,
     logResponse,
 } from './handlers';
+import { getStoredWorkspaceRoot } from './server';
 import {
     initializeArtifactService,
+    isArtifactServiceInitialized,
     getWorkspaceRoot,
 } from '../artifact/service';
 import { readFile } from '../artifact/storage';
@@ -31,6 +33,22 @@ import {
     saveEnrichedFileInfo,
     EnrichedFileData,
 } from '../info';
+
+// ============================================================================
+// Lazy Initialization Helper
+// ============================================================================
+
+/**
+ * Ensure the artifact service is initialized.
+ * Lazily initializes on first tool call that needs it.
+ */
+async function ensureArtifactServiceInitialized(): Promise<void> {
+    if (!isArtifactServiceInitialized()) {
+        const workspaceRoot = getStoredWorkspaceRoot();
+        console.error(`[MCP Tools] Lazy-initializing artifact service for: ${workspaceRoot}`);
+        await initializeArtifactService(workspaceRoot);
+    }
+}
 
 // ============================================================================
 // Tool Schemas (Zod)
@@ -96,6 +114,7 @@ export async function handleFileInfo(
     const { path: filePath } = validation.data!;
 
     try {
+        await ensureArtifactServiceInitialized();
         const root = getWorkspaceRoot();
         const data = await getFileInfoForMcp(root, filePath);
 
@@ -139,6 +158,7 @@ export async function handleReportFileInfo(
     const enrichedData = validation.data! as EnrichedFileData;
 
     try {
+        await ensureArtifactServiceInitialized();
         const root = getWorkspaceRoot();
 
         // Re-fetch the original info for merging
@@ -263,6 +283,7 @@ export async function handleOpenWindow(
     }
 
     try {
+        await ensureArtifactServiceInitialized();
         const root = getWorkspaceRoot();
 
         let safeConfig = { artifactRoot: '.artifacts', maxFilesPerFolder: 20, maxFileSizeKB: 512 };

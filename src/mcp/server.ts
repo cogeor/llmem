@@ -56,13 +56,18 @@ let transport: StdioServerTransport | null = null;
 /** Server configuration (passed from extension) */
 let serverConfig: Config | null = null;
 
-// ============================================================================
-// Server Lifecycle
-// ============================================================================
+/** Workspace root for lazy artifact initialization */
+let storedWorkspaceRoot: string | null = null;
 
-import { initializeArtifactService } from '../artifact/service';
-
-// ... imports
+/**
+ * Get the stored workspace root for lazy initialization
+ */
+export function getStoredWorkspaceRoot(): string {
+    if (!storedWorkspaceRoot) {
+        throw new Error('Workspace root not set. Call startServer first.');
+    }
+    return storedWorkspaceRoot;
+}
 
 // ============================================================================
 // Server Lifecycle
@@ -85,11 +90,11 @@ export async function startServer(config: Config, workspaceRoot: string): Promis
     const correlationId = generateCorrelationId();
     console.error(`[${correlationId}] Starting MCP server...`);
 
-    // Initialize Artifact Service
-    console.error(`[${correlationId}]   Workspace root: ${workspaceRoot}`);
+    // Store workspace root for lazy artifact initialization
+    // Artifact service will be initialized on-demand when tools need it
+    storedWorkspaceRoot = workspaceRoot;
+    console.error(`[${correlationId}]   Workspace root: ${workspaceRoot} (stored for lazy init)`);
     console.error(`[${correlationId}]   Artifact root: ${config.artifactRoot}`);
-
-    await initializeArtifactService(workspaceRoot);
 
     // Create server instance
     server = new Server(

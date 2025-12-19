@@ -59,6 +59,11 @@ function shouldIgnore(name: string, relativePath: string, patterns: Set<string>)
     // Check always ignored
     if (ALWAYS_IGNORED.has(name)) return true;
 
+    // Skip problematic file extensions that can cause issues (like Electron .asar archives)
+    const SKIP_EXTENSIONS = ['.asar', '.exe', '.dll', '.so', '.dylib', '.bin', '.wasm'];
+    const ext = path.extname(name).toLowerCase();
+    if (SKIP_EXTENSIONS.includes(ext)) return true;
+
     // Check gitignore patterns
     for (const pattern of patterns) {
         // Exact name match
@@ -69,8 +74,8 @@ function shouldIgnore(name: string, relativePath: string, patterns: Set<string>)
 
         // Simple glob: *.ext
         if (pattern.startsWith('*.')) {
-            const ext = pattern.slice(1); // e.g., ".log"
-            if (name.endsWith(ext)) return true;
+            const extPattern = pattern.slice(1); // e.g., ".log"
+            if (name.endsWith(extPattern)) return true;
         }
 
         // Pattern ends with /* (match directory contents)
