@@ -67,9 +67,9 @@ describe('Artifact Service', async () => {
         assert.strictEqual(srcA.length, 2);
     });
 
-    // Skipped: Flaky in temporary directory environment where tree-sitter bindings 
-    // might not load correctly, but verified manually via src/test/verify_mcp.ts
-    it('should ensure artifacts for a folder (generate from source)', async () => {
+    // DISABLED: ensureArtifacts is disabled in edge list migration
+    // Legacy test kept for reference when lazy loading is implemented
+    it.skip('should ensure artifacts for a folder (generate from source) - LEGACY', async () => {
         // Create dummy source file
         const folder = path.join(testRoot, 'src', 'code');
         await fs.mkdir(folder, { recursive: true });
@@ -89,7 +89,13 @@ describe('Artifact Service', async () => {
         assert.ok(jsonContent.entities.some((e: any) => e.name === 'main'), 'Should find main function');
     });
 
-    it('should save folder summary', async () => {
+    it('ensureArtifacts returns empty when disabled', async () => {
+        const result = await ensureArtifacts('src/code');
+        assert.strictEqual(result.length, 0, 'Should return empty array when disabled');
+    });
+
+    // DISABLED: saveFolderSummary is disabled in edge list migration
+    it.skip('should save folder summary - LEGACY', async () => {
         const folder = 'src/domain';
         const summary = '# Domain Summary';
 
@@ -99,6 +105,12 @@ describe('Artifact Service', async () => {
 
         const content = await fs.readFile(metadata.artifactPath, 'utf-8');
         assert.strictEqual(content, summary);
+    });
+
+    it('saveFolderSummary returns stub when disabled', async () => {
+        const metadata = await saveFolderSummary('src/domain', '# Summary');
+        assert.strictEqual(metadata.type, 'folder_summary');
+        assert.strictEqual(metadata.artifactPath, '', 'Should return empty path when disabled');
     });
 
     it('should delete an artifact', async () => {

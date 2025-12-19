@@ -3,12 +3,12 @@
  * 
  * Generates human-readable markdown documentation for source files
  * with function signatures and call relationships.
+ * 
+ * NOTE: The graph-based functions have been disabled pending edge list integration.
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { buildGraphs } from '../graph';
-import { readArtifacts, ArtifactBundle } from '../graph/artifact/reader';
 import { buildReverseCallIndex } from './reverse-index';
 import { extractFileInfo } from './extractor';
 import { renderFileInfoMarkdown } from './renderer';
@@ -20,6 +20,7 @@ export { extractFileInfo } from './extractor';
 export { renderFileInfoMarkdown } from './renderer';
 export { buildReverseCallIndex } from './reverse-index';
 export * from './mcp';
+export * from './filter';
 
 /**
  * Generate file info markdown for a single file
@@ -53,61 +54,5 @@ export function getInfoOutputPath(rootDir: string, fileId: string): string {
     return path.join(rootDir, '.artifacts', normalizedPath, fileName + '.md');
 }
 
-/**
- * Generate file info markdown for all files in a directory
- * 
- * @param rootDir The workspace root directory
- * @param artifactsDir Optional custom artifacts directory (defaults to rootDir/.artifacts)
- * @returns Map of file paths to their generated markdown
- */
-export async function generateAllFileInfo(
-    rootDir: string,
-    artifactsDir?: string
-): Promise<Map<string, string>> {
-    const results = new Map<string, string>();
-
-    // Build graphs to get call relationships
-    const { callGraph } = await buildGraphs(artifactsDir || path.join(rootDir, '.artifacts'));
-
-    // Read all artifacts
-    const artifacts = readArtifacts(artifactsDir || path.join(rootDir, '.artifacts'));
-
-    // Build reverse call index
-    const reverseIndex = buildReverseCallIndex(callGraph);
-
-    // Generate info for each file
-    for (const { fileId, artifact } of artifacts) {
-        const markdown = generateSingleFileInfo(fileId, artifact, reverseIndex);
-        results.set(fileId, markdown);
-    }
-
-    return results;
-}
-
-/**
- * Generate and save file info markdown for all files
- * 
- * @param rootDir The workspace root directory
- * @returns List of generated file paths
- */
-export async function generateAndSaveAllFileInfo(rootDir: string): Promise<string[]> {
-    const artifactsDir = path.join(rootDir, '.artifacts');
-    const results = await generateAllFileInfo(rootDir, artifactsDir);
-    const savedPaths: string[] = [];
-
-    for (const [fileId, markdown] of results) {
-        const outputPath = getInfoOutputPath(rootDir, fileId);
-
-        // Ensure directory exists
-        const dir = path.dirname(outputPath);
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
-        }
-
-        // Write markdown file
-        fs.writeFileSync(outputPath, markdown, 'utf-8');
-        savedPaths.push(outputPath);
-    }
-
-    return savedPaths;
-}
+// NOTE: generateAllFileInfo and generateAndSaveAllFileInfo have been disabled
+// pending edge list integration. They relied on legacy artifact reading.

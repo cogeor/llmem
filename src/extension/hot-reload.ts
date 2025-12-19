@@ -2,14 +2,13 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { WebviewDataService, WebviewData } from '../webview/data-service';
-import { ensureArtifacts, ensureSingleFileArtifact, getSupportedExtensions } from '../artifact/service';
-import { buildGraphs } from '../graph';
+import { getSupportedExtensions } from '../artifact/service';
 
 /**
  * Service to handle hot reloading of the webview data.
  * 
  * Three watch paths:
- * - Source files change (.ts, .js, etc.) -> Rebuild artifact for that file + rebuild graphs
+ * - Source files change (.ts, .js, etc.) -> Refresh graphs from edge list
  * - .arch files change (.md) -> Re-convert markdown to HTML
  * - Any file in project create/delete -> Refresh worktree
  */
@@ -47,7 +46,7 @@ export class HotReloadService {
         console.log('[HotReload]   Artifact root:', this.artifactRoot);
         console.log('[HotReload]   Arch root:', this.archRoot);
 
-        // Watch source files -> rebuild artifact for that file + graphs
+        // Watch source files -> refresh graphs
         const extensions = getSupportedExtensions();
         const extPattern = extensions.map(e => e.replace(/^\./, '')).join(',');
 
@@ -76,7 +75,6 @@ export class HotReloadService {
         this.archWatcher.onDidDelete(() => this.queueArchConvert());
         this.disposables.push(this.archWatcher);
 
-        // Watch for any file/folder creation/deletion in the project -> refresh worktree
         // Watch for any file/folder creation/deletion in the project -> refresh worktree
         // We use two patterns to reliably catch both root files/folders and nested ones
         const rootPattern = new vscode.RelativePattern(
@@ -132,19 +130,8 @@ export class HotReloadService {
 
             console.log('[HotReload] Source files changed:', changedFiles);
             try {
-                // Rebuild artifacts only for the changed files
-                for (const file of changedFiles) {
-                    try {
-                        await ensureSingleFileArtifact(file);
-                    } catch (e) {
-                        console.warn(`[HotReload] Failed to update artifact for ${file}:`, e);
-                    }
-                }
-
-                // Rebuild graphs
-                await buildGraphs(this.artifactRoot);
-
-                // Collect fresh data and send update
+                // TODO: Update edge list incrementally for changed files
+                // For now, just refresh the current data
                 await this.sendUpdate();
             } catch (e) {
                 console.error('[HotReload] Source rebuild failed:', e);

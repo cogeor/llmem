@@ -3,7 +3,6 @@ import * as path from 'path';
 import { HotReloadService } from './hot-reload';
 import { getConfig } from './config';
 import { WebviewDataService } from '../webview/data-service';
-import { initializeArtifactService } from '../artifact/service';
 
 /**
  * Manages the LLMem Webview Panel
@@ -148,15 +147,7 @@ export class LLMemPanel {
         const config = getConfig();
         const artifactRoot = path.join(workspaceRoot, config.artifactRoot);
 
-        // Initialize artifact service (safe to call multiple times)
-        try {
-            console.log('[LLMemPanel] Initializing artifact service...');
-            await initializeArtifactService(workspaceRoot);
-            console.log('[LLMemPanel] Artifact service initialized');
-        } catch (error) {
-            console.error('[LLMemPanel] Failed to initialize artifact service:', error);
-            // Continue anyway - will show empty data but won't crash
-        }
+        console.log('[LLMemPanel] Using edge list approach (no artifact service needed)');
 
         // Start hot reload service
         this._hotReload = new HotReloadService(
@@ -181,7 +172,12 @@ export class LLMemPanel {
                 type: 'data:init',
                 data: data
             });
-            console.log('[LLMemPanel] Initial data sent');
+            console.log('[LLMemPanel] Initial data sent:', {
+                importNodes: data.graphData.importGraph.nodes.length,
+                importEdges: data.graphData.importGraph.edges.length,
+                callNodes: data.graphData.callGraph.nodes.length,
+                callEdges: data.graphData.callGraph.edges.length
+            });
         } catch (e) {
             console.error('[LLMemPanel] Initial data load failed:', e);
             this._panel.webview.postMessage({

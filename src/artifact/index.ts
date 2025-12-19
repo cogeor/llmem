@@ -32,7 +32,9 @@ export class ArtifactIndex {
     }
 
     async save(): Promise<void> {
-        await writeFile(this.indexPath, JSON.stringify(this.records, null, 2));
+        // DISABLED: Artifact system deprecated, using edge list
+        console.log('[ArtifactIndex] save() disabled - using edge list instead');
+        return;
     }
 
     addRecord(record: ArtifactMetadata): void {
