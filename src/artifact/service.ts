@@ -63,12 +63,17 @@ function parseGitignore(rootPath: string): Set<string> {
 function shouldIgnore(name: string, relativePath: string): boolean {
     if (ALWAYS_IGNORED.has(name)) return true;
 
+    // Skip problematic file extensions that can cause issues (like Electron .asar archives)
+    const SKIP_EXTENSIONS = ['.asar', '.exe', '.dll', '.so', '.dylib', '.bin', '.wasm'];
+    const ext = path.extname(name).toLowerCase();
+    if (SKIP_EXTENSIONS.includes(ext)) return true;
+
     for (const pattern of gitignorePatterns) {
         if (pattern === name) return true;
         if (relativePath === pattern || relativePath.startsWith(pattern + '/')) return true;
         if (pattern.startsWith('*.')) {
-            const ext = pattern.slice(1);
-            if (name.endsWith(ext)) return true;
+            const extPattern = pattern.slice(1);
+            if (name.endsWith(extPattern)) return true;
         }
     }
 
@@ -76,6 +81,18 @@ function shouldIgnore(name: string, relativePath: string): boolean {
 }
 
 export async function initializeArtifactService(root: string) {
+    // Already initialized for this workspace - no-op
+    if (isInitialized && workspaceRoot === root) {
+        console.log('[ArtifactService] Already initialized for this workspace');
+        return;
+    }
+
+    // Switching workspaces - reinitialize
+    if (isInitialized && workspaceRoot !== root) {
+        console.log(`[ArtifactService] Switching workspace from ${workspaceRoot} to ${root}`);
+        isInitialized = false;
+    }
+
     workspaceRoot = root;
     index = new ArtifactIndex(workspaceRoot);
     tree = new ArtifactTreeManager();
@@ -119,7 +136,10 @@ export function getWorkspaceRoot(): string {
 }
 
 export function getSupportedExtensions(): string[] {
-    checkInitialized();
+    // Return default extensions if not initialized (for hot reload before full init)
+    if (!isInitialized) {
+        return ['.ts', '.tsx', '.js', '.jsx'];
+    }
     return registry.getSupportedExtensions();
 }
 
@@ -127,6 +147,14 @@ function checkInitialized() {
     if (!isInitialized) {
         throw new Error('Artifact service not initialized. Call initializeArtifactService() first.');
     }
+}
+
+/**
+ * Check if the artifact service is initialized.
+ * Used for lazy initialization pattern.
+ */
+export function isArtifactServiceInitialized(): boolean {
+    return isInitialized;
 }
 
 export async function createArtifact(sourcePath: string, type: string, content: string): Promise<ArtifactMetadata> {

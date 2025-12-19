@@ -54,7 +54,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     });
     context.subscriptions.push(openPanelCommand);
 
-    // Start MCP server (placeholder - will be implemented in Part 2)
+    // Start MCP server (uses lazy artifact initialization - no file scanning at startup)
     try {
         await startMcpServer(config);
 

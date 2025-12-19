@@ -3,6 +3,7 @@ import * as path from 'path';
 import { HotReloadService } from './hot-reload';
 import { getConfig } from './config';
 import { WebviewDataService } from '../webview/data-service';
+import { initializeArtifactService } from '../artifact/service';
 
 /**
  * Manages the LLMem Webview Panel
@@ -146,6 +147,16 @@ export class LLMemPanel {
 
         const config = getConfig();
         const artifactRoot = path.join(workspaceRoot, config.artifactRoot);
+
+        // Initialize artifact service (safe to call multiple times)
+        try {
+            console.log('[LLMemPanel] Initializing artifact service...');
+            await initializeArtifactService(workspaceRoot);
+            console.log('[LLMemPanel] Artifact service initialized');
+        } catch (error) {
+            console.error('[LLMemPanel] Failed to initialize artifact service:', error);
+            // Continue anyway - will show empty data but won't crash
+        }
 
         // Start hot reload service
         this._hotReload = new HotReloadService(
