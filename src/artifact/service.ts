@@ -158,31 +158,17 @@ export function isArtifactServiceInitialized(): boolean {
 }
 
 export async function createArtifact(sourcePath: string, type: string, content: string): Promise<ArtifactMetadata> {
-    checkInitialized();
+    // DISABLED: Artifact system deprecated, using edge list
+    console.log('[ArtifactService] createArtifact disabled - using edge list instead');
 
-    // Generate paths
-    const filePath = artifactFilePath(workspaceRoot, sourcePath, type);
-
-    // Create metadata
-    const metadata: ArtifactMetadata = {
+    // Return dummy metadata without writing any files
+    return {
         id: crypto.randomUUID(),
         sourcePath: sourcePath,
-        artifactPath: filePath,
+        artifactPath: '',
         type: type,
         createdAt: new Date().toISOString()
     };
-
-    // Write file
-    await writeFile(filePath, content);
-
-    // Update index
-    index.addRecord(metadata);
-    await index.save();
-
-    // Update tree
-    tree.build(index.getAll());
-
-    return metadata;
 }
 
 /**
@@ -190,6 +176,11 @@ export async function createArtifact(sourcePath: string, type: string, content: 
  * Used by hot reload for incremental updates.
  */
 export async function ensureSingleFileArtifact(filePath: string): Promise<ArtifactRecord | null> {
+    // DISABLED: Legacy artifact system deprecated, using edge list instead
+    console.log('[ArtifactService] ensureSingleFileArtifact disabled - using edge list');
+    return null;
+
+    /* Legacy code preserved for future lazy loading:
     checkInitialized();
 
     // Normalize to relative path
@@ -249,6 +240,7 @@ export async function ensureSingleFileArtifact(filePath: string): Promise<Artifa
         metadata: record,
         content: finalContent
     };
+    */
 }
 
 /**
@@ -257,6 +249,11 @@ export async function ensureSingleFileArtifact(filePath: string): Promise<Artifa
  * Returns the list of artifacts (content + metadata) for the folder.
  */
 export async function ensureArtifacts(folderPath: string, recursive: boolean = false): Promise<ArtifactRecord[]> {
+    // DISABLED: Legacy artifact system deprecated, using edge list instead
+    console.log('[ArtifactService] ensureArtifacts disabled - using edge list');
+    return [];
+
+    /* Legacy code preserved for future lazy loading:
     checkInitialized();
 
     const absFolderPath = path.isAbsolute(folderPath) ? folderPath : path.join(workspaceRoot, folderPath);
@@ -328,12 +325,24 @@ export async function ensureArtifacts(folderPath: string, recursive: boolean = f
     }
 
     return records;
+    */
 }
 
 /**
  * Saves a summary for a folder.
  */
 export async function saveFolderSummary(folderPath: string, summary: string): Promise<ArtifactMetadata> {
+    // DISABLED: Legacy artifact system deprecated, using edge list instead
+    console.log('[ArtifactService] saveFolderSummary disabled - using edge list');
+    return {
+        id: '',
+        sourcePath: folderPath,
+        artifactPath: '',
+        type: 'folder_summary',
+        createdAt: new Date().toISOString()
+    };
+
+    /* Legacy code preserved for future lazy loading:
     checkInitialized();
 
     const absFolderPath = path.isAbsolute(folderPath) ? folderPath : path.join(workspaceRoot, folderPath);
@@ -352,12 +361,18 @@ export async function saveFolderSummary(folderPath: string, summary: string): Pr
     await index.save();
 
     return metadata;
+    */
 }
 
 /**
  * Saves multiple folder summaries at once.
  */
 export async function saveModuleSummaries(summaries: Record<string, string>): Promise<ArtifactMetadata[]> {
+    // DISABLED: Legacy artifact system deprecated, using edge list instead
+    console.log('[ArtifactService] saveModuleSummaries disabled - using edge list');
+    return [];
+
+    /* Legacy code preserved for future lazy loading:
     checkInitialized();
 
     const results: ArtifactMetadata[] = [];
@@ -372,6 +387,7 @@ export async function saveModuleSummaries(summaries: Record<string, string>): Pr
     }
 
     return results;
+    */
 }
 
 export async function listArtifacts(filter?: { sourcePath?: string; type?: string }): Promise<ArtifactMetadata[]> {

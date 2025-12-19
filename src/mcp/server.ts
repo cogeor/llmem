@@ -225,6 +225,9 @@ export function getServerConfig(): Config | null {
  * Main entry point for standalone execution (when run via `node dist/mcp/server.js`)
  * 
  * Uses default configuration when not started from the extension.
+ * Workspace root is determined from:
+ * 1. LLMEM_WORKSPACE environment variable (set by host)
+ * 2. Current working directory
  */
 async function main(): Promise<void> {
     // Default config for standalone mode
@@ -234,8 +237,12 @@ async function main(): Promise<void> {
         maxFileSizeKB: 512,
     };
 
+    // Get workspace root from env var or cwd
+    const workspaceRoot = process.env.LLMEM_WORKSPACE || process.cwd();
+    console.error(`[MCP] Standalone mode - workspace root: ${workspaceRoot}`);
+
     try {
-        await startServer(defaultConfig, process.cwd());
+        await startServer(defaultConfig, workspaceRoot);
     } catch (error) {
         console.error('Failed to start MCP server:', error);
         process.exit(1);

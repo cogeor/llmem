@@ -1,5 +1,6 @@
 
-import { prepareWebviewData } from '../graph/webview-data';
+import { prepareWebviewDataFromEdgeList } from '../graph/webview-data';
+import { EdgeListStore } from '../graph/edgelist';
 import { generateStaticWebview, GeneratorOptions } from '../webview/generator';
 import { loadConfig, getConfig } from '../extension/config';
 import * as path from 'path';
@@ -29,8 +30,14 @@ async function run() {
         const root = process.cwd();
         const artifactDir = path.join(root, config.artifactRoot);
 
-        console.log(`Building graphs from: ${artifactDir}`);
-        const graphData = await prepareWebviewData(artifactDir);
+        console.log(`Loading edge list from: ${artifactDir}`);
+        const edgeListStore = new EdgeListStore(artifactDir);
+        await edgeListStore.load();
+
+        const stats = edgeListStore.getStats();
+        console.log(`Edge list: ${stats.nodes} nodes, ${stats.edges} edges`);
+
+        const graphData = prepareWebviewDataFromEdgeList(edgeListStore.getData());
 
         console.log(`Import Nodes: ${graphData.importGraph.nodes.length}`);
         console.log(`Call Nodes: ${graphData.callGraph.nodes.length}`);

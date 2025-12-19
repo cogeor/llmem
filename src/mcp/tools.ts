@@ -2,11 +2,13 @@
  * MCP Tool Definitions and Handlers
  * 
  * Defines the tools exposed via MCP protocol.
- * Logic is delegated to src/info/mcp.ts for file_info.
+ * 
+ * NOTE: file_info and report_file_info are currently disabled pending edge list integration.
  */
 
 import { z } from 'zod';
 import * as path from 'path';
+import * as fs from 'fs';
 import {
     McpResponse,
     validateRequest,
@@ -18,36 +20,58 @@ import {
     logResponse,
 } from './handlers';
 import { getStoredWorkspaceRoot } from './server';
-import {
-    initializeArtifactService,
-    isArtifactServiceInitialized,
-    getWorkspaceRoot,
-} from '../artifact/service';
-import { readFile } from '../artifact/storage';
 import { getConfig } from '../extension/config';
 import { generateStaticWebview } from '../webview/generator';
-import { prepareWebviewData } from '../graph/webview-data';
-import {
-    getFileInfoForMcp,
-    buildEnrichmentPrompt,
-    saveEnrichedFileInfo,
-    EnrichedFileData,
-} from '../info';
+import { prepareWebviewDataFromEdgeList } from '../graph/webview-data';
+import { EdgeListStore } from '../graph/edgelist';
 
 // ============================================================================
-// Lazy Initialization Helper
+// Project Root Detection
 // ============================================================================
+
+const PROJECT_MARKERS = ['.artifacts'];
 
 /**
- * Ensure the artifact service is initialized.
- * Lazily initializes on first tool call that needs it.
+ * Find project root by walking up from startDir looking for .artifacts folder
  */
-async function ensureArtifactServiceInitialized(): Promise<void> {
-    if (!isArtifactServiceInitialized()) {
-        const workspaceRoot = getStoredWorkspaceRoot();
-        console.error(`[MCP Tools] Lazy-initializing artifact service for: ${workspaceRoot}`);
-        await initializeArtifactService(workspaceRoot);
+function findProjectRoot(startDir: string): string | null {
+    let current = path.resolve(startDir);
+    const root = path.parse(current).root;
+
+    while (current !== root) {
+        if (fs.existsSync(path.join(current, '.artifacts'))) {
+            return current;
+        }
+        current = path.dirname(current);
     }
+    return null;
+}
+
+/**
+ * Get effective workspace root - tries multiple strategies
+ */
+function getEffectiveWorkspaceRoot(): string {
+    // 1. Try stored workspace root (from extension)
+    try {
+        return getStoredWorkspaceRoot();
+    } catch {
+        // Not set, continue
+    }
+
+    // 2. Try LLMEM_WORKSPACE env var
+    if (process.env.LLMEM_WORKSPACE) {
+        return process.env.LLMEM_WORKSPACE;
+    }
+
+    // 3. Find project root from cwd
+    const projectRoot = findProjectRoot(process.cwd());
+    if (projectRoot) {
+        console.error(`[MCP] Auto-detected project root: ${projectRoot}`);
+        return projectRoot;
+    }
+
+    // 4. Fallback to cwd
+    return process.cwd();
 }
 
 // ============================================================================
@@ -84,23 +108,19 @@ export const OpenWindowSchema = z.object({
     viewColumn: z.number().optional().describe('View column to open in (1-3)'),
 });
 
-// Type inference
-export type FileInfoArgs = z.infer<typeof FileInfoSchema>;
-export type ReportFileInfoArgs = z.infer<typeof ReportFileInfoSchema>;
-export type InspectSourceArgs = z.infer<typeof InspectSourceSchema>;
-export type SetWorkspaceRootArgs = z.infer<typeof SetWorkspaceRootSchema>;
-export type OpenWindowArgs = z.infer<typeof OpenWindowSchema>;
-
 // ============================================================================
 // Tool Handlers
 // ============================================================================
 
 /**
- * Primary Entry Point: Get file info and prompt for LLM enrichment
+ * Get file info for semantic enrichment
+ * 
+ * Extracts file info and returns a prompt for the host LLM to generate
+ * a detailed design document.
  */
 export async function handleFileInfo(
     args: unknown
-): Promise<McpResponse<never>> {
+): Promise<McpResponse<unknown>> {
     const correlationId = generateCorrelationId();
     logRequest(correlationId, 'file_info', args);
 
@@ -111,23 +131,29 @@ export async function handleFileInfo(
         return response;
     }
 
-    const { path: filePath } = validation.data!;
+    const { path: relativePath } = validation.data!;
 
     try {
-        await ensureArtifactServiceInitialized();
-        const root = getWorkspaceRoot();
-        const data = await getFileInfoForMcp(root, filePath);
+        const root = getEffectiveWorkspaceRoot();
 
+        // Import MCP functions dynamically
+        const { getFileInfoForMcp, buildEnrichmentPrompt } = await import('../info/mcp');
+
+        // Get file info data
+        const data = await getFileInfoForMcp(root, relativePath);
+
+        // Build the enrichment prompt
         const prompt = buildEnrichmentPrompt(
             data.filePath,
             data.markdown,
             data.sourceCode
         );
 
+        // Return prompt_ready response for host LLM to process
         const response = formatPromptResponse(
             prompt,
             'report_file_info',
-            { path: data.filePath }
+            { path: relativePath }
         );
         logResponse(correlationId, response);
         return response;
@@ -140,7 +166,10 @@ export async function handleFileInfo(
 }
 
 /**
- * Callback: Receive LLM enrichment and save to disk
+ * Callback: Receive LLM enrichment and format as design document
+ * 
+ * Called by the host LLM after processing the file_info prompt.
+ * Returns the formatted design document.
  */
 export async function handleReportFileInfo(
     args: unknown
@@ -155,20 +184,76 @@ export async function handleReportFileInfo(
         return response;
     }
 
-    const enrichedData = validation.data! as EnrichedFileData;
+    const { path: filePath, overview, inputs, outputs, functions } = validation.data!;
 
     try {
-        await ensureArtifactServiceInitialized();
-        const root = getWorkspaceRoot();
+        // Format as design document
+        const lines: string[] = [];
 
-        // Re-fetch the original info for merging
-        const data = await getFileInfoForMcp(root, enrichedData.path);
+        lines.push(`# DESIGN DOCUMENT: ${filePath}`);
+        lines.push('');
+        lines.push('> **Instructions:** This document serves as a blueprint for implementing the source code. Review the specifications below before writing code.');
+        lines.push('');
+        lines.push('---');
+        lines.push('');
 
-        const savedPath = await saveEnrichedFileInfo(root, data.info, enrichedData);
+        lines.push('## FILE OVERVIEW');
+        lines.push('');
+        lines.push(overview);
+        lines.push('');
+
+        if (inputs) {
+            lines.push(`**Inputs:** ${inputs}`);
+            lines.push('');
+        }
+        if (outputs) {
+            lines.push(`**Outputs:** ${outputs}`);
+            lines.push('');
+        }
+
+        lines.push('---');
+        lines.push('');
+        lines.push('## FUNCTION SPECIFICATIONS');
+        lines.push('');
+
+        for (const func of functions) {
+            lines.push(`### \`${func.name}\``);
+            lines.push('');
+            lines.push(`**Purpose:** ${func.purpose}`);
+            lines.push('');
+            lines.push('**Implementation:**');
+            lines.push('');
+            lines.push(func.implementation);
+            lines.push('');
+        }
+
+        const designDoc = lines.join('\n');
+
+        // Save to .arch/<path>/<file>.md
+        const root = getEffectiveWorkspaceRoot();
+
+        // Construct path: .arch/src/path/file.ext.md
+        // Note: We use .md extension instead of .artifact for better readability
+        const relativePath = filePath.startsWith(root)
+            ? path.relative(root, filePath)
+            : filePath;
+
+        const artifactPath = path.join(root, '.arch', `${relativePath}.md`);
+
+        // Ensure directory exists
+        const artifactDir = path.dirname(artifactPath);
+        if (!fs.existsSync(artifactDir)) {
+            fs.mkdirSync(artifactDir, { recursive: true });
+        }
+
+        // Write the design document
+        fs.writeFileSync(artifactPath, designDoc, 'utf-8');
+        console.error(`[report_file_info] Saved to ${artifactPath}`);
 
         const response = formatSuccess({
-            message: `Enriched documentation saved`,
-            path: savedPath
+            message: 'Design document generated and saved',
+            artifactPath: artifactPath,
+            designDocument: designDoc
         });
         logResponse(correlationId, response);
         return response;
@@ -199,43 +284,42 @@ export async function handleInspectSource(
     const { path: relativePath, startLine, endLine } = validation.data!;
 
     try {
-        let root = process.cwd();
-        try {
-            root = getWorkspaceRoot();
-        } catch (e) {
-            // fallback to cwd
-        }
-
+        const root = getStoredWorkspaceRoot();
         const fullPath = path.join(root, relativePath);
 
-        const content = await readFile(fullPath);
-        if (content === null) {
+        if (!fs.existsSync(fullPath)) {
             const response = formatError(`File not found: ${relativePath}`);
             logResponse(correlationId, response);
             return response;
         }
 
+        const content = fs.readFileSync(fullPath, 'utf-8');
         const lines = content.split('\n');
-        if (startLine < 1 || endLine > lines.length || startLine > endLine) {
-            const response = formatError(`Invalid line range: ${startLine}-${endLine}. File has ${lines.length} lines.`);
+        const totalLines = lines.length;
+
+        if (startLine < 1 || endLine < startLine || startLine > totalLines) {
+            const response = formatError(`Invalid line range: ${startLine}-${endLine} (file has ${totalLines} lines)`);
             logResponse(correlationId, response);
             return response;
         }
 
-        const snippet = lines.slice(startLine - 1, endLine).join('\n');
+        const safeEnd = Math.min(endLine, totalLines);
+        const selectedLines = lines.slice(startLine - 1, safeEnd);
+        const snippet = selectedLines.join('\n');
 
         const response = formatSuccess(snippet);
         logResponse(correlationId, response);
         return response;
+
     } catch (error) {
-        const response = formatError(String(error));
+        const response = formatError(error instanceof Error ? error.message : String(error));
         logResponse(correlationId, response);
         return response;
     }
 }
 
 /**
- * Set the workspace root dynamically (for standalone debugging).
+ * Set the workspace root dynamically - DISABLED (not needed with new architecture)
  */
 export async function handleSetWorkspaceRoot(
     args: unknown
@@ -243,27 +327,9 @@ export async function handleSetWorkspaceRoot(
     const correlationId = generateCorrelationId();
     logRequest(correlationId, 'set_workspace_root', args);
 
-    const validation = validateRequest(SetWorkspaceRootSchema, args);
-    if (!validation.success) {
-        const response = formatError(validation.error!);
-        logResponse(correlationId, response);
-        return response;
-    }
-
-    const { root } = validation.data!;
-
-    try {
-        await initializeArtifactService(root);
-        const response = formatSuccess({
-            message: `Workspace root set to: ${root}`
-        });
-        logResponse(correlationId, response);
-        return response;
-    } catch (error) {
-        const response = formatError(error instanceof Error ? error.message : String(error));
-        logResponse(correlationId, response);
-        return response;
-    }
+    const response = formatError('set_workspace_root is disabled - workspace root is now derived from extension context');
+    logResponse(correlationId, response);
+    return response;
 }
 
 /**
@@ -283,8 +349,7 @@ export async function handleOpenWindow(
     }
 
     try {
-        await ensureArtifactServiceInitialized();
-        const root = getWorkspaceRoot();
+        const root = getStoredWorkspaceRoot();
 
         let safeConfig = { artifactRoot: '.artifacts', maxFilesPerFolder: 20, maxFileSizeKB: 512 };
         try {
@@ -295,8 +360,10 @@ export async function handleOpenWindow(
 
         const artifactDir = path.join(root, safeConfig.artifactRoot);
 
-        // Build Graphs
-        const graphData = await prepareWebviewData(artifactDir);
+        // Load edge list and build graphs
+        const edgeListStore = new EdgeListStore(artifactDir);
+        await edgeListStore.load();
+        const graphData = prepareWebviewDataFromEdgeList(edgeListStore.getData());
 
         // Generate Webview
         const webviewDir = path.join(artifactDir, 'webview');
@@ -313,25 +380,17 @@ export async function handleOpenWindow(
         return response;
 
     } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
-        const response = formatError(`Failed to generate webview: ${msg}`);
+        const response = formatError(error instanceof Error ? error.message : String(error));
         logResponse(correlationId, response);
         return response;
     }
 }
 
 // ============================================================================
-// Tool Registry
+// Tool Definitions for Registration
 // ============================================================================
 
-export interface ToolDefinition {
-    name: string;
-    description: string;
-    schema: z.ZodSchema;
-    handler: (args: unknown) => Promise<McpResponse<unknown>>;
-}
-
-export const TOOLS: ToolDefinition[] = [
+export const toolDefinitions = [
     {
         name: 'file_info',
         description: 'Get semantic documentation for a source file. Returns structural info and prompts for LLM enrichment.',
@@ -363,3 +422,13 @@ export const TOOLS: ToolDefinition[] = [
         handler: handleOpenWindow,
     },
 ];
+
+// Export schemas for external use
+export type FileInfoInput = z.infer<typeof FileInfoSchema>;
+export type ReportFileInfoInput = z.infer<typeof ReportFileInfoSchema>;
+export type InspectSourceInput = z.infer<typeof InspectSourceSchema>;
+export type SetWorkspaceRootInput = z.infer<typeof SetWorkspaceRootSchema>;
+export type OpenWindowInput = z.infer<typeof OpenWindowSchema>;
+
+// Alias for backwards compatibility
+export const TOOLS = toolDefinitions;

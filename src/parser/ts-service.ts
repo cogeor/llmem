@@ -52,13 +52,14 @@ export class TypeScriptService {
     }
 
     /**
-     * Load compiler options from tsconfig.json without using ts.sys for file discovery.
-     * Only reads the config file itself, doesn't walk directories.
+     * Load compiler options from tsconfig.json using TypeScript's proper config parsing.
+     * This correctly handles enum values like moduleResolution, jsx, etc.
      */
     private loadCompilerOptions(): ts.CompilerOptions {
         const defaultOptions: ts.CompilerOptions = {
             target: ts.ScriptTarget.ES2020,
             module: ts.ModuleKind.CommonJS,
+            moduleResolution: ts.ModuleResolutionKind.NodeJs,
             allowJs: true,
             esModuleInterop: true,
             skipLibCheck: true
@@ -68,29 +69,56 @@ export class TypeScriptService {
 
         try {
             if (!fs.existsSync(tsconfigPath)) {
+                console.log('[TypeScriptService] No tsconfig.json found, using defaults');
                 return defaultOptions;
             }
 
-            const configContent = fs.readFileSync(tsconfigPath, 'utf8');
-            const configJson = JSON.parse(configContent);
+            // Use TypeScript's built-in config parsing (handles enum conversions)
+            const configFile = ts.readConfigFile(tsconfigPath, (filePath) =>
+                fs.readFileSync(filePath, 'utf8')
+            );
 
-            // Extract compilerOptions only, don't process includes/excludes
-            if (configJson.compilerOptions) {
-                // Convert string values to TypeScript enums where needed
-                const opts = configJson.compilerOptions;
-                return {
-                    ...defaultOptions,
-                    ...opts,
-                    // Ensure critical options are set correctly
-                    target: this.parseTarget(opts.target) ?? defaultOptions.target,
-                    module: this.parseModule(opts.module) ?? defaultOptions.module,
-                };
+            if (configFile.error) {
+                console.warn('[TypeScriptService] Error reading tsconfig.json:',
+                    ts.flattenDiagnosticMessageText(configFile.error.messageText, '\n'));
+                return defaultOptions;
             }
+
+            // Parse the config content - this converts strings to proper enum values
+            const parsed = ts.parseJsonConfigFileContent(
+                configFile.config,
+                {
+                    readFile: (filePath) => fs.readFileSync(filePath, 'utf8'),
+                    readDirectory: () => [], // We don't want TS to discover files
+                    useCaseSensitiveFileNames: true,
+                    fileExists: (filePath) => fs.existsSync(filePath),
+                    getCurrentDirectory: () => this.workspaceRoot
+                },
+                this.workspaceRoot
+            );
+
+            // Filter out the harmless "No inputs were found" warning (we do our own file discovery)
+            const realErrors = parsed.errors.filter(e => {
+                const msg = ts.flattenDiagnosticMessageText(e.messageText, '');
+                return !msg.includes('No inputs were found');
+            });
+
+            if (realErrors.length > 0) {
+                console.warn('[TypeScriptService] tsconfig.json parse errors:',
+                    realErrors.map(e => ts.flattenDiagnosticMessageText(e.messageText, '\n')).join('; '));
+            }
+
+            // Merge with defaults to ensure critical options are set
+            return {
+                ...defaultOptions,
+                ...parsed.options,
+                // Always skip lib check for performance
+                skipLibCheck: true
+            };
         } catch (e) {
             console.warn('[TypeScriptService] Failed to load tsconfig.json:', e);
+            return defaultOptions;
         }
-
-        return defaultOptions;
     }
 
     private parseTarget(target: string | undefined): ts.ScriptTarget | undefined {

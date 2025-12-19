@@ -1,6 +1,13 @@
+/**
+ * Prepares graph data for the visualization webview.
+ * 
+ * Legacy artifact-based preparation has been removed.
+ * Use prepareWebviewDataFromEdgeList() instead.
+ */
 
-import { buildGraphs } from './index';
+import { buildGraphsFromEdgeList } from './index';
 import { ColorGenerator } from './utils';
+import { EdgeListData } from './edgelist';
 
 export interface VisNode {
     id: string;
@@ -27,12 +34,15 @@ export interface WebviewGraphData {
     callGraph: VisData;
 }
 
-export async function prepareWebviewData(artifactDir: string): Promise<WebviewGraphData> {
-    // 1. Build Graphs
-    const { importGraph, callGraph } = await buildGraphs(artifactDir);
+/**
+ * Prepare webview data from edge list.
+ * No disk I/O for artifacts.
+ */
+export function prepareWebviewDataFromEdgeList(data: EdgeListData): WebviewGraphData {
+    const { importGraph, callGraph } = buildGraphsFromEdgeList(data);
     const colorGen = new ColorGenerator();
 
-    // 2. Prepare Import Graph
+    // Prepare Import Graph
     const importNodesRaw = Array.from(importGraph.nodes.values());
     const importColors = colorGen.generateColors(importNodesRaw);
 
@@ -49,17 +59,13 @@ export async function prepareWebviewData(artifactDir: string): Promise<WebviewGr
         to: e.target
     }));
 
-    // 3. Prepare Call Graph
+    // Prepare Call Graph
     const callNodesRaw = Array.from(callGraph.nodes.values());
-    // Use the same color generator instance? Or new one? 
-    // Ideally consistent colors if nodes are shared. 
-    // But call graph nodes might be diff (functions vs files).
-    // Let's generate fresh colors for now based on their own hierarchy.
     const callColors = colorGen.generateColors(callNodesRaw);
 
     const callNodes: VisNode[] = callNodesRaw.map((n: any) => ({
         id: n.id,
-        label: n.name || n.label || n.id, // Ensure label exists
+        label: n.label || n.id,
         group: 'function',
         title: n.id,
         color: callColors.get(n.id),

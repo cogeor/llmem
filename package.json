@@ -39,8 +39,12 @@
     "build:webview": "npx ts-node src/scripts/build_webview.ts",
     "build": "npm run compile && npm run build:webview",
     "prepackage": "npm run build",
+    "scan": "npx ts-node src/scripts/generate_edgelist.ts",
     "view": "npx ts-node src/scripts/generate_webview.ts",
     "view:graph": "npx ts-node src/scripts/generate_webview.ts --graph-only",
+    "file-info": "npx ts-node src/info/cli.ts",
+    "file-info:sig": "npx ts-node src/info/cli.ts --signatures",
+    "file-info:semantic": "npx ts-node src/info/cli.ts --semantic",
     "package": "vsce package"
   },
   "devDependencies": {

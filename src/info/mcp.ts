@@ -3,12 +3,12 @@
  * 
  * Contains all MCP-related logic for file_info tool.
  * The MCP module (src/mcp/tools.ts) calls into these functions.
+ * 
+ * NOTE: getFileInfoForMcp has been disabled pending edge list integration.
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { buildGraphs } from '../graph';
-import { readArtifacts } from '../graph/artifact/reader';
 import { readFile } from '../artifact/storage';
 import { getWorkspaceRoot } from '../artifact/service';
 import { buildReverseCallIndex } from './reverse-index';
@@ -49,6 +49,9 @@ export interface FileInfoMcpData {
 /**
  * Get file info data for MCP tool
  * 
+ * Extracts file info using TypeScript service and converts to edge list format.
+ * Returns all data needed for LLM enrichment prompt.
+ * 
  * @param rootDir Workspace root directory
  * @param filePath Relative path to the file
  * @returns Data needed for MCP prompt
@@ -57,40 +60,104 @@ export async function getFileInfoForMcp(
     rootDir: string,
     filePath: string
 ): Promise<FileInfoMcpData> {
-    const artifactsDir = path.join(rootDir, '.artifacts');
+    const absolutePath = path.join(rootDir, filePath);
 
-    // Build graphs
-    const { callGraph } = await buildGraphs(artifactsDir);
-
-    // Read artifacts
-    const artifacts = readArtifacts(artifactsDir);
-
-    // Build reverse index
-    const reverseIndex = buildReverseCallIndex(callGraph);
-
-    // Find the artifact for this file
-    const normalizedPath = filePath.replace(/\\/g, '/');
-    const bundle = artifacts.find(a => {
-        const artifactPath = a.fileId.replace(/\\/g, '/');
-        return artifactPath === normalizedPath ||
-            artifactPath.endsWith('/' + normalizedPath) ||
-            normalizedPath.endsWith('/' + artifactPath);
-    });
-
-    if (!bundle) {
-        throw new Error(`No artifact found for file: ${filePath}`);
+    // Check file exists
+    if (!fs.existsSync(absolutePath)) {
+        throw new Error(`File not found: ${filePath}`);
     }
 
-    // Extract file info
-    const info = extractFileInfo(bundle.fileId, bundle.artifact, reverseIndex);
-    const markdown = renderFileInfoMarkdown(info);
-
     // Read source code
-    const fullPath = path.join(rootDir, filePath);
-    const sourceCode = await readFile(fullPath) || '';
+    const sourceCode = fs.readFileSync(absolutePath, 'utf-8');
+
+    // Initialize TypeScript service and extract artifact
+    const { TypeScriptService } = await import('../parser/ts-service');
+    const { TypeScriptExtractor } = await import('../parser/ts-extractor');
+    const { artifactToEdgeList } = await import('../graph/artifact-converter');
+    const { getImportEdges, getCallEdges, filterImportEdges } = await import('./filter');
+
+    const tsService = new TypeScriptService(rootDir);
+    const tsExtractor = new TypeScriptExtractor(() => tsService.getProgram(), rootDir);
+
+    const artifact = await tsExtractor.extract(absolutePath);
+    if (!artifact) {
+        throw new Error(`Failed to extract artifact from ${filePath}`);
+    }
+
+    // Convert to edge list
+    const { nodes, edges } = artifactToEdgeList(artifact, filePath);
+
+    // Build file info markdown (similar to CLI output)
+    const importEdges = filterImportEdges(getImportEdges(edges));
+    const callEdges = getCallEdges(edges);
+
+    // Build markdown representation
+    const lines: string[] = [];
+
+    lines.push('### IMPORTS');
+    if (importEdges.length === 0) {
+        lines.push('(none)');
+    } else {
+        for (const edge of importEdges) {
+            lines.push(`- → ${edge.target}`);
+        }
+    }
+    lines.push('');
+
+    lines.push('### ENTITIES');
+    const entityNodes = nodes.filter(n => n.kind !== 'file');
+    if (entityNodes.length === 0) {
+        lines.push('(none)');
+    } else {
+        for (const node of entityNodes) {
+            const entity = artifact.entities.find(e => e.name === node.name);
+            const exportMark = entity?.isExported ? ' [exported]' : '';
+            const sig = entity?.signature ? ` - \`${entity.signature}\`` : '';
+            lines.push(`- **${node.name}** (${node.kind})${exportMark}${sig}`);
+        }
+    }
+    lines.push('');
+
+    lines.push('### CALL EDGES');
+    const stdlibFunctions = new Set([
+        'push', 'pop', 'shift', 'unshift', 'splice', 'slice', 'concat',
+        'map', 'filter', 'reduce', 'forEach', 'find', 'findIndex', 'some', 'every',
+        'includes', 'indexOf', 'join', 'split', 'trim', 'replace', 'match',
+        'toString', 'valueOf', 'hasOwnProperty',
+        'get', 'set', 'has', 'delete', 'clear', 'add', 'keys', 'values', 'entries',
+        'next', 'done', 'then', 'catch', 'finally',
+        'log', 'error', 'warn', 'info', 'debug',
+        'Map', 'Set', 'Promise', 'Error', 'JSON', 'Object', 'Array'
+    ]);
+
+    const filteredCallEdges = callEdges.filter(edge => {
+        const targetName = edge.target.includes('::') ? edge.target.split('::').pop()! : edge.target;
+        return !stdlibFunctions.has(targetName);
+    });
+
+    if (filteredCallEdges.length === 0) {
+        lines.push('(none)');
+    } else {
+        for (const edge of filteredCallEdges) {
+            const sourceName = edge.source.includes('::') ? edge.source.split('::').pop()! : edge.source;
+            const targetFile = edge.target.includes('::') ? edge.target.split('::')[0] : edge.target;
+            const targetName = edge.target.includes('::') ? edge.target.split('::').pop()! : edge.target;
+
+            if (targetFile === filePath) {
+                lines.push(`- ${sourceName} → ${targetName}`);
+            } else {
+                lines.push(`- ${sourceName} → ${targetFile}:${targetName}`);
+            }
+        }
+    }
+
+    const markdown = lines.join('\n');
+
+    // Build FileInfo for compatibility
+    const info: FileInfo = extractFileInfo(filePath, artifact, new Map());
 
     return {
-        filePath: bundle.fileId,
+        filePath,
         markdown,
         info,
         sourceCode
@@ -100,8 +167,11 @@ export async function getFileInfoForMcp(
 /**
  * Build the enrichment prompt for the LLM
  * 
+ * Creates an extremely detailed prompt that produces documentation
+ * sufficient to reimplement the entire file from scratch.
+ * 
  * @param filePath File path
- * @param fileInfoMarkdown Structural info markdown
+ * @param fileInfoMarkdown Structural info markdown (imports, entities, call edges)
  * @param sourceCode Full source code of the file
  * @returns Prompt string for LLM
  */
@@ -110,43 +180,117 @@ export function buildEnrichmentPrompt(
     fileInfoMarkdown: string,
     sourceCode: string
 ): string {
-    return `You are a Code Documentation Assistant.
+    const lineCount = sourceCode.split('\n').length;
+    const language = filePath.endsWith('.ts') || filePath.endsWith('.tsx') ? 'typescript' :
+        filePath.endsWith('.py') ? 'python' : 'code';
 
-I have extracted structural information for file: "${filePath}"
+    return `# DESIGN DOCUMENT GENERATION TASK
 
-## Structural Info (functions, classes, callers):
+## LLM CONFIGURATION
+- **max_tokens:** 16000
+- **reasoning:** enabled - Use chain-of-thought reasoning. Think step by step before writing each section.
+- **temperature:** 0.3 (be precise and accurate)
+
+> **IMPORTANT:** This is a complex documentation task. Take your time to:
+> 1. First, read and understand the entire source code
+> 2. Identify all key relationships and dependencies
+> 3. Then systematically document each component
+> Do not rush. Quality and completeness are more important than speed.
+
+---
+
+You are a senior software architect creating a **Design Document** for a source file.
+The document must be detailed enough that another developer could **reimplement the entire file** from it.
+
+## FILE BEING DOCUMENTED
+- **Path:** \`${filePath}\`
+- **Language:** ${language}
+- **Lines:** ${lineCount}
+
+---
+
+## STRUCTURAL ANALYSIS (auto-extracted)
+
 ${fileInfoMarkdown}
 
-## Source Code:
-\`\`\`typescript
+---
+
+## SOURCE CODE
+
+\`\`\`${language}
 ${sourceCode}
 \`\`\`
 
-## Your Task:
+---
 
-1. Write an **Overview** of this file, be as complete as possible, but succinct: 
-   - What is its main purpose?
-   - What are its inputs and outputs?
-   - What other files depend on it or does it depend on?
+## YOUR TASK: Generate a Complete Design Document
 
-2. For EACH function/method listed above:
-   - Write a **Purpose** (1 sentence: what does it do?)
-   - Write an **Implementation Summary** (3-5 bullet points explaining HOW it works, detailed enough that someone could reimplement it)
+Create documentation with the following sections. Be **extremely detailed** - assume the reader cannot see the source code.
 
-3. When done, call the \`report_file_info\` tool with your analysis:
-   \`\`\`json
-   {
-     "path": "${filePath}",
-     "overview": "...",
-     "inputs": "...",
-     "outputs": "...",
-     "functions": [
-       { "name": "functionName", "purpose": "...", "implementation": "..." }
-     ]
-   }
-   \`\`\`
+### 1. FILE OVERVIEW
+- **Purpose:** What problem does this file solve? What is its role in the system?
+- **Dependencies:** What does it import and why? (both internal and external)
+- **Consumers:** Who uses this file? What API does it expose?
+- **Key Concepts:** What domain concepts or patterns does it implement?
 
-Focus on being accurate and complete. The goal is documentation detailed enough to reimplement each function.`;
+### 2. DATA STRUCTURES
+For each interface, type, class, or constant:
+- **Name and Purpose:** What data does it represent?
+- **Fields:** Each field with its type and meaning
+- **Invariants:** Any constraints or relationships between fields
+- **Usage Pattern:** How is this data typically created/used?
+
+### 3. FUNCTION SPECIFICATIONS
+For EACH function/method (this is critical):
+
+#### \`functionName(params): returnType\`
+- **Purpose:** One sentence describing what it does
+- **Parameters:** 
+  - Each parameter with type, meaning, and valid values
+- **Return Value:** What is returned and when
+- **Side Effects:** Any mutations, I/O, or state changes
+- **Algorithm (DETAILED):**
+  - Step-by-step breakdown of the implementation
+  - Include edge cases handled
+  - Include any branching logic
+  - Detail enough to reimplement without seeing code
+- **Dependencies:** What other functions/modules does it call?
+- **Error Handling:** What errors can occur and how are they handled?
+
+### 4. CONTROL FLOW
+- How do the functions interact?
+- What is the typical call sequence?
+- Draw the data flow through the module
+
+### 5. REIMPLEMENTATION NOTES
+- Tricky implementation details that might be missed
+- Performance considerations
+- Edge cases that must be handled
+- Assumptions made by the code
+
+---
+
+## OUTPUT FORMAT
+
+After your analysis, call the \`report_file_info\` tool with:
+
+\`\`\`json
+{
+  "path": "${filePath}",
+  "overview": "<detailed overview section as markdown>",
+  "inputs": "<what the file takes as input: imports, parameters, dependencies>",
+  "outputs": "<what the file produces: exports, side effects, return values>",
+  "functions": [
+    {
+      "name": "<function name>",
+      "purpose": "<one sentence purpose>",
+      "implementation": "<detailed algorithm in bullet points, 5-10 points minimum>"
+    }
+  ]
+}
+\`\`\`
+
+**IMPORTANT:** The implementation field must contain enough detail to reimplement the function without seeing the original code. Include specific logic, conditions, data transformations, and edge cases.`;
 }
 
 /**
@@ -267,6 +411,11 @@ export async function saveEnrichedFileInfo(
     originalInfo: FileInfo,
     enriched: EnrichedFileData
 ): Promise<string> {
+    // DISABLED: Legacy artifact system deprecated, using edge list instead
+    console.log('[info/mcp] saveEnrichedFileInfo disabled - using edge list');
+    return '';
+
+    /* Legacy code preserved for future lazy loading:
     const markdown = renderEnrichedMarkdown(originalInfo, enriched);
 
     // Output path: .artifacts/src/<path>/file_name/file_name.md
@@ -284,4 +433,6 @@ export async function saveEnrichedFileInfo(
     fs.writeFileSync(outputPath, markdown, 'utf-8');
 
     return outputPath;
+    */
 }
+
