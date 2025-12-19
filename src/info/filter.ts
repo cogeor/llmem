@@ -67,3 +67,54 @@ export function getEdgesFromFile(edges: EdgeEntry[], fileId: string): EdgeEntry[
 export function getNodesForFile(nodes: NodeEntry[], fileId: string): NodeEntry[] {
     return nodes.filter(node => node.fileId === fileId);
 }
+
+/**
+ * Get edges relevant to a module (folder)
+ * 
+ * Includes:
+ * 1. Edges originating from files in the folder
+ * 2. Edges targeting files in the folder (incoming calls/imports)
+ * 
+ * @param edges All edges
+ * @param folderPath Path to the module folder
+ * @param recursive Whether to include subdirectories
+ */
+export function getEdgesForModule(edges: EdgeEntry[], folderPath: string, recursive: boolean = false): EdgeEntry[] {
+    // Normalize folder path to ensure trailing slash for prefix matching
+    const prefix = folderPath.endsWith('/') || folderPath.endsWith('\\') ? folderPath : folderPath + '/';
+
+    // Helper to check if a file is in the folder
+    const isInFolder = (filePath: string) => {
+        if (!filePath.startsWith(prefix)) return false;
+
+        if (recursive) return true;
+
+        // If not recursive, check if there are no more separators after the prefix
+        // e.g. src/info/file.ts (ok) vs src/info/sub/file.ts (no)
+        const relative = filePath.slice(prefix.length);
+        return !relative.includes('/') && !relative.includes('\\');
+    };
+
+    return edges.filter(edge => {
+        // Extract file path from source/target
+        // Source for import is fileId
+        // Source/Target for call is fileId::entity
+
+        let sourceFile = edge.source;
+        if (edge.kind === 'call' && edge.source.includes('::')) {
+            sourceFile = edge.source.split('::')[0];
+        }
+
+        let targetFile = edge.target;
+        if (edge.kind === 'call' && edge.target.includes('::')) {
+            targetFile = edge.target.split('::')[0];
+        }
+        // For imports, target is just the path
+
+        const sourceIn = isInFolder(sourceFile);
+        const targetIn = isInFolder(targetFile);
+
+        // Keep edge if it involves the module
+        return sourceIn || targetIn;
+    });
+}

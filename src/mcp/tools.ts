@@ -108,6 +108,22 @@ export const OpenWindowSchema = z.object({
     viewColumn: z.number().optional().describe('View column to open in (1-3)'),
 });
 
+export const ModuleInfoSchema = z.object({
+    path: z.string().describe('Path to folder (relative to workspace root)'),
+});
+
+export const ReportModuleInfoSchema = z.object({
+    path: z.string().describe('Folder path'),
+    overview: z.string().describe('Module overview summary'),
+    inputs: z.string().optional().describe('What the module takes as input (external dependencies)'),
+    outputs: z.string().optional().describe('What the module produces (public API)'),
+    key_files: z.array(z.object({
+        name: z.string().describe('File name'),
+        summary: z.string().describe('Brief summary of the file goal'),
+    })).describe('Key files in the module'),
+    architecture: z.string().describe('Description of the internal architecture and relationships'),
+});
+
 // ============================================================================
 // Tool Handlers
 // ============================================================================
@@ -266,6 +282,124 @@ export async function handleReportFileInfo(
 }
 
 /**
+ * Get module info for semantic enrichment
+ * 
+ * Summarizes a folder using the EdgeList graph and returns a prompt
+ * for the LLM to generate high-level module documentation.
+ */
+export async function handleModuleInfo(
+    args: unknown
+): Promise<McpResponse<unknown>> {
+    const correlationId = generateCorrelationId();
+    logRequest(correlationId, 'module_info', args);
+
+    const validation = validateRequest(ModuleInfoSchema, args);
+    if (!validation.success) {
+        const response = formatError(validation.error!);
+        logResponse(correlationId, response);
+        return response;
+    }
+
+    const { path: folderPath } = validation.data!;
+
+    try {
+        const root = getEffectiveWorkspaceRoot();
+
+        // Import module info functions dynamically
+        const { getModuleInfoForMcp, buildModuleEnrichmentPrompt } = await import('../info/module');
+
+        const data = await getModuleInfoForMcp(root, folderPath);
+        const prompt = buildModuleEnrichmentPrompt(folderPath, data);
+
+        const response = formatPromptResponse(
+            prompt,
+            'report_module_info',
+            { path: folderPath }
+        );
+        logResponse(correlationId, response);
+        return response;
+
+    } catch (error) {
+        let root = 'unknown';
+        try { root = getEffectiveWorkspaceRoot(); } catch { }
+
+        const msg = error instanceof Error ? error.message : String(error);
+        const response = formatError(`${msg} (Root: ${root})`);
+        logResponse(correlationId, response);
+        return response;
+    }
+}
+
+/**
+ * Callback: Receive LLM enrichment for module info
+ * 
+ * Called by the host LLM after processing the module_info prompt.
+ * Saves the formatted module documentation to .arch/<folder>/README.md
+ */
+export async function handleReportModuleInfo(
+    args: unknown
+): Promise<McpResponse<unknown>> {
+    const correlationId = generateCorrelationId();
+    logRequest(correlationId, 'report_module_info', args);
+
+    const validation = validateRequest(ReportModuleInfoSchema, args);
+    if (!validation.success) {
+        const response = formatError(validation.error!);
+        logResponse(correlationId, response);
+        return response;
+    }
+
+    const { path: folderPath, overview, inputs, outputs, key_files, architecture } = validation.data!;
+
+    try {
+        const lines: string[] = [];
+        lines.push(`# MODULE: ${folderPath}`);
+        lines.push('');
+        lines.push('## Overview');
+        lines.push(overview);
+        lines.push('');
+
+        if (inputs) lines.push(`**Inputs:** ${inputs}\n`);
+        if (outputs) lines.push(`**Outputs:** ${outputs}\n`);
+
+        lines.push('## Architecture');
+        lines.push(architecture);
+        lines.push('');
+
+        lines.push('## Key Files');
+        for (const file of key_files) {
+            lines.push(`- **${file.name}**: ${file.summary}`);
+        }
+
+        const content = lines.join('\n');
+
+        // Save to .arch/<folder>/README.md
+        const root = getEffectiveWorkspaceRoot();
+        const relativePath = folderPath.startsWith(root) ? path.relative(root, folderPath) : folderPath;
+        const artifactPath = path.join(root, '.arch', relativePath, 'README.md');
+
+        const artifactDir = path.dirname(artifactPath);
+        if (!fs.existsSync(artifactDir)) fs.mkdirSync(artifactDir, { recursive: true });
+
+        fs.writeFileSync(artifactPath, content, 'utf-8');
+        console.error(`[report_module_info] Saved to ${artifactPath}`);
+
+        const response = formatSuccess({
+            message: 'Module documentation generated and saved',
+            artifactPath: artifactPath,
+            content: content
+        });
+        logResponse(correlationId, response);
+        return response;
+
+    } catch (error) {
+        const response = formatError(error instanceof Error ? error.message : String(error));
+        logResponse(correlationId, response);
+        return response;
+    }
+}
+
+/**
  * Inspect specific lines of source code.
  */
 export async function handleInspectSource(
@@ -404,6 +538,18 @@ export const toolDefinitions = [
         handler: handleReportFileInfo,
     },
     {
+        name: 'module_info',
+        description: 'Get semantic documentation for a module folder. Returns structural info for files and prompts for LLM enrichment.',
+        schema: ModuleInfoSchema,
+        handler: handleModuleInfo,
+    },
+    {
+        name: 'report_module_info',
+        description: 'Store LLM-enriched documentation for a module.',
+        schema: ReportModuleInfoSchema,
+        handler: handleReportModuleInfo,
+    },
+    {
         name: 'inspect_source',
         description: 'Read a specific range of lines from a source file.',
         schema: InspectSourceSchema,
@@ -426,6 +572,8 @@ export const toolDefinitions = [
 // Export schemas for external use
 export type FileInfoInput = z.infer<typeof FileInfoSchema>;
 export type ReportFileInfoInput = z.infer<typeof ReportFileInfoSchema>;
+export type ModuleInfoInput = z.infer<typeof ModuleInfoSchema>;
+export type ReportModuleInfoInput = z.infer<typeof ReportModuleInfoSchema>;
 export type InspectSourceInput = z.infer<typeof InspectSourceSchema>;
 export type SetWorkspaceRootInput = z.infer<typeof SetWorkspaceRootSchema>;
 export type OpenWindowInput = z.infer<typeof OpenWindowSchema>;

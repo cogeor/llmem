@@ -45,6 +45,8 @@
     "file-info": "npx ts-node src/info/cli.ts",
     "file-info:sig": "npx ts-node src/info/cli.ts --signatures",
     "file-info:semantic": "npx ts-node src/info/cli.ts --semantic",
+    "module-info": "npx ts-node src/info/cli_module.ts",
+    "module-info:semantic": "npx ts-node src/info/cli_module.ts --semantic",
     "package": "vsce package"
   },
   "devDependencies": {
