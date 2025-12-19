@@ -16,6 +16,7 @@ import { getImportEdges, getCallEdges, filterImportEdges, getEdgesForModule } fr
 export interface ModuleInfoMcpData {
     folderPath: string;
     markdown: string;
+    rawEdges: EdgeEntry[];
     stats: {
         files: number;
         nodes: number;
@@ -197,6 +198,7 @@ export async function getModuleInfoForMcp(
     return {
         folderPath,
         markdown: lines.join('\n'),
+        rawEdges: moduleEdges,
         stats: {
             files: fileNodes.length,
             nodes: moduleNodes.length,
@@ -212,10 +214,21 @@ export function buildModuleEnrichmentPrompt(
     folderPath: string,
     data: ModuleInfoMcpData
 ): string {
+    // Format raw edges for LLM consumption - separated by type
+    const importEdgeLines = data.rawEdges
+        .filter(e => e.kind === 'import')
+        .map(e => `  ${e.source} → ${e.target}`)
+        .join('\n');
+
+    const callEdgeLines = data.rawEdges
+        .filter(e => e.kind === 'call')
+        .map(e => `  ${e.source} → ${e.target}`)
+        .join('\n');
+
     return `# MODULE DOCUMENTATION TASK
 
 ## OBJECTIVE
-Create a high-level **Module Overview** for the folder: \`${folderPath}\`.
+Create a comprehensive **Module Overview** for the folder: \`${folderPath}\`.
 
 ## STATISTICS
 - **Total Files:** ${data.stats.files}
@@ -225,14 +238,28 @@ Create a high-level **Module Overview** for the folder: \`${folderPath}\`.
 ## STRUCTURAL ANALYSIS (Graph)
 ${data.markdown}
 
+## IMPORTS (relevant to this folder)
+\`\`\`
+${importEdgeLines || '(none)'}
+\`\`\`
+
+## FUNCTION CALLS (relevant to this folder)
+\`\`\`
+${callEdgeLines || '(none)'}
+\`\`\`
+
 ---
 
 ## YOUR TASK
 Synthesize the above information into a comprehensive module overview.
-Focus on the **Graph Structure**:
-- **Internal Coupling:** How tightly connected are the files?
-- **External Dependencies:** What does this module rely on?
-- **Public Interface:** What function/classes are seemingly exported or used? (Infer from what is there).
+
+### Required Analysis:
+1. **Module Purpose:** What is the core responsibility of this module?
+2. **Internal Coupling:** How tightly connected are the files? Which are the central/hub files?
+3. **External Dependencies:** What does this module rely on? Categorize by type (Node.js built-ins, npm packages, internal modules).
+4. **Public Interface:** What functions/classes are exported and seemingly used by other modules?
+5. **Data Flow:** How does data flow through this module? What transformations occur?
+6. **Implementation Details:** Highlight important patterns, algorithms, or design decisions visible in the graph structure.
 
 ## OUTPUT FORMAT
 Call the \`report_module_info\` tool with the following structure:
@@ -240,13 +267,13 @@ Call the \`report_module_info\` tool with the following structure:
 \`\`\`json
 {
   "path": "${folderPath}",
-  "overview": "<Paragraph describing the module goal and purpose based on the graph>",
-  "inputs": "<Summary of external imports/dependencies>",
-  "outputs": "<Summary of key exports (inferred)>",
+  "overview": "<2-3 paragraph description of module purpose, responsibilities, and role in the codebase>",
+  "inputs": "<Detailed list of external dependencies with their purpose>",
+  "outputs": "<List of key exports/public APIs with brief descriptions>",
   "key_files": [
-    { "name": "<filename>", "summary": "<One line summary>" }
+    { "name": "<filename>", "summary": "<2-3 sentence summary including key functions/classes>" }
   ],
-  "architecture": "<Description of internal structure and data flow>"
+  "architecture": "<Detailed description of internal structure, data flow patterns, and important implementation details>"
 }
 \`\`\`
 `;
