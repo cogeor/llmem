@@ -1,12 +1,12 @@
 /**
- * Scan codebase and populate edge list.
+ * Scan codebase and populate split edge lists.
  * 
  * Run with: npx ts-node src/scripts/scan_codebase.ts
  */
 
 import * as path from 'path';
 import * as fs from 'fs';
-import { EdgeListStore, NodeEntry, EdgeEntry } from '../graph/edgelist';
+import { ImportEdgeListStore, CallEdgeListStore } from '../graph/edgelist';
 import { TypeScriptExtractor } from '../parser/ts-extractor';
 import { TypeScriptService } from '../parser/ts-service';
 import { artifactToEdgeList } from '../graph/artifact-converter';
@@ -14,7 +14,7 @@ import { loadConfig, getConfig } from '../extension/config';
 
 async function scan() {
     console.log('='.repeat(60));
-    console.log('CODEBASE SCANNER - Edge List Population');
+    console.log('CODEBASE SCANNER - Split Edge List Population');
     console.log('='.repeat(60));
 
     // Load config
@@ -56,10 +56,13 @@ async function scan() {
 
     console.log(`\nFound ${sourceFiles.length} TypeScript files to scan`);
 
-    // Create edge list store
-    const edgeListStore = new EdgeListStore(artifactDir);
-    await edgeListStore.load();
-    edgeListStore.clear(); // Start fresh
+    // Create split edge list stores
+    const importStore = new ImportEdgeListStore(artifactDir);
+    const callStore = new CallEdgeListStore(artifactDir);
+    await importStore.load();
+    await callStore.load();
+    importStore.clear(); // Start fresh
+    callStore.clear();
 
     // Process each file
     let processedCount = 0;
@@ -78,11 +81,15 @@ async function scan() {
             }
 
             // Convert to edge list entries
-            const { nodes, edges } = artifactToEdgeList(artifact, relativePath);
+            const { nodes, importEdges, callEdges } = artifactToEdgeList(artifact, relativePath);
 
-            // Add to store
-            edgeListStore.addNodes(nodes);
-            edgeListStore.addEdges(edges);
+            // Add nodes to both stores
+            importStore.addNodes(nodes);
+            callStore.addNodes(nodes);
+
+            // Add edges to respective stores
+            importStore.addEdges(importEdges);
+            callStore.addEdges(callEdges);
 
             processedCount++;
             if (processedCount % 20 === 0) {
@@ -94,22 +101,23 @@ async function scan() {
         }
     }
 
-    // Save edge list
-    console.log('\nSaving edge list...');
-    await edgeListStore.save();
+    // Save edge lists
+    console.log('\nSaving edge lists...');
+    await importStore.save();
+    await callStore.save();
 
     // Print summary
-    const stats = edgeListStore.getStats();
+    const importStats = importStore.getStats();
+    const callStats = callStore.getStats();
     console.log('\n' + '='.repeat(60));
     console.log('SCAN COMPLETE');
     console.log('='.repeat(60));
     console.log(`Files processed: ${processedCount}`);
     console.log(`Errors: ${errorCount}`);
-    console.log(`Nodes: ${stats.nodes}`);
-    console.log(`Edges: ${stats.edges}`);
-    console.log(`  Import edges: ${stats.importEdges}`);
-    console.log(`  Call edges: ${stats.callEdges}`);
-    console.log(`\nEdge list saved to: ${path.join(artifactDir, 'edgelist.json')}`);
+    console.log(`Import graph: ${importStats.nodes} nodes, ${importStats.edges} edges`);
+    console.log(`Call graph: ${callStats.nodes} nodes, ${callStats.edges} edges`);
+    console.log(`\nEdge lists saved to: ${artifactDir}/import-edgelist.json`);
+    console.log(`                     ${artifactDir}/call-edgelist.json`);
 }
 
 scan().catch(e => {

@@ -39,6 +39,8 @@
 .tree-children {
     display: none;
     padding-left: 0;
+    margin: 0;
+    list-style: none;
     /* managed by nested hierarchy if we use ul/li */
 }
 

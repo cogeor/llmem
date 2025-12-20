@@ -1,11 +1,11 @@
 /**
  * Prepares graph data for the visualization webview.
  * 
- * Legacy artifact-based preparation has been removed.
- * Use prepareWebviewDataFromEdgeList() instead.
+ * Supports both split stores (ImportEdgeListStore + CallEdgeListStore)
+ * and legacy single-file EdgeListStore.
  */
 
-import { buildGraphsFromEdgeList } from './index';
+import { buildGraphsFromEdgeList, buildGraphsFromSplitEdgeLists } from './index';
 import { ColorGenerator } from './utils';
 import { EdgeListData } from './edgelist';
 
@@ -35,11 +35,29 @@ export interface WebviewGraphData {
 }
 
 /**
- * Prepare webview data from edge list.
- * No disk I/O for artifacts.
+ * Prepare webview data from split edge lists (new architecture).
+ */
+export function prepareWebviewDataFromSplitEdgeLists(
+    importData: EdgeListData,
+    callData: EdgeListData
+): WebviewGraphData {
+    const { importGraph, callGraph } = buildGraphsFromSplitEdgeLists(importData, callData);
+    return transformGraphsToVisData(importGraph, callGraph);
+}
+
+/**
+ * Prepare webview data from legacy single edge list.
+ * @deprecated Use prepareWebviewDataFromSplitEdgeLists() with separate stores
  */
 export function prepareWebviewDataFromEdgeList(data: EdgeListData): WebviewGraphData {
     const { importGraph, callGraph } = buildGraphsFromEdgeList(data);
+    return transformGraphsToVisData(importGraph, callGraph);
+}
+
+/**
+ * Transform internal graph structures to visualization format.
+ */
+function transformGraphsToVisData(importGraph: any, callGraph: any): WebviewGraphData {
     const colorGen = new ColorGenerator();
 
     // Prepare Import Graph

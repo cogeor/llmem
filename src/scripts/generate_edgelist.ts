@@ -4,20 +4,20 @@
  * 
  * Run: npx ts-node src/scripts/generate_edgelist.ts
  * 
- * This script generates the edge list without going through the panel.
+ * This script generates the split edge lists without going through the panel.
  * Used to verify edge list generation works correctly.
  */
 
 import * as path from 'path';
 import * as fs from 'fs';
-import { EdgeListStore } from '../graph/edgelist';
+import { ImportEdgeListStore, CallEdgeListStore } from '../graph/edgelist';
 import { TypeScriptService } from '../parser/ts-service';
 import { TypeScriptExtractor } from '../parser/ts-extractor';
 import { artifactToEdgeList } from '../graph/artifact-converter';
 
 async function main() {
     console.log('='.repeat(60));
-    console.log('MANUAL EDGE LIST GENERATION');
+    console.log('MANUAL EDGE LIST GENERATION (SPLIT STORES)');
     console.log('='.repeat(60));
 
     const root = process.cwd();
@@ -56,9 +56,11 @@ async function main() {
 
     console.log(`\nFound ${sourceFiles.length} TypeScript files to process`);
 
-    // Create edge list store
-    const edgeListStore = new EdgeListStore(artifactDir);
-    edgeListStore.clear(); // Start fresh
+    // Create split edge list stores
+    const importStore = new ImportEdgeListStore(artifactDir);
+    const callStore = new CallEdgeListStore(artifactDir);
+    importStore.clear(); // Start fresh
+    callStore.clear();
 
     // Process each file
     let processed = 0;
@@ -75,9 +77,16 @@ async function main() {
                 continue;
             }
 
-            const { nodes, edges } = artifactToEdgeList(artifact, relativePath);
-            edgeListStore.addNodes(nodes);
-            edgeListStore.addEdges(edges);
+            const { nodes, importEdges, callEdges } = artifactToEdgeList(artifact, relativePath);
+
+            // Add nodes to both stores
+            importStore.addNodes(nodes);
+            callStore.addNodes(nodes);
+
+            // Add edges to respective stores
+            importStore.addEdges(importEdges);
+            callStore.addEdges(callEdges);
+
             processed++;
 
             if (processed % 20 === 0) {
@@ -90,32 +99,23 @@ async function main() {
     }
 
     // Save
-    console.log('\nSaving edge list...');
-    await edgeListStore.save();
+    console.log('\nSaving edge lists...');
+    await importStore.save();
+    await callStore.save();
 
     // Summary
-    const stats = edgeListStore.getStats();
-    const outputPath = path.join(artifactDir, 'edgelist.json');
+    const importStats = importStore.getStats();
+    const callStats = callStore.getStats();
 
     console.log('\n' + '='.repeat(60));
     console.log('COMPLETE');
     console.log('='.repeat(60));
     console.log(`Files processed: ${processed}`);
     console.log(`Errors: ${errors}`);
-    console.log(`Nodes: ${stats.nodes}`);
-    console.log(`Edges: ${stats.edges}`);
-    console.log(`  Import edges: ${stats.importEdges}`);
-    console.log(`  Call edges: ${stats.callEdges}`);
-    console.log(`\nOutput: ${outputPath}`);
-
-    // Verify file exists
-    if (fs.existsSync(outputPath)) {
-        const fileSize = fs.statSync(outputPath).size;
-        console.log(`File size: ${(fileSize / 1024).toFixed(2)} KB`);
-    } else {
-        console.error('ERROR: edgelist.json was not created!');
-        process.exit(1);
-    }
+    console.log(`Import graph: ${importStats.nodes} nodes, ${importStats.edges} edges`);
+    console.log(`Call graph: ${callStats.nodes} nodes, ${callStats.edges} edges`);
+    console.log(`\nOutput: ${artifactDir}/import-edgelist.json`);
+    console.log(`        ${artifactDir}/call-edgelist.json`);
 }
 
 main().catch(e => {

@@ -2,12 +2,12 @@
  * Module Info Extraction and Prompting
  * 
  * Provides functionality to summarize a folder (module) for LLM consumption.
- * Uses the pre-generated EdgeList graph.
+ * Uses the pre-generated split EdgeList graphs (import + call).
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { EdgeListStore, NodeEntry, EdgeEntry } from '../graph/edgelist';
+import { ImportEdgeListStore, CallEdgeListStore, NodeEntry, EdgeEntry } from '../graph/edgelist';
 import { getImportEdges, getCallEdges, filterImportEdges, getEdgesForModule } from './filter';
 
 /**
@@ -36,16 +36,24 @@ export async function getModuleInfoForMcp(
         throw new Error(`Folder not found: ${folderPath}`);
     }
 
-    // Load graph from .artifacts
+    // Load graphs from .artifacts (split stores)
     const artifactDir = path.join(rootDir, '.artifacts');
     if (!fs.existsSync(artifactDir)) {
         throw new Error(`Artifacts directory not found at ${artifactDir}. Please run 'npm run scan' first.`);
     }
 
-    const store = new EdgeListStore(artifactDir);
-    await store.load();
-    const allEdges = store.getEdges();
-    const allNodes = store.getNodes();
+    const importStore = new ImportEdgeListStore(artifactDir);
+    const callStore = new CallEdgeListStore(artifactDir);
+    await importStore.load();
+    await callStore.load();
+
+    // Combine edges from both stores for module analysis
+    const allImportEdges = importStore.getEdges();
+    const allCallEdges = callStore.getEdges();
+    const allEdges = [...allImportEdges, ...allCallEdges];
+
+    // Combine nodes (import store has file nodes, call store has entity nodes)
+    const allNodes = [...importStore.getNodes(), ...callStore.getNodes()];
 
     // Filter edges for this module (recursive to include subfolders in the summary as requested)
     const moduleEdges = getEdgesForModule(allEdges, folderPath, true);

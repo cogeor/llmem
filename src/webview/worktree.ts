@@ -1,6 +1,14 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+/**
+ * Graph computation status for a folder.
+ * - 'never': edges have never been computed
+ * - 'outdated': edges exist but files have changed since computation
+ * - 'current': edges are up-to-date with source files
+ */
+export type GraphStatus = 'never' | 'outdated' | 'current';
+
 export interface ITreeNode {
     name: string;
     path: string; // Relative path
@@ -8,6 +16,10 @@ export interface ITreeNode {
     size: number;
     children?: ITreeNode[];
     lineCount?: number;
+
+    // Graph status tracking (directories only)
+    importStatus?: GraphStatus;  // Status of import edges for this folder
+    callStatus?: GraphStatus;    // Status of call edges for this folder
 }
 
 // Always ignored folders (regardless of .gitignore)

@@ -10,7 +10,8 @@ import { normalizePath } from './utils';
 
 export interface ConversionResult {
     nodes: NodeEntry[];
-    edges: EdgeEntry[];
+    importEdges: EdgeEntry[];  // kind: 'import' - file-to-file
+    callEdges: EdgeEntry[];    // kind: 'call' - entity-to-entity
 }
 
 /**
@@ -22,7 +23,8 @@ export interface ConversionResult {
  */
 export function artifactToEdgeList(artifact: FileArtifact, fileId: string): ConversionResult {
     const nodes: NodeEntry[] = [];
-    const edges: EdgeEntry[] = [];
+    const importEdges: EdgeEntry[] = [];
+    const callEdges: EdgeEntry[] = [];
 
     // 0. Always create a file node (ensures import edges work for files with only types/interfaces)
     nodes.push({
@@ -55,7 +57,7 @@ export function artifactToEdgeList(artifact: FileArtifact, fileId: string): Conv
             for (const call of entity.calls) {
                 const callEdge = resolveCallToEdge(fileId, nodeId, call, artifact.imports);
                 if (callEdge) {
-                    edges.push(callEdge);
+                    callEdges.push(callEdge);
                 }
             }
         }
@@ -65,7 +67,7 @@ export function artifactToEdgeList(artifact: FileArtifact, fileId: string): Conv
     for (const imp of artifact.imports) {
         const targetFileId = resolveImportTarget(fileId, imp);
         if (targetFileId && !targetFileId.includes('node_modules')) {
-            edges.push({
+            importEdges.push({
                 source: fileId,
                 target: targetFileId,
                 kind: 'import'
@@ -73,7 +75,7 @@ export function artifactToEdgeList(artifact: FileArtifact, fileId: string): Conv
         }
     }
 
-    return { nodes, edges };
+    return { nodes, importEdges, callEdges };
 }
 
 /**
@@ -164,13 +166,15 @@ function resolveCallToEdge(
  */
 export function artifactsToEdgeList(artifacts: Array<{ fileId: string; artifact: FileArtifact }>): ConversionResult {
     const allNodes: NodeEntry[] = [];
-    const allEdges: EdgeEntry[] = [];
+    const allImportEdges: EdgeEntry[] = [];
+    const allCallEdges: EdgeEntry[] = [];
 
     for (const { fileId, artifact } of artifacts) {
-        const { nodes, edges } = artifactToEdgeList(artifact, fileId);
+        const { nodes, importEdges, callEdges } = artifactToEdgeList(artifact, fileId);
         allNodes.push(...nodes);
-        allEdges.push(...edges);
+        allImportEdges.push(...importEdges);
+        allCallEdges.push(...callEdges);
     }
 
-    return { nodes: allNodes, edges: allEdges };
+    return { nodes: allNodes, importEdges: allImportEdges, callEdges: allCallEdges };
 }

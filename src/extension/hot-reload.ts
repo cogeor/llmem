@@ -16,9 +16,10 @@ export class HotReloadService {
     private sourceWatcher: vscode.FileSystemWatcher | undefined;
     private archWatcher: vscode.FileSystemWatcher | undefined;
     private treeWatcher: vscode.FileSystemWatcher | undefined;
+    private edgelistWatcher: vscode.FileSystemWatcher | undefined;
     private disposables: vscode.Disposable[] = [];
 
-    private debounceTimers: { source?: NodeJS.Timeout; arch?: NodeJS.Timeout; tree?: NodeJS.Timeout } = {};
+    private debounceTimers: { source?: NodeJS.Timeout; arch?: NodeJS.Timeout; tree?: NodeJS.Timeout; edgelist?: NodeJS.Timeout } = {};
     private pendingChangedFiles: Set<string> = new Set();
 
     private artifactRoot: string;
@@ -105,6 +106,16 @@ export class HotReloadService {
         this.treeWatcher.onDidDelete((uri) => this.queueTreeRefresh());
         this.disposables.push(this.treeWatcher);
 
+        // Watch edgelist files -> refresh graphs when edges are added/updated
+        const edgelistPattern = new vscode.RelativePattern(
+            vscode.Uri.file(this.artifactRoot),
+            '*-edgelist.json'
+        );
+        this.edgelistWatcher = vscode.workspace.createFileSystemWatcher(edgelistPattern);
+        this.edgelistWatcher.onDidChange(() => this.queueEdgelistRefresh());
+        this.edgelistWatcher.onDidCreate(() => this.queueEdgelistRefresh());
+        this.disposables.push(this.edgelistWatcher);
+
         console.log('[HotReload] Watchers started');
     }
 
@@ -114,6 +125,7 @@ export class HotReloadService {
         this.sourceWatcher = undefined;
         this.archWatcher = undefined;
         this.treeWatcher = undefined;
+        this.edgelistWatcher = undefined;
         console.log('[HotReload] Watchers stopped');
     }
 
@@ -163,6 +175,19 @@ export class HotReloadService {
                 console.error('[HotReload] Tree refresh failed:', e);
             }
         }, 500);
+    }
+
+    private queueEdgelistRefresh() {
+        if (this.debounceTimers.edgelist) clearTimeout(this.debounceTimers.edgelist);
+
+        this.debounceTimers.edgelist = setTimeout(async () => {
+            console.log('[HotReload] Edge list changed - refreshing graphs...');
+            try {
+                await this.sendUpdate();
+            } catch (e) {
+                console.error('[HotReload] Edgelist refresh failed:', e);
+            }
+        }, 300);
     }
 
     public async sendUpdate() {

@@ -95,11 +95,11 @@ async function main() {
     artifactCache.set(relativePath, artifact);
 
     // Convert to edge list
-    const { nodes, edges } = artifactToEdgeList(artifact, relativePath);
+    const { nodes, importEdges: rawImportEdges, callEdges: rawCallEdges } = artifactToEdgeList(artifact, relativePath);
 
     // Get filtered edges
-    const importEdges = filterImportEdges(getImportEdges(edges));
-    const callEdges = getCallEdges(edges);
+    const importEdges = filterImportEdges(getImportEdges(rawImportEdges));
+    const callEdges = getCallEdges(rawCallEdges);
 
     // Output
     const separator = '='.repeat(80);
