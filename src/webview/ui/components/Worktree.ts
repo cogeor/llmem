@@ -1,11 +1,36 @@
 
 import { DataProvider } from '../services/dataProvider';
-import { WorkTreeNode, DirectoryNode, AppState } from '../types';
+import { WorkTreeNode, DirectoryNode, AppState, GraphStatus } from '../types';
+
+// VS Code webview API type declaration
+declare function acquireVsCodeApi(): { postMessage: (message: any) => void };
 
 interface Props {
     el: HTMLElement;
     state: any; // State class
     dataProvider: DataProvider;
+}
+
+/**
+ * Get status color for a graph status.
+ */
+function getStatusColor(status: GraphStatus | undefined): string {
+    switch (status) {
+        case 'current': return '#22c55e';   // Green
+        case 'outdated': return '#f97316';  // Orange
+        case 'never': return '#ef4444';     // Red
+        default: return '#6b7280';          // Gray (unknown)
+    }
+}
+
+/**
+ * Get combined status (worst of import/call).
+ */
+function getCombinedStatus(importStatus?: GraphStatus, callStatus?: GraphStatus): GraphStatus {
+    if (importStatus === 'never' || callStatus === 'never') return 'never';
+    if (importStatus === 'outdated' || callStatus === 'outdated') return 'outdated';
+    if (importStatus === 'current' && callStatus === 'current') return 'current';
+    return 'never'; // Default if unknown
 }
 
 /**
@@ -18,19 +43,28 @@ export class Worktree {
     private dataProvider: DataProvider;
     private tree: WorkTreeNode | null = null;
     private unsubscribe?: () => void;
+    private vscodeApi: any = null;
 
     constructor({ el, state, dataProvider }: Props) {
         this.el = el;
         this.state = state;
         this.dataProvider = dataProvider;
+
+        // Get VS Code API from the shared data provider
+        this.vscodeApi = dataProvider.getVscodeApi();
     }
+
+    private clickHandlerBound: boolean = false;
 
     async mount() {
         this.tree = await this.dataProvider.loadWorkTree();
         this.render(this.tree);
 
-        // Listen for clicks
-        this.el.addEventListener('click', (e) => this.handleClick(e));
+        // Listen for clicks (only add once)
+        if (!this.clickHandlerBound) {
+            this.el.addEventListener('click', (e) => this.handleClick(e));
+            this.clickHandlerBound = true;
+        }
 
         // Subscribe to state to update selection highlight
         this.unsubscribe = this.state.subscribe((s: AppState) => this.updateSelection(s));
@@ -43,12 +77,25 @@ export class Worktree {
     renderNode(node: WorkTreeNode, depth: number): string {
         const isDir = node.type === 'directory';
 
+        // Status button tooltip
+        const statusTitle = `Click to generate edges for this ${isDir ? 'folder' : 'file'}.`;
+
         let html = `
             <li class="tree-node" data-path="${node.path}" data-type="${node.type}">
                 <div class="tree-item" style="padding-left: ${depth * 12 + 12}px">
                     <span class="tree-arrow">${isDir ? '' : ''}</span>
                     <span class="icon">${isDir ? '📁' : '📄'}</span>
                     <span class="label">${node.name}</span>
+                    <button class="status-btn" data-path="${node.path}" title="${statusTitle}" style="
+                        width: 10px;
+                        height: 10px;
+                        border-radius: 50%;
+                        border: none;
+                        background-color: #888;
+                        margin-left: auto;
+                        cursor: pointer;
+                        flex-shrink: 0;
+                    "></button>
                 </div>
         `;
 
@@ -66,6 +113,15 @@ export class Worktree {
 
     handleClick(e: Event) {
         const target = e.target as HTMLElement;
+
+        // Check if status button was clicked
+        if (target.classList.contains('status-btn')) {
+            e.stopPropagation();
+            const path = target.dataset.path || '';
+            this.handleStatusButtonClick(path);
+            return;
+        }
+
         const item = target.closest('.tree-item');
         if (!item) return;
 
@@ -89,6 +145,24 @@ export class Worktree {
             selectedPath: path,
             selectedType: type
         });
+    }
+
+    /**
+     * Handle status button click - trigger edge regeneration for the path.
+     */
+    handleStatusButtonClick(path: string) {
+        console.log(`[Worktree] Status button clicked for: ${path}`);
+
+        // Send message to VS Code extension to regenerate edges
+        if (this.vscodeApi) {
+            this.vscodeApi.postMessage({
+                type: 'regenerateEdges',
+                path: path
+            });
+        } else {
+            // Running in standalone mode - show alert
+            alert(`Edge regeneration requested for: ${path}\n\nRun this command:\nnpx ts-node src/scripts/generate-call-edges.ts ${path} --recursive`);
+        }
     }
 
     updateSelection({ selectedPath }: AppState) {

@@ -25,4 +25,10 @@ export interface DataProvider {
      * @returns Unsubscribe function
      */
     onRefresh(callback: () => void): () => void;
+
+    /**
+     * Get the VS Code API for sending messages (VS Code mode only).
+     * Returns null in standalone mode.
+     */
+    getVscodeApi(): any;
 }

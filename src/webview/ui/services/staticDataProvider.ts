@@ -27,4 +27,8 @@ export class StaticDataProvider implements DataProvider {
         // Static mode - no refresh events (data is baked in)
         return () => { };
     }
+
+    getVscodeApi(): any {
+        return null; // Not available in standalone mode
+    }
 }

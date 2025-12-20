@@ -3,6 +3,7 @@ import * as path from 'path';
 import { HotReloadService } from './hot-reload';
 import { getConfig } from './config';
 import { WebviewDataService } from '../webview/data-service';
+import { generateCallEdgesForFolderRecursive } from '../scripts/generate-call-edges';
 
 /**
  * Manages the LLMem Webview Panel
@@ -130,11 +131,61 @@ export class LLMemPanel {
     }
 
     private async _handleMessage(message: any) {
-        switch (message.command) {
+        switch (message.command || message.type) {
             case 'webview:ready':
                 await this._startHotReloadAndSendInitialData();
                 break;
+            case 'regenerateEdges':
+                await this._regenerateEdges(message.path);
+                break;
         }
+    }
+
+    /**
+     * Regenerate edges for a specific path (file or folder) and refresh the webview data.
+     */
+    private async _regenerateEdges(targetPath: string) {
+        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!workspaceRoot) {
+            vscode.window.showErrorMessage('No workspace folder open');
+            return;
+        }
+
+        const config = getConfig();
+        const artifactRoot = path.join(workspaceRoot, config.artifactRoot);
+        const absolutePath = path.join(workspaceRoot, targetPath);
+
+        // Detect if path is file or folder
+        const fs = require('fs');
+        const isFile = fs.existsSync(absolutePath) && fs.statSync(absolutePath).isFile();
+
+        console.log(`[LLMemPanel] Regenerating edges for: ${targetPath} (isFile: ${isFile})`);
+        vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `Generating edges for ${targetPath}...`,
+            cancellable: false
+        }, async () => {
+            try {
+                let result;
+                if (isFile) {
+                    // Import the file function dynamically to avoid circular deps
+                    const { generateCallEdgesForFile } = await import('../scripts/generate-call-edges');
+                    result = await generateCallEdgesForFile(workspaceRoot, targetPath, artifactRoot);
+                } else {
+                    result = await generateCallEdgesForFolderRecursive(workspaceRoot, targetPath, artifactRoot);
+                }
+                vscode.window.showInformationMessage(`Added ${result.newEdges} new edges. Total: ${result.totalEdges}`);
+
+                // Refresh webview data
+                const data = await WebviewDataService.collectData(workspaceRoot, artifactRoot);
+                this._panel.webview.postMessage({
+                    type: 'data:refresh',
+                    data: data
+                });
+            } catch (e: any) {
+                vscode.window.showErrorMessage(`Failed to generate edges: ${e.message}`);
+            }
+        });
     }
 
     private async _startHotReloadAndSendInitialData() {

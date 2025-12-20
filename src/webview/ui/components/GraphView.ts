@@ -34,6 +34,13 @@ export class GraphView {
     }
 
     async mount() {
+        // Destroy old renderer to force full re-render with fresh data
+        if (this.graphRenderer) {
+            this.graphRenderer.destroy();
+            this.graphRenderer = null;
+        }
+        this.isRendered = false;
+
         // Load data
         this.data = await this.dataProvider.loadGraphData();
         this.worktree = await this.dataProvider.loadWorkTree();

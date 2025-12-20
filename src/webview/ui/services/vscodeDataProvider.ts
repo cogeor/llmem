@@ -74,4 +74,8 @@ export class VSCodeDataProvider implements DataProvider {
         this.refreshListeners.add(callback);
         return () => this.refreshListeners.delete(callback);
     }
+
+    getVscodeApi(): any {
+        return this.vscode;
+    }
 }

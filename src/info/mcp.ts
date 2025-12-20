@@ -85,11 +85,11 @@ export async function getFileInfoForMcp(
     }
 
     // Convert to edge list
-    const { nodes, edges } = artifactToEdgeList(artifact, filePath);
+    const { nodes, importEdges: rawImportEdges, callEdges: rawCallEdges } = artifactToEdgeList(artifact, filePath);
 
     // Build file info markdown (similar to CLI output)
-    const importEdges = filterImportEdges(getImportEdges(edges));
-    const callEdges = getCallEdges(edges);
+    const importEdges = filterImportEdges(getImportEdges(rawImportEdges));
+    const callEdges = getCallEdges(rawCallEdges);
 
     // Build markdown representation
     const lines: string[] = [];
