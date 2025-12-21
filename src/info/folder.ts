@@ -1,8 +1,11 @@
 /**
- * Module Info Extraction and Prompting
+ * Folder Info Extraction and Prompting
  * 
- * Provides functionality to summarize a folder (module) for LLM consumption.
+ * Provides functionality to summarize a folder for LLM consumption.
  * Uses the pre-generated split EdgeList graphs (import + call).
+ * 
+ * Reads existing documentation from .arch/{path}/README.md if present,
+ * and saves generated documentation to the same location.
  */
 
 import * as fs from 'fs';
@@ -11,10 +14,12 @@ import { ImportEdgeListStore, CallEdgeListStore, NodeEntry, EdgeEntry } from '..
 import { getImportEdges, getCallEdges, filterImportEdges, getEdgesForModule } from './filter';
 
 /**
- * Data needed for the module info prompt
+ * Data needed for the folder info prompt
  */
-export interface ModuleInfoMcpData {
+export interface FolderInfoMcpData {
     folderPath: string;
+    rootDir: string;           // Absolute workspace root used
+    readmePath: string;        // Absolute path to .arch/{path}/README.md
     markdown: string;
     rawEdges: EdgeEntry[];
     stats: {
@@ -22,19 +27,42 @@ export interface ModuleInfoMcpData {
         nodes: number;
         edges: number;
     };
+    existingDocs: string | null;
+}
+
+
+/**
+ * Load existing README.md from .arch folder if present
+ */
+export function loadExistingFolderReadme(
+    rootDir: string,
+    folderPath: string
+): string | null {
+    const readmePath = path.join(rootDir, '.arch', folderPath, 'README.md');
+    if (fs.existsSync(readmePath)) {
+        try {
+            return fs.readFileSync(readmePath, 'utf-8');
+        } catch {
+            return null;
+        }
+    }
+    return null;
 }
 
 /**
- * Get module info data for MCP tool using existing EdgeList
+ * Get folder info data for MCP tool using existing EdgeList
  */
-export async function getModuleInfoForMcp(
+export async function getFolderInfoForMcp(
     rootDir: string,
     folderPath: string
-): Promise<ModuleInfoMcpData> {
+): Promise<FolderInfoMcpData> {
     const absoluteFolderPath = path.join(rootDir, folderPath);
     if (!fs.existsSync(absoluteFolderPath)) {
         throw new Error(`Folder not found: ${folderPath}`);
     }
+
+    // Load existing documentation if present
+    const existingDocs = loadExistingFolderReadme(rootDir, folderPath);
 
     // Load graphs from .artifacts (split stores)
     const artifactDir = path.join(rootDir, '.artifacts');
@@ -47,7 +75,7 @@ export async function getModuleInfoForMcp(
     await importStore.load();
     await callStore.load();
 
-    // Combine edges from both stores for module analysis
+    // Combine edges from both stores for folder analysis
     const allImportEdges = importStore.getEdges();
     const allCallEdges = callStore.getEdges();
     const allEdges = [...allImportEdges, ...allCallEdges];
@@ -55,39 +83,36 @@ export async function getModuleInfoForMcp(
     // Combine nodes (import store has file nodes, call store has entity nodes)
     const allNodes = [...importStore.getNodes(), ...callStore.getNodes()];
 
-    // Filter edges for this module (recursive to include subfolders in the summary as requested)
-    const moduleEdges = getEdgesForModule(allEdges, folderPath, true);
+    // Filter edges for this folder (recursive to include subfolders)
+    const folderEdges = getEdgesForModule(allEdges, folderPath, true);
 
     // Identify nodes involved in these edges
     const involvedNodeIds = new Set<string>();
-    for (const edge of moduleEdges) {
+    for (const edge of folderEdges) {
         involvedNodeIds.add(edge.source);
         involvedNodeIds.add(edge.target);
     }
 
     // Also include nodes that are physically in the folder (even if disconnected/no edges)
-    // This ensures we list all files even if they have no graph activity yet.
-    // We filter nodes by fileId starting with folderPath
     const prefix = folderPath.replace(/\\/g, '/');
-    const moduleNodes = allNodes.filter(n => {
+    const folderNodes = allNodes.filter(n => {
         if (involvedNodeIds.has(n.id)) return true;
         const normalizedFile = n.fileId.replace(/\\/g, '/');
-        // Check if file is in folder (recursive)
         return normalizedFile.startsWith(prefix.endsWith('/') ? prefix : prefix + '/');
     });
 
     // Generate Markdown Summary
     const lines: string[] = [];
-    lines.push(`### MODULE GRAPH: ${folderPath}`);
+    lines.push(`### FOLDER GRAPH: ${folderPath}`);
     lines.push('');
 
     // 1. Files & Entities
-    const fileNodes = moduleNodes.filter(n => n.kind === 'file');
+    const fileNodes = folderNodes.filter(n => n.kind === 'file');
     lines.push(`#### FILES (${fileNodes.length})`);
 
     // Group entities by file for clarity
     const filesMap = new Map<string, NodeEntry[]>();
-    for (const node of moduleNodes) {
+    for (const node of folderNodes) {
         if (node.kind === 'file') continue;
         if (!filesMap.has(node.fileId)) filesMap.set(node.fileId, []);
         filesMap.get(node.fileId)!.push(node);
@@ -96,7 +121,6 @@ export async function getModuleInfoForMcp(
     if (fileNodes.length === 0) {
         lines.push('(none found in graph)');
     } else {
-        // Sort files
         const sortedFiles = Array.from(filesMap.keys()).sort();
         for (const fileId of sortedFiles) {
             const entities = filesMap.get(fileId) || [];
@@ -110,11 +134,10 @@ export async function getModuleInfoForMcp(
 
     // 2. Imports (External Dependencies)
     lines.push('#### IMPORTS (External)');
-    const importEdges = filterImportEdges(getImportEdges(moduleEdges));
+    const importEdges = filterImportEdges(getImportEdges(folderEdges));
 
     const uniqueImports = new Set<string>();
 
-    // Helper to check if a path is internal to the module
     const isInternal = (p: string) => {
         const normalized = p.replace(/\\/g, '/');
         return normalized.startsWith(prefix.endsWith('/') ? prefix : prefix + '/');
@@ -122,7 +145,6 @@ export async function getModuleInfoForMcp(
 
     for (const edge of importEdges) {
         const target = edge.target;
-        // If target is NOT in the module, it's an external import
         if (!isInternal(target)) {
             const sourceFile = path.basename(edge.source);
             uniqueImports.add(`${sourceFile} → ${target}`);
@@ -138,13 +160,10 @@ export async function getModuleInfoForMcp(
 
     // 3. Calls
     lines.push('#### CALLS');
-    const callEdges = getCallEdges(moduleEdges);
+    const callEdges = getCallEdges(folderEdges);
 
     const internalCalls: string[] = [];
     const outgoingCalls: string[] = [];
-
-    // For incoming, we strictly need edges where Target is Internal, Source is External
-    // But moduleEdges filter includes edges "involving" the module.
     const incomingCalls: string[] = [];
 
     const stdlibFunctions = new Set([
@@ -160,7 +179,7 @@ export async function getModuleInfoForMcp(
 
     for (const edge of callEdges) {
         const source = edge.source;
-        const target = edge.target; // fileId::entity
+        const target = edge.target;
 
         let sourceFile = source;
         if (source.includes('::')) sourceFile = source.split('::')[0];
@@ -175,7 +194,6 @@ export async function getModuleInfoForMcp(
         const targetIn = isInternal(targetFile);
 
         const sourceName = source.includes('::') ? source.split('::').pop()! : path.basename(source);
-        // Clean display names
 
         const edgeStr = `${sourceName} → ${targetName}`;
 
@@ -203,26 +221,30 @@ export async function getModuleInfoForMcp(
     else Array.from(new Set(incomingCalls)).sort().forEach(c => lines.push(`- ${c}`));
     lines.push('');
 
+    const readmePath = path.join(rootDir, '.arch', folderPath, 'README.md');
+
     return {
         folderPath,
+        rootDir,
+        readmePath,
         markdown: lines.join('\n'),
-        rawEdges: moduleEdges,
+        rawEdges: folderEdges,
         stats: {
             files: fileNodes.length,
-            nodes: moduleNodes.length,
-            edges: moduleEdges.length
-        }
+            nodes: folderNodes.length,
+            edges: folderEdges.length
+        },
+        existingDocs
     };
 }
 
 /**
  * Build the enrichment prompt for the LLM
  */
-export function buildModuleEnrichmentPrompt(
+export function buildFolderEnrichmentPrompt(
     folderPath: string,
-    data: ModuleInfoMcpData
+    data: FolderInfoMcpData
 ): string {
-    // Format raw edges for LLM consumption - separated by type
     const importEdgeLines = data.rawEdges
         .filter(e => e.kind === 'import')
         .map(e => `  ${e.source} → ${e.target}`)
@@ -233,10 +255,24 @@ export function buildModuleEnrichmentPrompt(
         .map(e => `  ${e.source} → ${e.target}`)
         .join('\n');
 
-    return `# MODULE DOCUMENTATION TASK
+    // Include existing documentation if present
+    const existingDocsSection = data.existingDocs
+        ? `## EXISTING DOCUMENTATION
+The following documentation already exists for this folder. Please verify and update it based on the graph data above:
+
+\`\`\`markdown
+${data.existingDocs}
+\`\`\`
+
+---
+
+`
+        : '';
+
+    return `# FOLDER DOCUMENTATION TASK
 
 ## OBJECTIVE
-Create a comprehensive **Module Overview** for the folder: \`${folderPath}\`.
+Create a comprehensive **Folder Overview** for: \`${folderPath}\`.
 
 ## STATISTICS
 - **Total Files:** ${data.stats.files}
@@ -258,24 +294,24 @@ ${callEdgeLines || '(none)'}
 
 ---
 
-## YOUR TASK
-Synthesize the above information into a comprehensive module overview.
+${existingDocsSection}## YOUR TASK
+Synthesize the above information into a comprehensive folder overview.
 
 ### Required Analysis:
-1. **Module Purpose:** What is the core responsibility of this module?
+1. **Folder Purpose:** What is the core responsibility of this folder?
 2. **Internal Coupling:** How tightly connected are the files? Which are the central/hub files?
-3. **External Dependencies:** What does this module rely on? Categorize by type (Node.js built-ins, npm packages, internal modules).
-4. **Public Interface:** What functions/classes are exported and seemingly used by other modules?
-5. **Data Flow:** How does data flow through this module? What transformations occur?
-6. **Implementation Details:** Highlight important patterns, algorithms, or design decisions visible in the graph structure.
+3. **External Dependencies:** What does this folder rely on? Categorize by type (Node.js built-ins, npm packages, internal folders).
+4. **Public Interface:** What functions/classes are exported and used by other folders?
+5. **Data Flow:** How does data flow through this folder? What transformations occur?
+6. **Implementation Details:** Highlight important patterns, algorithms, or design decisions.
 
 ## OUTPUT FORMAT
-Call the \`report_module_info\` tool with the following structure:
+Call the \`report_folder_info\` tool with the following structure:
 
 \`\`\`json
 {
   "path": "${folderPath}",
-  "overview": "<2-3 paragraph description of module purpose, responsibilities, and role in the codebase>",
+  "overview": "<2-3 paragraph description of folder purpose, responsibilities, and role in the codebase>",
   "inputs": "<Detailed list of external dependencies with their purpose>",
   "outputs": "<List of key exports/public APIs with brief descriptions>",
   "key_files": [

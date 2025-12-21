@@ -61,5 +61,5 @@ export function generatePlotHtml<N extends Node, E extends Edge>(graph: Graph<N,
 export function savePlot<N extends Node, E extends Edge>(graph: Graph<N, E>, title: string, outputPath: string) {
     const html = generatePlotHtml(graph, title);
     fs.writeFileSync(outputPath, html, 'utf-8');
-    console.log(`Plot saved to ${outputPath}`);
+    console.error(`Plot saved to ${outputPath}`);
 }

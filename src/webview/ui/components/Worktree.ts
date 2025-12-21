@@ -66,8 +66,11 @@ export class Worktree {
             this.clickHandlerBound = true;
         }
 
-        // Subscribe to state to update selection highlight
-        this.unsubscribe = this.state.subscribe((s: AppState) => this.updateSelection(s));
+        // Subscribe to state to update selection highlight and watched buttons
+        this.unsubscribe = this.state.subscribe((s: AppState) => {
+            this.updateSelection(s);
+            this.updateWatchedButtons(s.watchedPaths);
+        });
     }
 
     render(rootNode: WorkTreeNode) {
@@ -99,8 +102,11 @@ export class Worktree {
                     <span class="icon">${isDir ? '📁' : '📄'}</span>
                     <span class="label">${node.name}</span>
                     ${showToggle ? `<button class="status-btn" data-path="${node.path}" title="${statusTitle}" onclick="event.stopPropagation(); event.preventDefault();" style="
-                        width: 10px;
-                        height: 10px;
+                        width: 12px;
+                        height: 12px;
+                        min-width: 12px;
+                        min-height: 12px;
+                        box-sizing: border-box;
                         border-radius: 50%;
                         border: none;
                         background-color: #ccc;
@@ -156,7 +162,8 @@ export class Worktree {
         // Update selection state
         this.state.set({
             selectedPath: path,
-            selectedType: type
+            selectedType: type,
+            selectionSource: 'explorer'
         });
     }
 
@@ -233,7 +240,7 @@ export class Worktree {
         });
     }
 
-    updateSelection({ selectedPath }: AppState) {
+    updateSelection({ selectedPath, selectionSource }: AppState) {
         // Remove old selection
         const prev = this.el.querySelector('.tree-item.is-selected');
         if (prev) prev.classList.remove('is-selected');
@@ -244,6 +251,7 @@ export class Worktree {
                 const item = nodeEl.querySelector('.tree-item');
                 item?.classList.add('is-selected');
 
+                // Expand parent folders
                 let parent = nodeEl.parentElement?.closest('.tree-children');
                 while (parent) {
                     parent.classList.add('is-expanded');
@@ -252,6 +260,11 @@ export class Worktree {
                     if (parentItem) parentItem.setAttribute('aria-expanded', 'true');
 
                     parent = parent.parentElement?.closest('.tree-children');
+                }
+
+                // Scroll into view when selection comes from graph
+                if (selectionSource === 'graph' && item) {
+                    item.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 }
             }
         }

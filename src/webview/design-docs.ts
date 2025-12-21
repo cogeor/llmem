@@ -58,13 +58,15 @@ export class DesignDocManager {
                     const html = await marked.parse(content);
 
                     // Key mapping:
-                    // .arch/src/parser.md -> src/parser
-                    // User said: "design file for src/parser folder will be in .arch/src/parser.md"
-                    // The UI likely expects keys to match code paths.
+                    // .arch/src/parser.md -> src/parser.html (legacy file docs)
+                    // .arch/src/graph/README.md -> src/graph/README.md (new folder docs - preserve README.md)
 
                     const relPath = path.relative(this.archRoot, filePath).replace(/\\/g, '/');
-                    // Frontend expects .html keys
-                    const key = relPath.replace(/\.md$/, '.html');
+
+                    // For README.md files, preserve the full path as-is (folder docs use this format)
+                    // For other .md files, convert to .html (legacy file docs)
+                    const isReadme = path.basename(filePath).toLowerCase() === 'readme.md';
+                    const key = isReadme ? relPath : relPath.replace(/\.md$/, '.html');
 
                     console.log(`[DesignDocManager] Processed: ${relPath} -> ${key}`);
 

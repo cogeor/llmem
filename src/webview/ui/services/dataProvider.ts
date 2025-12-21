@@ -34,6 +34,13 @@ export interface DataProvider {
     loadFolderNodes?(folderPath: string): Promise<{ nodes: VisNode[]; edges: VisEdge[] } | null>;
 
     /**
+     * Subscribe to watched paths restoration.
+     * Called when persisted watched paths are loaded from disk.
+     * Only available in VS Code mode.
+     */
+    onWatchedPathsRestored?(callback: (paths: string[]) => void): () => void;
+
+    /**
      * Get the VS Code API for sending messages (VS Code mode only).
      * Returns null in standalone mode.
      */

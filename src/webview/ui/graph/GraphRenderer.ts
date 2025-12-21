@@ -312,6 +312,7 @@ export class GraphRenderer {
      * Highlight neighbors.
      */
     highlightNeighbors(nodeId: string): void {
+        this.clearHighlight();
         const neighbors = this.edgeRenderer.getNeighbors(nodeId, this.currentEdges);
         this.nodeRenderer.highlightNode(nodeId, neighbors);
         this.edgeRenderer.highlightEdgesForNode(nodeId);
@@ -354,6 +355,33 @@ export class GraphRenderer {
         if (!this.cameraController.wasDrag()) {
             this.highlightFile(filePath);
             this.onFileClick?.(filePath);
+        }
+    }
+
+    /**
+     * Pan camera to center on a folder.
+     */
+    panToFolder(folderPath: string): void {
+        this.cameraController.panToFolder(folderPath);
+    }
+
+    /**
+     * Pan camera to center on a file (uses file nodes if available, else folder).
+     */
+    panToFile(filePath: string): void {
+        // Try to find a node in this file to center on
+        const nodesInFile = this.getNodesInFile(filePath);
+        if (nodesInFile.size > 0) {
+            const firstNodeId = nodesInFile.values().next().value;
+            if (firstNodeId) {
+                this.cameraController.panToNode(firstNodeId);
+                return;
+            }
+        }
+        // Fallback: try to pan to folder containing the file
+        const lastSlash = filePath.lastIndexOf('/');
+        if (lastSlash > 0) {
+            this.cameraController.panToFolder(filePath.substring(0, lastSlash));
         }
     }
 

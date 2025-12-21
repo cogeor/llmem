@@ -57,6 +57,7 @@ export interface AppState {
     graphType: "import" | "call";
     selectedPath: string | null;
     selectedType: "file" | "directory" | null;
+    selectionSource?: "explorer" | "graph";  // Track where selection came from
     expandedFolders: Set<string>;
     watchedPaths: Set<string>;  // Paths with active file watching
 }
