@@ -7,6 +7,7 @@ export const initialState: AppState = {
     selectedPath: "src",   // Default to src for design view
     selectedType: "directory",
     expandedFolders: new Set(["src"]), // Expand src by default
+    watchedPaths: new Set(),  // No paths watched initially (lazy mode)
 };
 
 class State {

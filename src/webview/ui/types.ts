@@ -58,6 +58,7 @@ export interface AppState {
     selectedPath: string | null;
     selectedType: "file" | "directory" | null;
     expandedFolders: Set<string>;
+    watchedPaths: Set<string>;  // Paths with active file watching
 }
 
 declare global {

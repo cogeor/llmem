@@ -263,42 +263,7 @@ export class CameraController {
         this.folderRegions = folderRegions;
     }
 
-    /**
-     * Focus on a node.
-     */
-    focusNode(nodeId: string, options: { animate?: boolean } = {}): void {
-        const pos = this.nodePositions.get(nodeId);
-        if (!pos) return;
 
-        // Maintain current scale, just pan
-        this.panToPoint(pos.x, pos.y, this.scale, options.animate ?? true);
-    }
-
-    /**
-     * Focus on a folder.
-     */
-    focusFolder(folderPath: string, options: { animate?: boolean } = {}): void {
-        const folder = this.folderRegions.find(f => f.path === folderPath);
-        if (!folder) return;
-
-        const centerX = (folder.x0 + folder.x1) / 2;
-        const centerY = (folder.y0 + folder.y1) / 2;
-
-        // Maintain current scale, just pan
-        this.panToPoint(centerX, centerY, this.scale, options.animate ?? true);
-    }
-
-    /**
-     * Pan to a point.
-     */
-    private panToPoint(x: number, y: number, scale: number, animate: boolean): void {
-        this.scale = scale;
-        this.translateX = this.width / 2 - x * scale;
-        this.translateY = this.height / 2 - y * scale;
-
-        this.clampTranslation();
-        this.updateTransform(animate);
-    }
 
     /**
      * Fit all content.

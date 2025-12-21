@@ -7,8 +7,8 @@ import { ImportEdgeListStore, CallEdgeListStore, EdgeListStore } from '../graph/
 import { TypeScriptService } from '../parser/ts-service';
 import { TypeScriptExtractor } from '../parser/ts-extractor';
 import { artifactToEdgeList } from '../graph/artifact-converter';
-import { countFolderLines, isFolderTooLarge } from '../parser/line-counter';
-import { LAZY_CALL_GRAPH_LINE_THRESHOLD, IGNORED_FOLDERS } from '../parser/config';
+import { countFolderLines } from '../parser/line-counter';
+import { LAZY_CODEBASE_LINE_THRESHOLD, IGNORED_FOLDERS } from '../parser/config';
 import { computeAllFolderStatuses } from './graph-status';
 
 export interface WebviewData {
@@ -167,72 +167,58 @@ export class WebviewDataService {
         });
 
         console.log(`[WebviewDataService] Scanning ${sourceFiles.length} TypeScript files...`);
-        console.log(`[WebviewDataService] Lazy loading threshold: ${LAZY_CALL_GRAPH_LINE_THRESHOLD} lines`);
 
-        // Pre-compute folder line counts for lazy loading decision
-        const folderLineCache = new Map<string, number>();
-        const largeFolders = new Set<string>();
-
+        // Count total lines in the codebase to determine eager vs lazy mode
+        let totalCodebaseLines = 0;
         for (const sf of sourceFiles) {
-            const filePath = sf.fileName;
-            const relativePath = path.relative(projectRoot, filePath).replace(/\\/g, '/');
-            const folderPath = path.dirname(relativePath);
-
-            // Check if we've already counted this folder
-            if (!folderLineCache.has(folderPath)) {
-                const absoluteFolder = path.join(projectRoot, folderPath);
-                const lineCount = countFolderLines(projectRoot, absoluteFolder);
-                folderLineCache.set(folderPath, lineCount.totalLines);
-
-                if (isFolderTooLarge(lineCount, LAZY_CALL_GRAPH_LINE_THRESHOLD)) {
-                    largeFolders.add(folderPath);
-                    console.warn(`[WebviewDataService] ⚠️ Folder too large (${lineCount.totalLines} lines), skipping call edges: ${folderPath}`);
-                }
-            }
+            totalCodebaseLines += sf.getEnd(); // Approximate line count from source file length
         }
 
-        if (largeFolders.size > 0) {
-            console.log(`[WebviewDataService] ${largeFolders.size} folders exceed threshold, call edges deferred`);
-        }
+        const isLazyMode = totalCodebaseLines > LAZY_CODEBASE_LINE_THRESHOLD;
+        console.log(`[WebviewDataService] Total codebase lines: ~${totalCodebaseLines}, lazy mode: ${isLazyMode} (threshold: ${LAZY_CODEBASE_LINE_THRESHOLD})`);
 
         let processedCount = 0;
-        let skippedCallEdges = 0;
 
         for (const sf of sourceFiles) {
             const filePath = sf.fileName;
             const relativePath = path.relative(projectRoot, filePath).replace(/\\/g, '/');
-            const folderPath = path.dirname(relativePath);
 
             try {
+                // In lazy mode, only create file node (edges loaded on demand)
+                if (isLazyMode) {
+                    const fileNode = {
+                        id: relativePath,
+                        name: path.basename(filePath),
+                        kind: 'file' as const,
+                        fileId: relativePath
+                    };
+                    importStore.addNode(fileNode);
+                    callStore.addNode(fileNode);
+                    processedCount++;
+                    continue;
+                }
+
+                // Normal processing for small folders
                 const artifact = await tsExtractor.extract(filePath);
                 if (!artifact) continue;
 
                 const { nodes, importEdges, callEdges } = artifactToEdgeList(artifact, relativePath);
 
-                // Add nodes to both stores (they share the same node structure)
+                // Add nodes to both stores
                 importStore.addNodes(nodes);
                 callStore.addNodes(nodes);
 
-                // Always add import edges
+                // Add all edges
                 importStore.addEdges(importEdges);
-
-                // Only add call edges if folder is not too large
-                if (!largeFolders.has(folderPath)) {
-                    callStore.addEdges(callEdges);
-                } else {
-                    skippedCallEdges += callEdges.length;
-                }
+                callStore.addEdges(callEdges);
 
                 processedCount++;
             } catch (e: any) {
-                console.warn(`[WebviewDataService] Skip ${relativePath}: ${e.message}`);
+                // Silently skip problematic files
             }
         }
 
         console.log(`[WebviewDataService] Processed ${processedCount} files`);
-        if (skippedCallEdges > 0) {
-            console.log(`[WebviewDataService] Deferred ${skippedCallEdges} call edges (use generate-call-edges script to compute)`);
-        }
     }
 
     /**

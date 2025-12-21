@@ -216,18 +216,97 @@ export class GraphRenderer {
     }
 
     /**
-     * Pan to a node.
+     * Add nodes to a specific folder incrementally (lazy loading).
+     * Uses incremental layout to avoid full recompute.
      */
-    panTo(nodeId: string, animate: boolean = true): void {
-        this.cameraController.focusNode(nodeId, { animate });
+    addNodesToFolder(
+        newNodes: VisNode[],
+        newEdges: VisEdge[],
+        folderPath: string,
+        worktree: WorkTreeNode,
+        graphType: 'import' | 'call' = 'call'
+    ): void {
+        console.log(`[GraphRenderer] Adding ${newNodes.length} nodes to ${folderPath}`);
+
+        // Merge edges
+        this.currentEdges = [...this.currentEdges, ...newEdges];
+
+        // Call incremental layout
+        const layoutResult = this.hierarchicalLayout.addNodes(newNodes, folderPath);
+        this.currentFileRegions = layoutResult.fileRegions;
+
+        // Update camera bounds
+        this.cameraController.setPositions(layoutResult.nodePositions, layoutResult.folders);
+
+        // Re-render (full re-render for simplicity - can optimize later)
+        let foldersToRender = layoutResult.folders;
+        const topLevelFolders = layoutResult.folders.filter(f => f.depth === 1);
+        if (topLevelFolders.length === 1) {
+            const topFolder = topLevelFolders[0];
+            foldersToRender = layoutResult.folders.filter(f => f !== topFolder);
+        }
+
+        const fileRegionsToRender = graphType === 'call' ? layoutResult.fileRegions : undefined;
+        this.groupRenderer.render(
+            foldersToRender,
+            this.handleFolderClick.bind(this),
+            fileRegionsToRender,
+            this.handleFileClick.bind(this)
+        );
+
+        // Get all nodes from layout for color computation
+        const allNodes = this.getAllNodesFromLayout(layoutResult.nodePositions);
+        const nodeColors = this.computeNodeColors(allNodes, layoutResult.folders);
+
+        this.edgeRenderer.render(this.currentEdges, layoutResult.nodePositions);
+        this.nodeRenderer.render(
+            allNodes,
+            layoutResult.nodePositions,
+            nodeColors,
+            this.handleNodeClick.bind(this),
+            undefined
+        );
+
+        // Update camera bounds
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const f of layoutResult.folders) {
+            minX = Math.min(minX, f.x0);
+            minY = Math.min(minY, f.y0);
+            maxX = Math.max(maxX, f.x1);
+            maxY = Math.max(maxY, f.y1);
+        }
+
+        if (minX !== Infinity && maxX !== -Infinity) {
+            const bounds = { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+            this.cameraController.setBounds(bounds);
+        }
+
+        console.log(`[GraphRenderer] Incremental update complete: ${layoutResult.nodePositions.size} total nodes`);
     }
 
     /**
-     * Pan to a folder.
+     * Get all nodes from layout positions (for re-rendering after incremental update).
      */
-    panToFolder(folderPath: string, animate: boolean = true): void {
-        this.cameraController.focusFolder(folderPath, { animate });
+    private getAllNodesFromLayout(nodePositions: Map<string, { x: number; y: number }>): VisNode[] {
+        const nodes: VisNode[] = [];
+        const nodeGroups = this.nodesGroup.querySelectorAll('.node-group');
+        nodeGroups.forEach(g => {
+            const id = g.getAttribute('data-id');
+            const fileId = g.getAttribute('data-file-id');
+            const label = g.querySelector('text')?.textContent;
+            if (id && nodePositions.has(id)) {
+                nodes.push({
+                    id,
+                    label: label || id,
+                    group: '',
+                    fileId: fileId || id
+                });
+            }
+        });
+        return nodes;
     }
+
+
 
     /**
      * Highlight neighbors.
@@ -258,7 +337,6 @@ export class GraphRenderer {
         // Only focus/highlight if it wasn't a drag
         if (!this.cameraController.wasDrag()) {
             this.highlightNeighbors(nodeId);
-            this.panTo(nodeId);
             this.onNodeClick?.(nodeId);
         }
     }
@@ -267,7 +345,6 @@ export class GraphRenderer {
         // Only focus if it wasn't a drag
         if (!this.cameraController.wasDrag()) {
             this.highlightFolder(folderPath);
-            this.panToFolder(folderPath);
             this.onFolderClick?.(folderPath);
         }
     }

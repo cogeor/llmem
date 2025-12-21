@@ -1,6 +1,6 @@
 
 import { DataProvider } from './dataProvider';
-import { GraphData, WorkTreeNode } from '../types';
+import { GraphData, WorkTreeNode, VisNode, VisEdge } from '../types';
 
 declare const acquireVsCodeApi: () => any;
 
@@ -20,6 +20,12 @@ export class VSCodeDataProvider implements DataProvider {
     // Promise for initial data load
     private dataReady: Promise<void>;
     private resolveDataReady!: () => void;
+
+    // Pending folder node requests
+    private pendingFolderNodeRequests: Map<string, {
+        resolve: (data: { nodes: VisNode[]; edges: VisEdge[] } | null) => void;
+        reject: (error: Error) => void;
+    }> = new Map();
 
     constructor() {
         this.vscode = acquireVsCodeApi();
@@ -52,6 +58,20 @@ export class VSCodeDataProvider implements DataProvider {
                 // Notify all refresh listeners
                 this.refreshListeners.forEach(cb => cb());
                 break;
+
+            case 'data:folderNodes':
+                // Response for folder node request
+                const folderPath = message.folderPath;
+                const pending = this.pendingFolderNodeRequests.get(folderPath);
+                if (pending) {
+                    if (message.error) {
+                        pending.reject(new Error(message.error));
+                    } else {
+                        pending.resolve(message.data);
+                    }
+                    this.pendingFolderNodeRequests.delete(folderPath);
+                }
+                break;
         }
     }
 
@@ -73,6 +93,27 @@ export class VSCodeDataProvider implements DataProvider {
     onRefresh(callback: () => void): () => void {
         this.refreshListeners.add(callback);
         return () => this.refreshListeners.delete(callback);
+    }
+
+    /**
+     * Load nodes and edges for a specific folder on-demand.
+     */
+    async loadFolderNodes(folderPath: string): Promise<{ nodes: VisNode[]; edges: VisEdge[] } | null> {
+        return new Promise((resolve, reject) => {
+            this.pendingFolderNodeRequests.set(folderPath, { resolve, reject });
+            this.vscode.postMessage({
+                command: 'loadFolderNodes',
+                folderPath
+            });
+
+            // Timeout after 30 seconds
+            setTimeout(() => {
+                if (this.pendingFolderNodeRequests.has(folderPath)) {
+                    this.pendingFolderNodeRequests.delete(folderPath);
+                    reject(new Error(`Timeout loading nodes for ${folderPath}`));
+                }
+            }, 30000);
+        });
     }
 
     getVscodeApi(): any {

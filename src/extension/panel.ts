@@ -138,6 +138,82 @@ export class LLMemPanel {
             case 'regenerateEdges':
                 await this._regenerateEdges(message.path);
                 break;
+            case 'loadFolderNodes':
+                await this._loadFolderNodes(message.folderPath);
+                break;
+            case 'toggleWatch':
+                await this._handleToggleWatch(message.path, message.watched);
+                break;
+        }
+    }
+
+    /**
+     * Load nodes and edges for a folder on-demand (lazy loading).
+     */
+    private async _loadFolderNodes(folderPath: string) {
+        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!workspaceRoot) {
+            this._panel.webview.postMessage({
+                type: 'data:folderNodes',
+                folderPath,
+                error: 'No workspace folder open'
+            });
+            return;
+        }
+
+        const config = getConfig();
+        const artifactRoot = path.join(workspaceRoot, config.artifactRoot);
+
+        console.log(`[LLMemPanel] Loading nodes for folder: ${folderPath}`);
+
+        try {
+            // Generate edges for the folder (this also creates nodes)
+            const result = await generateCallEdgesForFolderRecursive(workspaceRoot, folderPath, artifactRoot);
+
+            // Load the updated edge lists to get the new nodes and edges
+            const { CallEdgeListStore } = await import('../graph/edgelist');
+            const callStore = new CallEdgeListStore(artifactRoot);
+            await callStore.load();
+
+            // Get nodes and edges for this folder
+            const nodes = callStore.getNodesByFolder(folderPath);
+            const edges = callStore.getEdges().filter(e =>
+                e.source.startsWith(folderPath + '/') ||
+                e.source.startsWith(folderPath + '::') ||
+                e.target.startsWith(folderPath + '/') ||
+                e.target.startsWith(folderPath + '::')
+            );
+
+            // Convert to VisNode/VisEdge format
+            const visNodes = nodes.map(n => ({
+                id: n.id,
+                label: n.name,
+                group: n.fileId,
+                fileId: n.fileId
+            }));
+
+            const visEdges = edges.map(e => ({
+                from: e.source,
+                to: e.target
+            }));
+
+            console.log(`[LLMemPanel] Loaded ${visNodes.length} nodes, ${visEdges.length} edges for ${folderPath}`);
+
+            this._panel.webview.postMessage({
+                type: 'data:folderNodes',
+                folderPath,
+                data: {
+                    nodes: visNodes,
+                    edges: visEdges
+                }
+            });
+        } catch (e: any) {
+            console.error(`[LLMemPanel] Failed to load folder nodes:`, e);
+            this._panel.webview.postMessage({
+                type: 'data:folderNodes',
+                folderPath,
+                error: e.message
+            });
         }
     }
 
@@ -186,6 +262,36 @@ export class LLMemPanel {
                 vscode.window.showErrorMessage(`Failed to generate edges: ${e.message}`);
             }
         });
+    }
+
+    /**
+     * Handle toggle watch message - manage watched paths for hot reload.
+     */
+    private async _handleToggleWatch(targetPath: string, watched: boolean) {
+        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!workspaceRoot) {
+            return;
+        }
+
+        const config = getConfig();
+        const artifactRoot = path.join(workspaceRoot, config.artifactRoot);
+
+        console.log(`[LLMemPanel] Toggle watch: ${targetPath} -> ${watched}`);
+
+        if (watched) {
+            // When turning ON: regenerate edges for this path
+            await this._regenerateEdges(targetPath);
+
+            // Update hot reload service to watch this path
+            if (this._hotReload) {
+                this._hotReload.addWatchedPath(targetPath);
+            }
+        } else {
+            // When turning OFF: remove from hot reload watch list
+            if (this._hotReload) {
+                this._hotReload.removeWatchedPath(targetPath);
+            }
+        }
     }
 
     private async _startHotReloadAndSendInitialData() {

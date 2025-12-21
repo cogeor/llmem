@@ -39,17 +39,20 @@ export async function generateCallEdgesForFolder(
         throw new Error(`Folder not found: ${folderPath}`);
     }
 
-    // Load existing call edge list
+    // Load existing edge lists
     const callStore = new CallEdgeListStore(artifactDir);
+    const importStore = new ImportEdgeListStore(artifactDir);
     await callStore.load();
-    const existingEdgeCount = callStore.getStats().edges;
+    await importStore.load();
+    const existingCallEdgeCount = callStore.getStats().edges;
+    const existingImportEdgeCount = importStore.getStats().edges;
 
-    console.log(`[GenerateCallEdges] Processing folder: ${folderPath}`);
-    console.log(`[GenerateCallEdges] Existing call edges: ${existingEdgeCount}`);
+    console.log(`[GenerateEdges] Processing folder: ${folderPath}`);
+    console.log(`[GenerateEdges] Existing edges - call: ${existingCallEdgeCount}, import: ${existingImportEdgeCount}`);
 
     // Count lines in folder
     const lineCount = countFolderLines(projectRoot, absoluteFolder);
-    console.log(`[GenerateCallEdges] Folder stats: ${lineCount.fileCount} files, ${lineCount.totalLines} lines`);
+    console.log(`[GenerateEdges] Folder stats: ${lineCount.fileCount} files, ${lineCount.totalLines} lines`);
 
     // Initialize TypeScript service
     const tsService = new TypeScriptService(projectRoot);
@@ -71,10 +74,11 @@ export async function generateCallEdgesForFolder(
             filePath.startsWith(normalizedFolder + '/') || filePath === normalizedFolder;
     });
 
-    console.log(`[GenerateCallEdges] Found ${sourceFiles.length} TypeScript files in folder`);
+    console.log(`[GenerateEdges] Found ${sourceFiles.length} TypeScript files in folder`);
 
     let processedCount = 0;
-    let newEdgeCount = 0;
+    let newCallEdgeCount = 0;
+    let newImportEdgeCount = 0;
 
     for (const sf of sourceFiles) {
         const filePath = sf.fileName;
@@ -88,34 +92,44 @@ export async function generateCallEdgesForFolder(
             const artifact = await tsExtractor.extract(filePath);
             if (!artifact) continue;
 
-            const { nodes, callEdges } = artifactToEdgeList(artifact, relativePath);
+            const { nodes, callEdges, importEdges } = artifactToEdgeList(artifact, relativePath);
 
-            // Add nodes (may already exist, addNode handles deduplication)
+            // Add nodes to both stores
             callStore.addNodes(nodes);
+            importStore.addNodes(nodes);
 
-            // Add call edges (addEdge handles deduplication)
+            // Add call edges
             for (const edge of callEdges) {
                 callStore.addEdge(edge);
             }
+            newCallEdgeCount += callEdges.length;
+
+            // Add import edges
+            for (const edge of importEdges) {
+                importStore.addEdge(edge);
+            }
+            newImportEdgeCount += importEdges.length;
 
             processedCount++;
-            newEdgeCount += callEdges.length;
         } catch (e: any) {
-            console.warn(`[GenerateCallEdges] Skip ${relativePath}: ${e.message}`);
+            console.warn(`[GenerateEdges] Skip ${relativePath}: ${e.message}`);
         }
     }
 
-    // Save updated edge list
+    // Save updated edge lists
     await callStore.save();
+    await importStore.save();
 
-    const finalEdgeCount = callStore.getStats().edges;
-    const actualNewEdges = finalEdgeCount - existingEdgeCount;
+    const finalCallEdgeCount = callStore.getStats().edges;
+    const finalImportEdgeCount = importStore.getStats().edges;
+    const actualNewCallEdges = finalCallEdgeCount - existingCallEdgeCount;
+    const actualNewImportEdges = finalImportEdgeCount - existingImportEdgeCount;
 
-    console.log(`[GenerateCallEdges] Processed ${processedCount} files, added ${actualNewEdges} new edges`);
+    console.log(`[GenerateEdges] Processed ${processedCount} files, added ${actualNewCallEdges} call edges, ${actualNewImportEdges} import edges`);
 
     return {
-        newEdges: actualNewEdges,
-        totalEdges: finalEdgeCount
+        newEdges: actualNewCallEdges + actualNewImportEdges,
+        totalEdges: finalCallEdgeCount + finalImportEdgeCount
     };
 }
 
@@ -139,13 +153,16 @@ export async function generateCallEdgesForFile(
         throw new Error(`File not found: ${filePath}`);
     }
 
-    // Load existing call edge list
+    // Load existing edge lists
     const callStore = new CallEdgeListStore(artifactDir);
+    const importStore = new ImportEdgeListStore(artifactDir);
     await callStore.load();
-    const existingEdgeCount = callStore.getStats().edges;
+    await importStore.load();
+    const existingCallEdgeCount = callStore.getStats().edges;
+    const existingImportEdgeCount = importStore.getStats().edges;
 
-    console.log(`[GenerateCallEdges] Processing file: ${filePath}`);
-    console.log(`[GenerateCallEdges] Existing call edges: ${existingEdgeCount}`);
+    console.log(`[GenerateEdges] Processing file: ${filePath}`);
+    console.log(`[GenerateEdges] Existing edges - call: ${existingCallEdgeCount}, import: ${existingImportEdgeCount}`);
 
     // Initialize TypeScript service
     const tsService = new TypeScriptService(projectRoot);
@@ -162,27 +179,36 @@ export async function generateCallEdgesForFile(
             throw new Error('No artifact extracted');
         }
 
-        const { nodes, callEdges } = artifactToEdgeList(artifact, filePath);
+        const { nodes, callEdges, importEdges } = artifactToEdgeList(artifact, filePath);
 
-        // Add nodes
+        // Add nodes to both stores
         callStore.addNodes(nodes);
+        importStore.addNodes(nodes);
 
         // Add call edges
         for (const edge of callEdges) {
             callStore.addEdge(edge);
         }
 
-        // Save updated edge list
+        // Add import edges
+        for (const edge of importEdges) {
+            importStore.addEdge(edge);
+        }
+
+        // Save updated edge lists
         await callStore.save();
+        await importStore.save();
 
-        const finalEdgeCount = callStore.getStats().edges;
-        const actualNewEdges = finalEdgeCount - existingEdgeCount;
+        const finalCallEdgeCount = callStore.getStats().edges;
+        const finalImportEdgeCount = importStore.getStats().edges;
+        const actualNewCallEdges = finalCallEdgeCount - existingCallEdgeCount;
+        const actualNewImportEdges = finalImportEdgeCount - existingImportEdgeCount;
 
-        console.log(`[GenerateCallEdges] Processed file, added ${actualNewEdges} new edges`);
+        console.log(`[GenerateEdges] Processed file, added ${actualNewCallEdges} call edges, ${actualNewImportEdges} import edges`);
 
         return {
-            newEdges: actualNewEdges,
-            totalEdges: finalEdgeCount
+            newEdges: actualNewCallEdges + actualNewImportEdges,
+            totalEdges: finalCallEdgeCount + finalImportEdgeCount
         };
     } catch (e: any) {
         throw new Error(`Failed to process ${filePath}: ${e.message}`);

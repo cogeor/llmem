@@ -9,15 +9,17 @@
 // ============================================================================
 
 /**
- * Maximum lines per folder before call graph computation is deferred.
+ * Maximum total parsable lines in codebase before lazy loading is enabled.
  * 
- * If a folder contains more than this many lines of supported code,
- * only import edges will be computed eagerly. Call edges must be
- * generated on-demand using the generate-call-edges script.
+ * If the codebase contains fewer lines than this threshold, all edges
+ * and nodes are computed eagerly.
  * 
- * Set to 1 for testing, 1000 for production.
+ * If the codebase exceeds this threshold, only file nodes are created
+ * initially; edges are generated on-demand via toggle buttons.
+ * 
+ * Set to 1 for testing, 10000 for production.
  */
-export const LAZY_CALL_GRAPH_LINE_THRESHOLD = 1; // TODO: Change to 1000 for production
+export const LAZY_CODEBASE_LINE_THRESHOLD = 1; // TODO: Change to 10000 for production
 
 // ============================================================================
 // Supported Extensions
