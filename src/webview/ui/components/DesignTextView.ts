@@ -120,6 +120,7 @@ export class DesignTextView {
     /**
      * Fetch design doc content from the loaded docs.
      * Tries various path patterns to find a match.
+     * For directories, prioritizes README.md files.
      */
     private fetchDesignDoc(selectedPath: string | null, selectedType: "file" | "directory" | null): string | null {
         if (!selectedPath) return null;
@@ -148,6 +149,13 @@ export class DesignTextView {
 
             // Check each candidate
             for (const key of candidates) {
+                // For directories, check README.md first (the new .arch/{path}/README.md format)
+                if (selectedType === 'directory') {
+                    const readmeKey = `${key}/README.md`;
+                    if (this.designDocs[readmeKey]) return this.designDocs[readmeKey];
+                }
+
+                // Then check legacy formats
                 const htmlKey = `${key}.html`;
                 const txtKey = `${key}.txt`;
 

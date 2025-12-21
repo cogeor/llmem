@@ -310,4 +310,37 @@ export class CameraController {
         this.setBounds(bounds);
         // setBounds already updates transform
     }
+
+    /**
+     * Pan camera to center on a folder region.
+     */
+    panToFolder(folderPath: string, animate: boolean = true): void {
+        const folder = this.folderRegions.find(f => f.path === folderPath);
+        if (!folder) return;
+
+        const centerX = (folder.x0 + folder.x1) / 2;
+        const centerY = (folder.y0 + folder.y1) / 2;
+
+        // Calculate translation to center this point
+        this.translateX = this.width / 2 - centerX * this.scale;
+        this.translateY = this.height / 2 - centerY * this.scale;
+
+        this.clampTranslation();
+        this.updateTransform(animate);
+    }
+
+    /**
+     * Pan camera to center on a node.
+     */
+    panToNode(nodeId: string, animate: boolean = true): void {
+        const pos = this.nodePositions.get(nodeId);
+        if (!pos) return;
+
+        // Calculate translation to center this point
+        this.translateX = this.width / 2 - pos.x * this.scale;
+        this.translateY = this.height / 2 - pos.y * this.scale;
+
+        this.clampTranslation();
+        this.updateTransform(animate);
+    }
 }

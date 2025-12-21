@@ -1,17 +1,17 @@
 #!/usr/bin/env npx ts-node
 /**
- * Module Info CLI
+ * Folder Info CLI
  * 
- * Command-line script to generate module info prompt for verification.
+ * Command-line script to generate folder info prompt for verification.
  * 
- * Usage: npx ts-node src/info/cli_module.ts <relative-folder-path> [--semantic]
- * Example: npx ts-node src/info/cli_module.ts src/info
- * Example: npx ts-node src/info/cli_module.ts src/info --semantic
+ * Usage: npx ts-node src/info/cli_folder.ts <relative-folder-path> [--semantic]
+ * Example: npx ts-node src/info/cli_folder.ts src/info
+ * Example: npx ts-node src/info/cli_folder.ts src/info --semantic
  */
 
 import * as path from 'path';
 import * as fs from 'fs';
-import { getModuleInfoForMcp, buildModuleEnrichmentPrompt } from './module';
+import { getFolderInfoForMcp, buildFolderEnrichmentPrompt } from './folder';
 
 // Configuration
 const SEMANTIC_MODE = process.argv.includes('--semantic');
@@ -20,8 +20,8 @@ async function main() {
     const args = process.argv.slice(2).filter(arg => !arg.startsWith('--'));
 
     if (args.length === 0) {
-        console.error('Usage: npx ts-node src/info/cli_module.ts <relative-folder-path> [--semantic]');
-        console.error('Example: npx ts-node src/info/cli_module.ts src/info --semantic');
+        console.error('Usage: npx ts-node src/info/cli_folder.ts <relative-folder-path> [--semantic]');
+        console.error('Example: npx ts-node src/info/cli_folder.ts src/info --semantic');
         process.exit(1);
     }
 
@@ -36,8 +36,8 @@ async function main() {
     }
 
     try {
-        const data = await getModuleInfoForMcp(root, relativePath);
-        const prompt = buildModuleEnrichmentPrompt(relativePath, data);
+        const data = await getFolderInfoForMcp(root, relativePath);
+        const prompt = buildFolderEnrichmentPrompt(relativePath, data);
 
         // Semantic mode: output just the prompt to stdout (for LLM consumption)
         if (SEMANTIC_MODE) {
@@ -46,7 +46,7 @@ async function main() {
         }
 
         // Normal mode: show decorated output
-        console.log(`Analyzing module: ${relativePath}`);
+        console.log(`Analyzing folder: ${relativePath}`);
         console.log(`Root: ${root}`);
         console.log('\n' + '='.repeat(80));
         console.log('GENERATED PROMPT');

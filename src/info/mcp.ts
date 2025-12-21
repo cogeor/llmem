@@ -41,6 +41,8 @@ export interface EnrichedFileData {
  */
 export interface FileInfoMcpData {
     filePath: string;
+    rootDir: string;           // Absolute workspace root used
+    artifactPath: string;      // Absolute path to .arch/{path}.md
     markdown: string;
     info: FileInfo;
     sourceCode: string;
@@ -156,8 +158,13 @@ export async function getFileInfoForMcp(
     // Build FileInfo for compatibility
     const info: FileInfo = extractFileInfo(filePath, artifact, new Map());
 
+    // Compute artifact path for .arch/{path}.md
+    const artifactPath = path.join(rootDir, '.arch', `${filePath}.md`);
+
     return {
         filePath,
+        rootDir,
+        artifactPath,
         markdown,
         info,
         sourceCode

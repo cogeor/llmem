@@ -278,6 +278,14 @@ export class LLMemPanel {
 
         console.log(`[LLMemPanel] Toggle watch: ${targetPath} -> ${watched}`);
 
+        // Import worktree state functions
+        const { loadState, saveState, addWatchedPath, removeWatchedPath, computeHash, createEmptyState, cacheFileHashes } =
+            await import('../graph/worktree-state');
+        const fs = require('fs');
+
+        // Load or create state
+        let state = await loadState(artifactRoot) || createEmptyState();
+
         if (watched) {
             // When turning ON: regenerate edges for this path
             await this._regenerateEdges(targetPath);
@@ -286,12 +294,65 @@ export class LLMemPanel {
             if (this._hotReload) {
                 this._hotReload.addWatchedPath(targetPath);
             }
+
+            // Add to persisted state with current hash
+            const absolutePath = path.join(workspaceRoot, targetPath);
+            const isDir = fs.existsSync(absolutePath) && fs.statSync(absolutePath).isDirectory();
+            const type: 'file' | 'directory' = isDir ? 'directory' : 'file';
+
+            // For directories, cache all file hashes first for future fast comparisons
+            if (type === 'directory') {
+                await cacheFileHashes(absolutePath, workspaceRoot, state);
+            }
+
+            // Compute hash using cached file hashes when available
+            const hash = await computeHash(absolutePath, type, workspaceRoot, state);
+
+            addWatchedPath(state, { path: targetPath, type, hash });
+            await saveState(state, artifactRoot);
+            console.log(`[LLMemPanel] Persisted watch state for: ${targetPath}`);
         } else {
             // When turning OFF: remove from hot reload watch list
             if (this._hotReload) {
                 this._hotReload.removeWatchedPath(targetPath);
             }
+
+            // Delete edges for this path from edge lists
+            await this._deleteEdgesForPath(targetPath, artifactRoot);
+
+            // Remove from persisted state
+            removeWatchedPath(state, targetPath);
+            await saveState(state, artifactRoot);
+            console.log(`[LLMemPanel] Removed from persisted state: ${targetPath}`);
+
+            // Refresh webview data to reflect deletion
+            const data = await WebviewDataService.collectData(workspaceRoot, artifactRoot);
+            this._panel.webview.postMessage({
+                type: 'data:refresh',
+                data: data
+            });
         }
+    }
+
+    /**
+     * Delete edges for a given path from both import and call edge lists.
+     */
+    private async _deleteEdgesForPath(targetPath: string, artifactRoot: string) {
+        const { ImportEdgeListStore, CallEdgeListStore } = await import('../graph/edgelist');
+
+        // Delete from import edge list
+        const importStore = new ImportEdgeListStore(artifactRoot);
+        await importStore.load();
+        importStore.removeByFolder(targetPath);
+        await importStore.save();
+
+        // Delete from call edge list
+        const callStore = new CallEdgeListStore(artifactRoot);
+        await callStore.load();
+        callStore.removeByFolder(targetPath);
+        await callStore.save();
+
+        console.log(`[LLMemPanel] Deleted edges for: ${targetPath}`);
     }
 
     private async _startHotReloadAndSendInitialData() {
@@ -304,7 +365,42 @@ export class LLMemPanel {
         const config = getConfig();
         const artifactRoot = path.join(workspaceRoot, config.artifactRoot);
 
-        console.log('[LLMemPanel] Using edge list approach (no artifact service needed)');
+        console.log('[LLMemPanel] Using persistent state with hash-based change detection');
+
+        // Load persisted state and regenerate edges for changed paths
+        const { loadState, detectChangedPaths, saveState, addWatchedPath } = await import('../graph/worktree-state');
+        const savedState = await loadState(artifactRoot);
+        let watchedPaths: string[] = [];
+
+        if (savedState && savedState.watchedPaths.length > 0) {
+            console.log(`[LLMemPanel] Found ${savedState.watchedPaths.length} persisted watched paths`);
+
+            // Detect which paths have changed
+            const changedPaths = await detectChangedPaths(savedState, workspaceRoot);
+            console.log(`[LLMemPanel] ${changedPaths.length} paths have changed`);
+
+            // Regenerate edges only for changed paths
+            for (const entry of changedPaths) {
+                await this._regenerateEdges(entry.path);
+                // Update hash in state
+                addWatchedPath(savedState, entry);
+            }
+
+            // Save updated hashes
+            if (changedPaths.length > 0) {
+                await saveState(savedState, artifactRoot);
+            }
+
+            // Collect watched paths for webview
+            watchedPaths = savedState.watchedPaths.map(p => p.path);
+
+            // Add watched paths to hot reload
+            for (const entry of savedState.watchedPaths) {
+                // Hot reload added after service starts
+            }
+        } else {
+            console.log('[LLMemPanel] No persisted state, starting fresh');
+        }
 
         // Start hot reload service
         this._hotReload = new HotReloadService(
@@ -335,6 +431,15 @@ export class LLMemPanel {
                 callNodes: data.graphData.callGraph.nodes.length,
                 callEdges: data.graphData.callGraph.edges.length
             });
+
+            // Send restored watched paths to webview
+            if (watchedPaths.length > 0) {
+                this._panel.webview.postMessage({
+                    type: 'state:watchedPaths',
+                    paths: watchedPaths
+                });
+                console.log(`[LLMemPanel] Sent ${watchedPaths.length} watched paths to webview`);
+            }
         } catch (e) {
             console.error('[LLMemPanel] Initial data load failed:', e);
             this._panel.webview.postMessage({
@@ -346,6 +451,27 @@ export class LLMemPanel {
                 }
             });
         }
+    }
+
+    /**
+     * Clear all edge lists (temporary behavior for clean slate on startup).
+     */
+    private async _clearAllEdgeLists(artifactRoot: string) {
+        const { ImportEdgeListStore, CallEdgeListStore } = await import('../graph/edgelist');
+
+        // Clear import edge list
+        const importStore = new ImportEdgeListStore(artifactRoot);
+        await importStore.load();
+        importStore.clear();
+        await importStore.save();
+
+        // Clear call edge list
+        const callStore = new CallEdgeListStore(artifactRoot);
+        await callStore.load();
+        callStore.clear();
+        await callStore.save();
+
+        console.log('[LLMemPanel] Cleared all edge lists on startup');
     }
 
     private _getNonce(): string {

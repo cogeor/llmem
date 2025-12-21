@@ -78,10 +78,10 @@ abstract class BaseEdgeListStore {
             if (fsSync.existsSync(this.filePath)) {
                 const content = await fs.readFile(this.filePath, 'utf-8');
                 this.data = JSON.parse(content);
-                console.log(`[${this.constructor.name}] Loaded ${this.data.nodes.length} nodes, ${this.data.edges.length} edges`);
+                console.error(`[${this.constructor.name}] Loaded ${this.data.nodes.length} nodes, ${this.data.edges.length} edges`);
             } else {
                 this.data = this.createEmpty();
-                console.log(`[${this.constructor.name}] No existing edge list, starting fresh`);
+                console.error(`[${this.constructor.name}] No existing edge list, starting fresh`);
             }
         } catch (e) {
             console.error(`[${this.constructor.name}] Failed to load, starting fresh:`, e);
@@ -92,7 +92,7 @@ abstract class BaseEdgeListStore {
 
     async save(): Promise<void> {
         if (!this.dirty) {
-            console.log(`[${this.constructor.name}] No changes to save`);
+            console.error(`[${this.constructor.name}] No changes to save`);
             return;
         }
 
@@ -105,7 +105,7 @@ abstract class BaseEdgeListStore {
             this.data.timestamp = new Date().toISOString();
             const content = JSON.stringify(this.data, null, 2);
             await fs.writeFile(this.filePath, content, 'utf-8');
-            console.log(`[${this.constructor.name}] Saved ${this.data.nodes.length} nodes, ${this.data.edges.length} edges`);
+            console.error(`[${this.constructor.name}] Saved ${this.data.nodes.length} nodes, ${this.data.edges.length} edges`);
             this.dirty = false;
         } catch (e) {
             console.error(`[${this.constructor.name}] Failed to save:`, e);
@@ -222,6 +222,36 @@ abstract class BaseEdgeListStore {
         this.dirty = true;
     }
 
+    /**
+     * Remove all nodes and edges for a given folder path (or file path).
+     * Handles both exact file matches and folder prefix matches.
+     */
+    removeByFolder(folderPath: string): void {
+        const normalizedPath = folderPath.replace(/\\/g, '/');
+
+        // Remove nodes in this folder/file
+        const beforeNodes = this.data.nodes.length;
+        this.data.nodes = this.data.nodes.filter(n => {
+            const normalizedFileId = n.fileId.replace(/\\/g, '/');
+            return normalizedFileId !== normalizedPath &&
+                !normalizedFileId.startsWith(normalizedPath + '/');
+        });
+
+        // Remove edges with sources in this folder/file
+        const beforeEdges = this.data.edges.length;
+        this.data.edges = this.data.edges.filter(e => {
+            const normalizedSource = e.source.replace(/\\/g, '/');
+            return !normalizedSource.startsWith(normalizedPath + '/') &&
+                !normalizedSource.startsWith(normalizedPath + '#') &&
+                normalizedSource !== normalizedPath;
+        });
+
+        if (this.data.nodes.length !== beforeNodes || this.data.edges.length !== beforeEdges) {
+            this.dirty = true;
+            console.error(`[${this.constructor.name}] Removed data for ${normalizedPath}: ${beforeNodes - this.data.nodes.length} nodes, ${beforeEdges - this.data.edges.length} edges`);
+        }
+    }
+
     getData(): EdgeListData {
         return this.data;
     }
@@ -284,10 +314,10 @@ export class EdgeListStore {
             if (fsSync.existsSync(this.filePath)) {
                 const content = await fs.readFile(this.filePath, 'utf-8');
                 this.data = JSON.parse(content);
-                console.log(`[EdgeListStore] Loaded ${this.data.nodes.length} nodes, ${this.data.edges.length} edges`);
+                console.error(`[EdgeListStore] Loaded ${this.data.nodes.length} nodes, ${this.data.edges.length} edges`);
             } else {
                 this.data = this.createEmpty();
-                console.log('[EdgeListStore] No existing edge list, starting fresh');
+                console.error('[EdgeListStore] No existing edge list, starting fresh');
             }
         } catch (e) {
             console.error('[EdgeListStore] Failed to load, starting fresh:', e);
@@ -298,7 +328,7 @@ export class EdgeListStore {
 
     async save(): Promise<void> {
         if (!this.dirty) {
-            console.log('[EdgeListStore] No changes to save');
+            console.error('[EdgeListStore] No changes to save');
             return;
         }
 
@@ -311,7 +341,7 @@ export class EdgeListStore {
             this.data.timestamp = new Date().toISOString();
             const content = JSON.stringify(this.data, null, 2);
             await fs.writeFile(this.filePath, content, 'utf-8');
-            console.log(`[EdgeListStore] Saved ${this.data.nodes.length} nodes, ${this.data.edges.length} edges`);
+            console.error(`[EdgeListStore] Saved ${this.data.nodes.length} nodes, ${this.data.edges.length} edges`);
             this.dirty = false;
         } catch (e) {
             console.error('[EdgeListStore] Failed to save:', e);

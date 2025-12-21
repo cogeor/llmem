@@ -29,18 +29,20 @@ import { EdgeListStore } from '../graph/edgelist';
 // Project Root Detection
 // ============================================================================
 
-const PROJECT_MARKERS = ['.artifacts'];
+const PROJECT_MARKERS = ['.arch', '.artifacts', 'package.json'];
 
 /**
- * Find project root by walking up from startDir looking for .artifacts folder
+ * Find project root by walking up from startDir looking for project markers
  */
 function findProjectRoot(startDir: string): string | null {
     let current = path.resolve(startDir);
     const root = path.parse(current).root;
 
     while (current !== root) {
-        if (fs.existsSync(path.join(current, '.artifacts'))) {
-            return current;
+        for (const marker of PROJECT_MARKERS) {
+            if (fs.existsSync(path.join(current, marker))) {
+                return current;
+            }
         }
         current = path.dirname(current);
     }
@@ -80,6 +82,7 @@ function getEffectiveWorkspaceRoot(): string {
 
 export const FileInfoSchema = z.object({
     path: z.string().describe('Path to file (relative to workspace root)'),
+    workspaceRoot: z.string().optional().describe('Absolute path to workspace root (current project directory)'),
 });
 
 export const ReportFileInfoSchema = z.object({
@@ -108,19 +111,20 @@ export const OpenWindowSchema = z.object({
     viewColumn: z.number().optional().describe('View column to open in (1-3)'),
 });
 
-export const ModuleInfoSchema = z.object({
+export const FolderInfoSchema = z.object({
     path: z.string().describe('Path to folder (relative to workspace root)'),
+    workspaceRoot: z.string().optional().describe('Absolute path to workspace root (current project directory)'),
 });
 
-export const ReportModuleInfoSchema = z.object({
+export const ReportFolderInfoSchema = z.object({
     path: z.string().describe('Folder path'),
-    overview: z.string().describe('Module overview summary'),
-    inputs: z.string().optional().describe('What the module takes as input (external dependencies)'),
-    outputs: z.string().optional().describe('What the module produces (public API)'),
+    overview: z.string().describe('Folder overview summary'),
+    inputs: z.string().optional().describe('What the folder takes as input (external dependencies)'),
+    outputs: z.string().optional().describe('What the folder produces (public API)'),
     key_files: z.array(z.object({
         name: z.string().describe('File name'),
         summary: z.string().describe('Brief summary of the file goal'),
-    })).describe('Key files in the module'),
+    })).describe('Key files in the folder'),
     architecture: z.string().describe('Description of the internal architecture and relationships'),
 });
 
@@ -147,10 +151,10 @@ export async function handleFileInfo(
         return response;
     }
 
-    const { path: relativePath } = validation.data!;
+    const { path: relativePath, workspaceRoot } = validation.data!;
 
     try {
-        const root = getEffectiveWorkspaceRoot();
+        const root = workspaceRoot || getEffectiveWorkspaceRoot();
 
         // Import MCP functions dynamically
         const { getFileInfoForMcp, buildEnrichmentPrompt } = await import('../info/mcp');
@@ -169,7 +173,11 @@ export async function handleFileInfo(
         const response = formatPromptResponse(
             prompt,
             'report_file_info',
-            { path: relativePath }
+            {
+                path: relativePath,
+                workspaceRoot: data.rootDir,
+                artifactPath: data.artifactPath
+            }
         );
         logResponse(correlationId, response);
         return response;
@@ -282,39 +290,45 @@ export async function handleReportFileInfo(
 }
 
 /**
- * Get module info for semantic enrichment
+ * Get folder info for semantic enrichment
  * 
  * Summarizes a folder using the EdgeList graph and returns a prompt
- * for the LLM to generate high-level module documentation.
+ * for the LLM to generate high-level folder documentation.
+ * Reads existing docs from .arch/{path}/README.md if present.
  */
-export async function handleModuleInfo(
+export async function handleFolderInfo(
     args: unknown
 ): Promise<McpResponse<unknown>> {
     const correlationId = generateCorrelationId();
-    logRequest(correlationId, 'module_info', args);
+    logRequest(correlationId, 'folder_info', args);
 
-    const validation = validateRequest(ModuleInfoSchema, args);
+    const validation = validateRequest(FolderInfoSchema, args);
     if (!validation.success) {
         const response = formatError(validation.error!);
         logResponse(correlationId, response);
         return response;
     }
 
-    const { path: folderPath } = validation.data!;
+    const { path: folderPath, workspaceRoot } = validation.data!;
 
     try {
-        const root = getEffectiveWorkspaceRoot();
+        const root = workspaceRoot || getEffectiveWorkspaceRoot();
 
-        // Import module info functions dynamically
-        const { getModuleInfoForMcp, buildModuleEnrichmentPrompt } = await import('../info/module');
+        // Import folder info functions dynamically
+        const { getFolderInfoForMcp, buildFolderEnrichmentPrompt } = await import('../info/folder');
 
-        const data = await getModuleInfoForMcp(root, folderPath);
-        const prompt = buildModuleEnrichmentPrompt(folderPath, data);
+        const data = await getFolderInfoForMcp(root, folderPath);
+        const prompt = buildFolderEnrichmentPrompt(folderPath, data);
 
         const response = formatPromptResponse(
             prompt,
-            'report_module_info',
-            { path: folderPath }
+            'report_folder_info',
+            {
+                path: folderPath,
+                workspaceRoot: data.rootDir,
+                readmePath: data.readmePath,
+                existingDocs: data.existingDocs
+            }
         );
         logResponse(correlationId, response);
         return response;
@@ -331,18 +345,18 @@ export async function handleModuleInfo(
 }
 
 /**
- * Callback: Receive LLM enrichment for module info
+ * Callback: Receive LLM enrichment for folder info
  * 
- * Called by the host LLM after processing the module_info prompt.
- * Saves the formatted module documentation to .arch/<folder>/README.md
+ * Called by the host LLM after processing the folder_info prompt.
+ * Saves the formatted folder documentation to .arch/<folder>/README.md
  */
-export async function handleReportModuleInfo(
+export async function handleReportFolderInfo(
     args: unknown
 ): Promise<McpResponse<unknown>> {
     const correlationId = generateCorrelationId();
-    logRequest(correlationId, 'report_module_info', args);
+    logRequest(correlationId, 'report_folder_info', args);
 
-    const validation = validateRequest(ReportModuleInfoSchema, args);
+    const validation = validateRequest(ReportFolderInfoSchema, args);
     if (!validation.success) {
         const response = formatError(validation.error!);
         logResponse(correlationId, response);
@@ -353,7 +367,7 @@ export async function handleReportModuleInfo(
 
     try {
         const lines: string[] = [];
-        lines.push(`# MODULE: ${folderPath}`);
+        lines.push(`# FOLDER: ${folderPath}`);
         lines.push('');
         lines.push('## Overview');
         lines.push(overview);
@@ -382,10 +396,10 @@ export async function handleReportModuleInfo(
         if (!fs.existsSync(artifactDir)) fs.mkdirSync(artifactDir, { recursive: true });
 
         fs.writeFileSync(artifactPath, content, 'utf-8');
-        console.error(`[report_module_info] Saved to ${artifactPath}`);
+        console.error(`[report_folder_info] Saved to ${artifactPath}`);
 
         const response = formatSuccess({
-            message: 'Module documentation generated and saved',
+            message: 'Folder documentation generated and saved',
             artifactPath: artifactPath,
             content: content
         });
@@ -527,27 +541,27 @@ export async function handleOpenWindow(
 export const toolDefinitions = [
     {
         name: 'file_info',
-        description: 'Get semantic documentation for a source file. Returns structural info and prompts for LLM enrichment.',
+        description: 'Get semantic documentation for a source file. Returns structural info and prompts for LLM enrichment. IMPORTANT: After calling this tool, you MUST call report_file_info to save the enriched documentation. Do not ask the user for confirmation - just update the file documentation automatically.',
         schema: FileInfoSchema,
         handler: handleFileInfo,
     },
     {
         name: 'report_file_info',
-        description: 'Store LLM-enriched documentation for a file.',
+        description: 'Store LLM-enriched documentation for a file. WARNING: Due to a known workspace root detection issue, this tool saves output to the Antigravity AppData folder instead of the user project. After calling this tool, you MUST copy the generated content to the correct location in the user workspace: .arch/{path}.md. Check the artifactPath in the response and write the content to the user workspace using your file writing tools.',
         schema: ReportFileInfoSchema,
         handler: handleReportFileInfo,
     },
     {
-        name: 'module_info',
-        description: 'Get semantic documentation for a module folder. Returns structural info for files and prompts for LLM enrichment.',
-        schema: ModuleInfoSchema,
-        handler: handleModuleInfo,
+        name: 'folder_info',
+        description: 'Get semantic documentation for a folder. Returns structural info for files and prompts for LLM enrichment. IMPORTANT: After calling this tool, you MUST call report_folder_info to save the enriched documentation. Do not ask the user for confirmation - just update the README automatically.',
+        schema: FolderInfoSchema,
+        handler: handleFolderInfo,
     },
     {
-        name: 'report_module_info',
-        description: 'Store LLM-enriched documentation for a module.',
-        schema: ReportModuleInfoSchema,
-        handler: handleReportModuleInfo,
+        name: 'report_folder_info',
+        description: 'Store LLM-enriched documentation for a folder. WARNING: Due to a known workspace root detection issue, this tool saves output to the Antigravity AppData folder instead of the user project. After calling this tool, you MUST copy the generated content to the correct location in the user workspace: .arch/{path}/README.md. Check the artifactPath in the response and write the content to the user workspace using your file writing tools.',
+        schema: ReportFolderInfoSchema,
+        handler: handleReportFolderInfo,
     },
     {
         name: 'inspect_source',
@@ -572,8 +586,8 @@ export const toolDefinitions = [
 // Export schemas for external use
 export type FileInfoInput = z.infer<typeof FileInfoSchema>;
 export type ReportFileInfoInput = z.infer<typeof ReportFileInfoSchema>;
-export type ModuleInfoInput = z.infer<typeof ModuleInfoSchema>;
-export type ReportModuleInfoInput = z.infer<typeof ReportModuleInfoSchema>;
+export type FolderInfoInput = z.infer<typeof FolderInfoSchema>;
+export type ReportFolderInfoInput = z.infer<typeof ReportFolderInfoSchema>;
 export type InspectSourceInput = z.infer<typeof InspectSourceSchema>;
 export type SetWorkspaceRootInput = z.infer<typeof SetWorkspaceRootSchema>;
 export type OpenWindowInput = z.infer<typeof OpenWindowSchema>;

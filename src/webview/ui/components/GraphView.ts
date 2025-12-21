@@ -131,7 +131,7 @@ export class GraphView {
     /**
      * Handle state changes - pan camera and highlight as needed.
      */
-    onState({ currentView, graphType, selectedPath, selectedType }: AppState) {
+    onState({ currentView, graphType, selectedPath, selectedType, selectionSource }: AppState) {
         const canvasEl = this.el.querySelector('.graph-canvas') as HTMLElement;
 
         // If graph type changed, re-initialize
@@ -154,17 +154,25 @@ export class GraphView {
 
         if (!this.graphRenderer) return;
 
+        // When selection comes from graph clicks, the graph's own click handlers
+        // already applied the correct highlight. Only respond when from explorer.
+        if (selectionSource !== 'explorer') {
+            return;
+        }
+
         // Clear previous highlights
         this.graphRenderer.clearHighlight();
 
-        // Pan camera and highlight based on selection type
+        // Pan camera to the selected element
         if (selectedType === "file") {
+            this.graphRenderer.panToFile(selectedPath);
             if (graphType === 'call') {
                 this.graphRenderer.highlightFile(selectedPath);
             } else {
                 this.graphRenderer.highlightNeighbors(selectedPath);
             }
         } else if (selectedType === "directory") {
+            this.graphRenderer.panToFolder(selectedPath);
             this.graphRenderer.highlightFolder(selectedPath);
         }
     }
@@ -181,7 +189,8 @@ export class GraphView {
 
         this.state.set({
             selectedPath: filePath,
-            selectedType: 'file'
+            selectedType: 'file',
+            selectionSource: 'graph'
         });
     }
 
@@ -191,7 +200,8 @@ export class GraphView {
     private handleFolderClick(folderPath: string): void {
         this.state.set({
             selectedPath: folderPath,
-            selectedType: 'directory'
+            selectedType: 'directory',
+            selectionSource: 'graph'
         });
     }
 
@@ -201,7 +211,8 @@ export class GraphView {
     private handleFileClick(filePath: string): void {
         this.state.set({
             selectedPath: filePath,
-            selectedType: 'file'
+            selectedType: 'file',
+            selectionSource: 'graph'
         });
     }
 

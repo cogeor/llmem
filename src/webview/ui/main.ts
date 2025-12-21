@@ -118,6 +118,14 @@ dataProvider.onRefresh(async () => {
     if (designTextView) await designTextView.mount();
 });
 
+// Subscribe to watched paths restoration (persisted state from disk)
+if (dataProvider.onWatchedPathsRestored) {
+    dataProvider.onWatchedPathsRestored((paths: string[]) => {
+        console.log(`[Webview] Restoring ${paths.length} watched paths`);
+        state.set({ watchedPaths: new Set(paths) });
+    });
+}
+
 // Bootstrap
 (async () => {
     try {

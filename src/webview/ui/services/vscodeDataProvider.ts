@@ -11,6 +11,7 @@ declare const acquireVsCodeApi: () => any;
 export class VSCodeDataProvider implements DataProvider {
     private vscode: any;
     private refreshListeners: Set<() => void> = new Set();
+    private watchedPathsListeners: Set<(paths: string[]) => void> = new Set();
 
     // Cached data from extension
     private graphData: GraphData | null = null;
@@ -72,6 +73,12 @@ export class VSCodeDataProvider implements DataProvider {
                     this.pendingFolderNodeRequests.delete(folderPath);
                 }
                 break;
+
+            case 'state:watchedPaths':
+                // Restore watched paths from persisted state
+                console.log(`[VSCodeDataProvider] Received ${message.paths?.length || 0} watched paths`);
+                this.watchedPathsListeners.forEach(cb => cb(message.paths || []));
+                break;
         }
     }
 
@@ -93,6 +100,15 @@ export class VSCodeDataProvider implements DataProvider {
     onRefresh(callback: () => void): () => void {
         this.refreshListeners.add(callback);
         return () => this.refreshListeners.delete(callback);
+    }
+
+    /**
+     * Subscribe to watched paths restoration.
+     * Called when persisted watched paths are loaded from disk.
+     */
+    onWatchedPathsRestored(callback: (paths: string[]) => void): () => void {
+        this.watchedPathsListeners.add(callback);
+        return () => this.watchedPathsListeners.delete(callback);
     }
 
     /**
