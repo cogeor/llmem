@@ -1,12 +1,12 @@
 /**
- * Worktree State Persistence
+ * Watch Service - File-Only Tracking
  * 
- * Saves and loads watched path state with content hashes for
- * detecting changes and enabling incremental edge regeneration.
+ * Centralized service for managing watched file state.
+ * Only tracks individual files, folder status is derived.
  * 
- * Optimization: Folder hashes are computed from child file hashes,
- * not by reading all file contents. This makes change detection O(1)
- * for unchanged files.
+ * V2.0 format:
+ * - watchedFiles: string[] (relative file paths)
+ * - fileHashes: Record<string, string> (path -> hash for change detection)
  */
 
 import * as fs from 'fs/promises';
@@ -18,93 +18,290 @@ import * as crypto from 'crypto';
 // Types
 // ============================================================================
 
-export interface WatchedPathEntry {
-    path: string;                    // Relative path (e.g., "src/extension")
-    type: 'file' | 'directory';
-    hash: string;                    // SHA-256 hash
-}
-
-export interface WorktreeState {
+/** V2 state format - file-only */
+export interface WatchStateV2 {
     version: string;
     timestamp: string;
-    watchedPaths: WatchedPathEntry[];
-    fileHashes: Record<string, string>;  // path -> hash for all known files
+    watchedFiles: string[];                    // Only file paths, no directories
+    fileHashes: Record<string, string>;        // path -> SHA-256 hash
+}
+
+/** Legacy V1 format for migration */
+interface WatchStateV1 {
+    version: string;
+    watchedPaths: { path: string; type: 'file' | 'directory'; hash: string }[];
+    fileHashes: Record<string, string>;
 }
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-const STATE_VERSION = '1.1.0';
+const STATE_VERSION = '2.0.0';
 const STATE_FILENAME = 'worktree-state.json';
 const PARSABLE_EXTS = ['.ts', '.tsx', '.js', '.jsx', '.py', '.java', '.go', '.rs', '.c', '.cpp', '.h', '.hpp'];
 
 // ============================================================================
-// State Persistence
+// WatchService Class
 // ============================================================================
 
 /**
- * Load worktree state from disk.
+ * Centralized service for managing watched files.
+ * 
+ * Key design: Only tracks individual files, never directories.
+ * Folder status is derived from whether files under it are watched.
  */
-export async function loadState(artifactRoot: string): Promise<WorktreeState | null> {
-    const filePath = path.join(artifactRoot, STATE_FILENAME);
+export class WatchService {
+    private watchedFiles = new Set<string>();
+    private fileHashes = new Map<string, string>();
+    private artifactRoot: string;
+    private workspaceRoot: string;
 
-    try {
-        if (fsSync.existsSync(filePath)) {
-            const content = await fs.readFile(filePath, 'utf-8');
-            const state = JSON.parse(content) as WorktreeState;
-            // Ensure fileHashes exists (backwards compat)
-            if (!state.fileHashes) {
-                state.fileHashes = {};
+    constructor(artifactRoot: string, workspaceRoot: string) {
+        this.artifactRoot = artifactRoot;
+        this.workspaceRoot = workspaceRoot;
+    }
+
+    // ========================================================================
+    // Persistence
+    // ========================================================================
+
+    /**
+     * Load state from disk, migrating from v1 if needed.
+     */
+    async load(): Promise<void> {
+        const filePath = path.join(this.artifactRoot, STATE_FILENAME);
+
+        try {
+            if (fsSync.existsSync(filePath)) {
+                const content = await fs.readFile(filePath, 'utf-8');
+                const rawState = JSON.parse(content);
+
+                // Check version and migrate if needed
+                if (rawState.version?.startsWith('1.')) {
+                    await this.migrateFromV1(rawState as WatchStateV1);
+                } else {
+                    const state = rawState as WatchStateV2;
+                    this.watchedFiles = new Set(state.watchedFiles || []);
+                    this.fileHashes = new Map(Object.entries(state.fileHashes || {}));
+                }
+
+                console.error(`[WatchService] Loaded ${this.watchedFiles.size} watched files`);
             }
-            console.error(`[WorktreeState] Loaded ${state.watchedPaths.length} watched paths, ${Object.keys(state.fileHashes).length} file hashes`);
-            return state;
+        } catch (e) {
+            console.error('[WatchService] Failed to load state:', e);
         }
-    } catch (e) {
-        console.error('[WorktreeState] Failed to load state:', e);
     }
 
-    return null;
-}
+    /**
+     * Migrate from v1 format (directories + files) to v2 (files only).
+     */
+    private async migrateFromV1(v1State: WatchStateV1): Promise<void> {
+        console.error('[WatchService] Migrating from v1 to v2 format...');
 
-/**
- * Save worktree state to disk.
- */
-export async function saveState(state: WorktreeState, artifactRoot: string): Promise<void> {
-    const filePath = path.join(artifactRoot, STATE_FILENAME);
-
-    try {
-        const dir = path.dirname(filePath);
-        if (!fsSync.existsSync(dir)) {
-            await fs.mkdir(dir, { recursive: true });
+        // Collect all files from v1 format
+        for (const entry of v1State.watchedPaths || []) {
+            if (entry.type === 'file') {
+                this.watchedFiles.add(entry.path);
+            } else {
+                // Directory: expand to all files underneath
+                const absolutePath = path.join(this.workspaceRoot, entry.path);
+                if (fsSync.existsSync(absolutePath)) {
+                    const files = await listParsableFiles(absolutePath);
+                    for (const f of files) {
+                        const relativePath = path.relative(this.workspaceRoot, f).replace(/\\/g, '/');
+                        this.watchedFiles.add(relativePath);
+                    }
+                }
+            }
         }
 
-        state.timestamp = new Date().toISOString();
-        state.version = STATE_VERSION;
+        // Keep existing file hashes for watched files only
+        for (const [path, hash] of Object.entries(v1State.fileHashes || {})) {
+            if (this.watchedFiles.has(path)) {
+                this.fileHashes.set(path, hash);
+            }
+        }
 
-        const content = JSON.stringify(state, null, 2);
-        await fs.writeFile(filePath, content, 'utf-8');
-        console.error(`[WorktreeState] Saved ${state.watchedPaths.length} watched paths, ${Object.keys(state.fileHashes).length} file hashes`);
-    } catch (e) {
-        console.error('[WorktreeState] Failed to save state:', e);
-        throw e;
+        // Save in new format
+        await this.save();
+        console.error(`[WatchService] Migrated to v2: ${this.watchedFiles.size} files`);
     }
-}
 
-/**
- * Create an empty state.
- */
-export function createEmptyState(): WorktreeState {
-    return {
-        version: STATE_VERSION,
-        timestamp: new Date().toISOString(),
-        watchedPaths: [],
-        fileHashes: {}
-    };
+    /**
+     * Save state to disk.
+     */
+    async save(): Promise<void> {
+        const filePath = path.join(this.artifactRoot, STATE_FILENAME);
+
+        try {
+            const dir = path.dirname(filePath);
+            if (!fsSync.existsSync(dir)) {
+                await fs.mkdir(dir, { recursive: true });
+            }
+
+            const state: WatchStateV2 = {
+                version: STATE_VERSION,
+                timestamp: new Date().toISOString(),
+                watchedFiles: Array.from(this.watchedFiles).sort(),
+                fileHashes: Object.fromEntries(this.fileHashes)
+            };
+
+            await fs.writeFile(filePath, JSON.stringify(state, null, 2), 'utf-8');
+            console.error(`[WatchService] Saved ${this.watchedFiles.size} watched files`);
+        } catch (e) {
+            console.error('[WatchService] Failed to save state:', e);
+            throw e;
+        }
+    }
+
+    // ========================================================================
+    // File Operations
+    // ========================================================================
+
+    /**
+     * Check if a specific file is watched.
+     */
+    isFileWatched(filePath: string): boolean {
+        return this.watchedFiles.has(filePath);
+    }
+
+    /**
+     * Get all watched file paths.
+     */
+    getWatchedFiles(): string[] {
+        return Array.from(this.watchedFiles);
+    }
+
+    /**
+     * Add a single file to watching.
+     */
+    async addFile(relativePath: string): Promise<void> {
+        this.watchedFiles.add(relativePath);
+
+        // Compute and store hash
+        const absolutePath = path.join(this.workspaceRoot, relativePath);
+        if (fsSync.existsSync(absolutePath)) {
+            const hash = await hashFile(absolutePath);
+            this.fileHashes.set(relativePath, hash);
+        }
+    }
+
+    /**
+     * Remove a single file from watching.
+     */
+    removeFile(relativePath: string): void {
+        this.watchedFiles.delete(relativePath);
+        this.fileHashes.delete(relativePath);
+    }
+
+    // ========================================================================
+    // Folder Operations (convenience - expand to files)
+    // ========================================================================
+
+    /**
+     * Add all files under a folder to watching.
+     * Returns the list of files that were added.
+     */
+    async addFolder(folderPath: string): Promise<string[]> {
+        const absolutePath = path.join(this.workspaceRoot, folderPath);
+        const files = await listParsableFiles(absolutePath);
+        const addedFiles: string[] = [];
+
+        for (const absoluteFilePath of files) {
+            const relativePath = path.relative(this.workspaceRoot, absoluteFilePath).replace(/\\/g, '/');
+            if (!this.watchedFiles.has(relativePath)) {
+                await this.addFile(relativePath);
+                addedFiles.push(relativePath);
+            }
+        }
+
+        console.error(`[WatchService] Added ${addedFiles.length} files from folder: ${folderPath}`);
+        return addedFiles;
+    }
+
+    /**
+     * Remove all files under a folder from watching.
+     * Returns the list of files that were removed.
+     */
+    removeFolder(folderPath: string): string[] {
+        const prefix = folderPath + '/';
+        const removedFiles: string[] = [];
+
+        for (const filePath of this.watchedFiles) {
+            if (filePath === folderPath || filePath.startsWith(prefix)) {
+                this.watchedFiles.delete(filePath);
+                this.fileHashes.delete(filePath);
+                removedFiles.push(filePath);
+            }
+        }
+
+        console.error(`[WatchService] Removed ${removedFiles.length} files from folder: ${folderPath}`);
+        return removedFiles;
+    }
+
+    // ========================================================================
+    // Status Checks
+    // ========================================================================
+
+    /**
+     * Check if a path has any watched descendants.
+     * For files: checks exact match
+     * For folders: checks if any file under it is watched
+     */
+    hasWatchedDescendant(pathToCheck: string): boolean {
+        // Exact match
+        if (this.watchedFiles.has(pathToCheck)) {
+            return true;
+        }
+
+        // Check if any watched file starts with this path
+        const prefix = pathToCheck + '/';
+        for (const filePath of this.watchedFiles) {
+            if (filePath.startsWith(prefix)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // ========================================================================
+    // Change Detection
+    // ========================================================================
+
+    /**
+     * Detect which watched files have changed since last save.
+     * Returns list of changed file paths.
+     */
+    async getChangedFiles(): Promise<string[]> {
+        const changed: string[] = [];
+
+        for (const filePath of this.watchedFiles) {
+            const absolutePath = path.join(this.workspaceRoot, filePath);
+
+            if (!fsSync.existsSync(absolutePath)) {
+                console.error(`[WatchService] File no longer exists: ${filePath}`);
+                continue;
+            }
+
+            const currentHash = await hashFile(absolutePath);
+            const savedHash = this.fileHashes.get(filePath);
+
+            if (currentHash !== savedHash) {
+                console.error(`[WatchService] Changed: ${filePath}`);
+                changed.push(filePath);
+                // Update hash
+                this.fileHashes.set(filePath, currentHash);
+            }
+        }
+
+        return changed;
+    }
 }
 
 // ============================================================================
-// Hashing (Optimized)
+// Utility Functions
 // ============================================================================
 
 /**
@@ -116,9 +313,9 @@ async function hashFile(absolutePath: string): Promise<string> {
 }
 
 /**
- * Check if a file should be hashed (based on extension).
+ * Check if a file is parsable based on extension.
  */
-function isParsableFile(filename: string): boolean {
+export function isParsableFile(filename: string): boolean {
     const ext = path.extname(filename).toLowerCase();
     return PARSABLE_EXTS.includes(ext);
 }
@@ -126,7 +323,7 @@ function isParsableFile(filename: string): boolean {
 /**
  * List all parsable files in a directory (recursive).
  */
-async function listParsableFiles(absolutePath: string): Promise<string[]> {
+export async function listParsableFiles(absolutePath: string): Promise<string[]> {
     const files: string[] = [];
 
     async function walkDir(dir: string) {
@@ -155,194 +352,4 @@ async function listParsableFiles(absolutePath: string): Promise<string[]> {
 
     await walkDir(absolutePath);
     return files.sort();
-}
-
-/**
- * Compute folder hash from stored file hashes (no file I/O).
- * Falls back to computing individual file hashes if not in cache.
- */
-export async function computeFolderHash(
-    absoluteFolderPath: string,
-    workspaceRoot: string,
-    state: WorktreeState
-): Promise<{ hash: string; updatedFileHashes: Record<string, string> }> {
-    const updatedFileHashes: Record<string, string> = {};
-    const files = await listParsableFiles(absoluteFolderPath);
-    const hashes: string[] = [];
-
-    for (const absoluteFilePath of files) {
-        const relativePath = path.relative(workspaceRoot, absoluteFilePath).replace(/\\/g, '/');
-
-        // Use cached hash if available, otherwise compute
-        let hash = state.fileHashes[relativePath];
-        if (!hash) {
-            hash = await hashFile(absoluteFilePath);
-            updatedFileHashes[relativePath] = hash;
-        }
-        hashes.push(hash);
-    }
-
-    // Combine all file hashes into a single folder hash
-    const combined = hashes.join('');
-    const folderHash = crypto.createHash('sha256').update(combined).digest('hex');
-
-    return { hash: folderHash, updatedFileHashes };
-}
-
-/**
- * Compute hash for a file or directory.
- * For directories, uses cached file hashes when available.
- */
-export async function computeHash(
-    absolutePath: string,
-    type: 'file' | 'directory',
-    workspaceRoot?: string,
-    state?: WorktreeState
-): Promise<string> {
-    try {
-        if (type === 'file') {
-            return await hashFile(absolutePath);
-        } else {
-            // For directories, if we have state, use optimized version
-            if (workspaceRoot && state) {
-                const { hash } = await computeFolderHash(absolutePath, workspaceRoot, state);
-                return hash;
-            }
-            // Fallback: compute from scratch (slower)
-            return await computeFolderHashFresh(absolutePath);
-        }
-    } catch (e) {
-        console.error(`[WorktreeState] Failed to hash ${absolutePath}:`, e);
-        return '';
-    }
-}
-
-/**
- * Compute folder hash from scratch (reads all files).
- * Used when no state is available.
- */
-async function computeFolderHashFresh(absolutePath: string): Promise<string> {
-    const files = await listParsableFiles(absolutePath);
-    const hashes: string[] = [];
-
-    for (const file of files) {
-        const hash = await hashFile(file);
-        hashes.push(hash);
-    }
-
-    const combined = hashes.join('');
-    return crypto.createHash('sha256').update(combined).digest('hex');
-}
-
-/**
- * Update file hashes in state for all files in a folder.
- * Call this after toggling a folder ON to cache all file hashes.
- */
-export async function cacheFileHashes(
-    absoluteFolderPath: string,
-    workspaceRoot: string,
-    state: WorktreeState
-): Promise<void> {
-    const files = await listParsableFiles(absoluteFolderPath);
-
-    for (const absoluteFilePath of files) {
-        const relativePath = path.relative(workspaceRoot, absoluteFilePath).replace(/\\/g, '/');
-
-        // Only compute if not already cached
-        if (!state.fileHashes[relativePath]) {
-            state.fileHashes[relativePath] = await hashFile(absoluteFilePath);
-        }
-    }
-
-    console.error(`[WorktreeState] Cached ${files.length} file hashes for ${path.basename(absoluteFolderPath)}`);
-}
-
-// ============================================================================
-// Change Detection (Optimized)
-// ============================================================================
-
-/**
- * Detect which watched paths have changed since the state was saved.
- * Uses cached file hashes to avoid reading unchanged files.
- */
-export async function detectChangedPaths(
-    savedState: WorktreeState,
-    workspaceRoot: string
-): Promise<WatchedPathEntry[]> {
-    const changed: WatchedPathEntry[] = [];
-
-    for (const entry of savedState.watchedPaths) {
-        const absolutePath = path.join(workspaceRoot, entry.path);
-
-        // Check if path still exists
-        if (!fsSync.existsSync(absolutePath)) {
-            console.error(`[WorktreeState] Path no longer exists: ${entry.path}`);
-            continue;
-        }
-
-        if (entry.type === 'file') {
-            // For files, compute hash directly
-            const currentHash = await hashFile(absolutePath);
-            if (currentHash !== entry.hash) {
-                console.error(`[WorktreeState] Changed file: ${entry.path}`);
-                changed.push({ ...entry, hash: currentHash });
-                // Update cache
-                savedState.fileHashes[entry.path] = currentHash;
-            } else {
-                console.error(`[WorktreeState] Unchanged file: ${entry.path}`);
-            }
-        } else {
-            // For directories, use optimized hash computation
-            const { hash: currentHash, updatedFileHashes } = await computeFolderHash(
-                absolutePath,
-                workspaceRoot,
-                savedState
-            );
-
-            // Merge new file hashes into state
-            Object.assign(savedState.fileHashes, updatedFileHashes);
-
-            if (currentHash !== entry.hash) {
-                console.error(`[WorktreeState] Changed folder: ${entry.path} (${Object.keys(updatedFileHashes).length} new files hashed)`);
-                changed.push({ ...entry, hash: currentHash });
-            } else {
-                console.error(`[WorktreeState] Unchanged folder: ${entry.path}`);
-            }
-        }
-    }
-
-    return changed;
-}
-
-/**
- * Add or update a watched path entry.
- */
-export function addWatchedPath(
-    state: WorktreeState,
-    entry: WatchedPathEntry
-): void {
-    const idx = state.watchedPaths.findIndex(p => p.path === entry.path);
-    if (idx >= 0) {
-        state.watchedPaths[idx] = entry;
-    } else {
-        state.watchedPaths.push(entry);
-    }
-}
-
-/**
- * Remove a watched path entry and its cached file hashes.
- */
-export function removeWatchedPath(
-    state: WorktreeState,
-    pathToRemove: string
-): void {
-    state.watchedPaths = state.watchedPaths.filter(p => p.path !== pathToRemove);
-
-    // Also remove cached file hashes for files under this path
-    const prefix = pathToRemove + '/';
-    for (const key of Object.keys(state.fileHashes)) {
-        if (key === pathToRemove || key.startsWith(prefix)) {
-            delete state.fileHashes[key];
-        }
-    }
 }

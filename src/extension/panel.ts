@@ -265,7 +265,7 @@ export class LLMemPanel {
     }
 
     /**
-     * Handle toggle watch message - manage watched paths for hot reload.
+     * Handle toggle watch message - manage watched files using WatchService.
      */
     private async _handleToggleWatch(targetPath: string, watched: boolean) {
         const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -275,62 +275,77 @@ export class LLMemPanel {
 
         const config = getConfig();
         const artifactRoot = path.join(workspaceRoot, config.artifactRoot);
+        const fs = require('fs');
 
         console.log(`[LLMemPanel] Toggle watch: ${targetPath} -> ${watched}`);
 
-        // Import worktree state functions
-        const { loadState, saveState, addWatchedPath, removeWatchedPath, computeHash, createEmptyState, cacheFileHashes } =
-            await import('../graph/worktree-state');
-        const fs = require('fs');
+        // Use centralized WatchService
+        const { WatchService } = await import('../graph/worktree-state');
+        const watchService = new WatchService(artifactRoot, workspaceRoot);
+        await watchService.load();
 
-        // Load or create state
-        let state = await loadState(artifactRoot) || createEmptyState();
+        const absolutePath = path.join(workspaceRoot, targetPath);
+        const isDir = fs.existsSync(absolutePath) && fs.statSync(absolutePath).isDirectory();
 
         if (watched) {
-            // When turning ON: regenerate edges for this path
+            // When turning ON: add files and regenerate edges
+            let addedFiles: string[];
+            if (isDir) {
+                addedFiles = await watchService.addFolder(targetPath);
+            } else {
+                await watchService.addFile(targetPath);
+                addedFiles = [targetPath];
+            }
+
+            // Add files to hot reload
+            for (const f of addedFiles) {
+                this._hotReload?.addWatchedPath(f);
+            }
+
+            // Regenerate edges
             await this._regenerateEdges(targetPath);
+            await watchService.save();
 
-            // Update hot reload service to watch this path
-            if (this._hotReload) {
-                this._hotReload.addWatchedPath(targetPath);
-            }
+            // Send updated watched files to webview
+            this._panel.webview.postMessage({
+                type: 'state:watchedPaths',
+                paths: watchService.getWatchedFiles()
+            });
 
-            // Add to persisted state with current hash
-            const absolutePath = path.join(workspaceRoot, targetPath);
-            const isDir = fs.existsSync(absolutePath) && fs.statSync(absolutePath).isDirectory();
-            const type: 'file' | 'directory' = isDir ? 'directory' : 'file';
-
-            // For directories, cache all file hashes first for future fast comparisons
-            if (type === 'directory') {
-                await cacheFileHashes(absolutePath, workspaceRoot, state);
-            }
-
-            // Compute hash using cached file hashes when available
-            const hash = await computeHash(absolutePath, type, workspaceRoot, state);
-
-            addWatchedPath(state, { path: targetPath, type, hash });
-            await saveState(state, artifactRoot);
-            console.log(`[LLMemPanel] Persisted watch state for: ${targetPath}`);
+            console.log(`[LLMemPanel] Added ${addedFiles.length} files to watch`);
         } else {
-            // When turning OFF: remove from hot reload watch list
-            if (this._hotReload) {
-                this._hotReload.removeWatchedPath(targetPath);
+            // When turning OFF: remove files
+            let removedFiles: string[];
+            if (isDir) {
+                removedFiles = watchService.removeFolder(targetPath);
+            } else {
+                watchService.removeFile(targetPath);
+                removedFiles = [targetPath];
             }
 
-            // Delete edges for this path from edge lists
+            // Remove from hot reload
+            for (const f of removedFiles) {
+                this._hotReload?.removeWatchedPath(f);
+            }
+
+            // Delete edges
             await this._deleteEdgesForPath(targetPath, artifactRoot);
+            await watchService.save();
 
-            // Remove from persisted state
-            removeWatchedPath(state, targetPath);
-            await saveState(state, artifactRoot);
-            console.log(`[LLMemPanel] Removed from persisted state: ${targetPath}`);
+            // Send updated watched files to webview
+            this._panel.webview.postMessage({
+                type: 'state:watchedPaths',
+                paths: watchService.getWatchedFiles()
+            });
 
-            // Refresh webview data to reflect deletion
+            // Refresh webview data
             const data = await WebviewDataService.collectData(workspaceRoot, artifactRoot);
             this._panel.webview.postMessage({
                 type: 'data:refresh',
                 data: data
             });
+
+            console.log(`[LLMemPanel] Removed ${removedFiles.length} files from watch`);
         }
     }
 
@@ -365,36 +380,35 @@ export class LLMemPanel {
         const config = getConfig();
         const artifactRoot = path.join(workspaceRoot, config.artifactRoot);
 
-        console.log('[LLMemPanel] Using persistent state with hash-based change detection');
+        console.log('[LLMemPanel] Using WatchService with file-only tracking');
 
-        // Load persisted state and regenerate edges for changed paths
-        const { loadState, detectChangedPaths, saveState, addWatchedPath } = await import('../graph/worktree-state');
-        const savedState = await loadState(artifactRoot);
-        let watchedPaths: string[] = [];
+        // Load watch state using WatchService
+        const { WatchService } = await import('../graph/worktree-state');
+        const watchService = new WatchService(artifactRoot, workspaceRoot);
+        await watchService.load();
 
-        if (savedState && savedState.watchedPaths.length > 0) {
-            console.log(`[LLMemPanel] Found ${savedState.watchedPaths.length} persisted watched paths`);
+        const watchedFiles = watchService.getWatchedFiles();
+        console.log(`[LLMemPanel] Found ${watchedFiles.length} watched files`);
 
-            // Detect which paths have changed
-            const changedPaths = await detectChangedPaths(savedState, workspaceRoot);
-            console.log(`[LLMemPanel] ${changedPaths.length} paths have changed`);
+        // Detect changed files and regenerate edges
+        if (watchedFiles.length > 0) {
+            const changedFiles = await watchService.getChangedFiles();
+            console.log(`[LLMemPanel] ${changedFiles.length} files have changed`);
 
-            // Regenerate edges only for changed paths
-            for (const entry of changedPaths) {
-                await this._regenerateEdges(entry.path);
-                // Update hash in state
-                addWatchedPath(savedState, entry);
+            // Regenerate edges for changed files
+            const { generateCallEdgesForFile } = await import('../scripts/generate-call-edges');
+            for (const filePath of changedFiles) {
+                try {
+                    await generateCallEdgesForFile(workspaceRoot, filePath, artifactRoot);
+                } catch (e) {
+                    console.error(`[LLMemPanel] Failed to regenerate edges for ${filePath}:`, e);
+                }
             }
 
             // Save updated hashes
-            if (changedPaths.length > 0) {
-                await saveState(savedState, artifactRoot);
+            if (changedFiles.length > 0) {
+                await watchService.save();
             }
-
-            // Collect watched paths for webview
-            watchedPaths = savedState.watchedPaths.map(p => p.path);
-        } else {
-            console.log('[LLMemPanel] No persisted state, starting fresh');
         }
 
         // Start hot reload service
@@ -412,9 +426,9 @@ export class LLMemPanel {
         this._hotReload.start();
         this._disposables.push({ dispose: () => this._hotReload?.stop() });
 
-        // Add watched paths to hot reload (must be after service is created)
-        for (const p of watchedPaths) {
-            this._hotReload.addWatchedPath(p);
+        // Add watched files to hot reload
+        for (const f of watchedFiles) {
+            this._hotReload.addWatchedPath(f);
         }
 
         // Send initial data
@@ -432,13 +446,13 @@ export class LLMemPanel {
                 callEdges: data.graphData.callGraph.edges.length
             });
 
-            // Send restored watched paths to webview
-            if (watchedPaths.length > 0) {
+            // Send watched files to webview
+            if (watchedFiles.length > 0) {
                 this._panel.webview.postMessage({
                     type: 'state:watchedPaths',
-                    paths: watchedPaths
+                    paths: watchedFiles
                 });
-                console.log(`[LLMemPanel] Sent ${watchedPaths.length} watched paths to webview`);
+                console.log(`[LLMemPanel] Sent ${watchedFiles.length} watched files to webview`);
             }
         } catch (e) {
             console.error('[LLMemPanel] Initial data load failed:', e);

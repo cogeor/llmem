@@ -147,15 +147,10 @@ export class HotReloadService {
     }
 
     /**
-     * Check if a file is within any watched path.
+     * Check if a file is in the watched set (exact match).
      */
     private isInWatchedPath(relativePath: string): boolean {
-        for (const watchedPath of this.watchedPaths) {
-            if (relativePath === watchedPath || relativePath.startsWith(watchedPath + '/')) {
-                return true;
-            }
-        }
-        return false;
+        return this.watchedPaths.has(relativePath);
     }
 
     private queueSourceRebuild(uri: vscode.Uri) {
