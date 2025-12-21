@@ -35,64 +35,72 @@ Prerequisites:
 4. **Open in Antigravity IDE**
    Open the folder in Antigravity. The extension should activate automatically, starting the MCP server.
 
-## 💡 MCP Tools Usage
+## 🎯 Usage Workflow
 
-LLMem exposes MCP tools to the Antigravity Agent. These tools provide semantic documentation generation for files and folders.
+LLMem works in two stages: **graph visualization** (in the IDE panel) and **documentation generation** (via MCP tools).
 
-### `folder_info` - Get Folder Documentation
+### Step 1: Open the LLMem Panel
 
-Summarizes a folder using the EdgeList graph and returns a prompt for the LLM to generate high-level folder documentation. Reads existing docs from `.arch/{path}/README.md` if present.
+Open the command palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and run:
 
-**Example interaction:**
-> "Run mcp folder_info on src/graph"
+```
+LLMem: Open View Panel
+```
 
-The tool returns structural analysis including:
-- File count and graph statistics
-- Function/class signatures for each file
-- Import and call edges between files
+This opens the LLMem webview showing your workspace file tree and the dependency graph.
 
-### `file_info` - Get File Documentation
+### Step 2: Toggle Watched Files
 
-Extracts detailed file information and returns a prompt for the LLM to generate documentation. Returns structural info including functions, classes, and their relationships.
+For large codebases, graph edges are computed **lazily** to save resources:
 
-**Example interaction:**
-> "Run mcp file_info on src/mcp/tools.ts"
+1. In the file explorer (left panel), you'll see toggle buttons (circles) next to files and folders
+2. Click a toggle to **watch** a file/folder — this triggers edge computation
+3. Watched items turn green; their import and call relationships appear in the graph
 
-### `report_folder_info` / `report_file_info` - Save Documentation
+> [!TIP]
+> Toggle an entire folder to watch all files within it at once.
 
-Callback tools that receive LLM-generated enrichment and save the documentation:
-- `report_folder_info` saves to `.arch/{folder}/README.md`
-- `report_file_info` saves to `.arch/{file}.md`
-
-### `inspect_source` - Read Source Lines
-
-Allows the agent to read specific line ranges from a source file for detailed inspection.
-
-### `open_window` - Generate Static Webview
-
-Generates a static webview of the graph visualization for browser viewing.
-
-## 📊 Graph Visualization
+### Step 3: Explore the Graph
 
 ![Graph Visualization](images/graph-preview.png)
 
-LLMem provides an interactive graph visualization of your codebase structure, showing import dependencies and function call relationships.
+The graph shows:
+- **Import edges**: File-to-file import dependencies
+- **Call edges**: Function-to-function call relationships
+- **Node selection**: Click a node to highlight its connections
 
-**Features:**
-- Interactive pan and zoom navigation
-- Node selection with edge highlighting
-- Folder-level grouping of files
-- Import edges and function call edges visualization
+**Navigation:**
+- Pan: Click and drag
+- Zoom: Mouse wheel
+- Select: Click a node
 
-**Generate and view the graph:**
-```bash
-npm run view:graph
-```
+### Step 4: Generate Documentation via MCP
 
-This generates a static HTML page at `data/graph/index.html` that can be opened in any browser.
+Once edges are computed, use the Antigravity Agent to generate documentation:
 
-> [!TIP]
-> The graph helps you visualize dependencies, identify tightly-coupled modules, and understand the overall architecture at a glance.
+**Folder documentation:**
+> "Run mcp folder_info on src/graph"
+
+**File documentation:**
+> "Run mcp file_info on src/mcp/tools.ts"
+
+The agent uses the computed graph to understand dependencies and generates detailed documentation saved to `.arch/`.
+
+---
+
+## 💡 MCP Tools Reference
+
+| Tool | Purpose |
+|------|---------|
+| `folder_info` | Get folder structure + prompt for LLM documentation |
+| `file_info` | Get file details + prompt for LLM documentation |
+| `report_folder_info` | Save LLM-generated folder docs to `.arch/{folder}/README.md` |
+| `report_file_info` | Save LLM-generated file docs to `.arch/{file}.md` |
+| `inspect_source` | Read specific line ranges from source files |
+| `open_window` | Open the LLMem panel in the IDE |
+
+> [!IMPORTANT]
+> MCP documentation tools require the graph to be computed first. Make sure to **toggle watched files** in the panel before generating summaries.
 
 ## 🏗️ Architecture
 
