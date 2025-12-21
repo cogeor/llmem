@@ -167,92 +167,112 @@ export class Worktree {
     }
 
     /**
-     * Handle status button click - toggle watch state for the path and all children.
+     * Handle status button click - toggle watch state for the path.
+     * For folders: toggles all files underneath.
+     * For files: toggles the single file.
      */
-    handleStatusButtonClick(path: string) {
+    handleStatusButtonClick(clickedPath: string) {
         const currentState = this.state.get();
-        const isCurrentlyWatched = currentState.watchedPaths.has(path);
-        const newWatchedPaths = new Set<string>(currentState.watchedPaths);
+        const nodeEl = this.el.querySelector(`.tree-node[data-path="${CSS.escape(clickedPath)}"]`) as HTMLElement;
+        const isDir = nodeEl?.dataset.type === 'directory';
 
-        // Collect all paths to toggle (the clicked path + all children)
-        const pathsToToggle = this.collectAllPaths(path);
-
-        if (isCurrentlyWatched) {
-            // Unwatch all paths
-            for (const p of pathsToToggle) {
-                newWatchedPaths.delete(p);
-            }
-            console.log(`[Worktree] Unwatching ${pathsToToggle.length} paths under: ${path}`);
+        // Determine if currently watched:
+        // - For files: exact match in watchedPaths
+        // - For folders: any descendant file is watched
+        let isCurrentlyWatched: boolean;
+        if (isDir) {
+            isCurrentlyWatched = this.hasWatchedDescendant(clickedPath, currentState.watchedPaths);
         } else {
-            // Watch all paths
-            for (const p of pathsToToggle) {
-                newWatchedPaths.add(p);
-            }
-            console.log(`[Worktree] Watching ${pathsToToggle.length} paths under: ${path}`);
+            isCurrentlyWatched = currentState.watchedPaths.has(clickedPath);
         }
 
-        // Update local state
-        this.state.set({ watchedPaths: newWatchedPaths });
+        console.log(`[Worktree] Toggle ${isDir ? 'folder' : 'file'}: ${clickedPath} -> ${!isCurrentlyWatched}`);
 
-        // Update button color immediately
-        this.updateWatchedButtons(newWatchedPaths);
-
-        // Send message to VS Code extension
+        // Send message to VS Code extension (which handles all state management)
         if (this.vscodeApi) {
             this.vscodeApi.postMessage({
                 type: 'toggleWatch',
-                path: path,
+                path: clickedPath,
                 watched: !isCurrentlyWatched
             });
         }
+        // Note: Local state will be updated when extension sends back state:watchedPaths
     }
 
     /**
-     * Collect all paths under a given path (including the path itself).
+     * Collect all file paths under a given path (for local operations).
      */
-    collectAllPaths(path: string): string[] {
-        const paths: string[] = [path];
-
-        // Find all status buttons with paths that start with this path
+    collectAllFilePaths(folderPath: string): string[] {
+        const filePaths: string[] = [];
         const buttons = this.el.querySelectorAll('.status-btn');
         buttons.forEach(btn => {
             const btnPath = (btn as HTMLElement).dataset.path;
-            if (btnPath && btnPath !== path && btnPath.startsWith(path + '/')) {
-                paths.push(btnPath);
+            const nodeEl = btn.closest('.tree-node') as HTMLElement;
+            const isFile = nodeEl?.dataset.type === 'file';
+            if (btnPath && isFile && btnPath.startsWith(folderPath + '/')) {
+                filePaths.push(btnPath);
             }
         });
-
-        return paths;
+        return filePaths;
     }
 
     /**
      * Update toggle button colors based on watched state.
-     * A path is considered watched if it OR any of its ancestors are in watchedPaths.
+     * With file-only tracking:
+     * - Files: exact match in watchedPaths (which are now file paths)
+     * - Folders: watched only if ALL parsable files under it are watched
      */
-    updateWatchedButtons(watchedPaths: Set<string>) {
+    updateWatchedButtons(watchedFiles: Set<string>) {
         const buttons = this.el.querySelectorAll('.status-btn');
         buttons.forEach(btn => {
-            const path = (btn as HTMLElement).dataset.path;
-            if (path) {
-                const isWatched = this.isPathOrAncestorWatched(path, watchedPaths);
+            const btnPath = (btn as HTMLElement).dataset.path;
+            const nodeEl = btn.closest('.tree-node') as HTMLElement;
+            const isDir = nodeEl?.dataset.type === 'directory';
+
+            if (btnPath) {
+                let isWatched: boolean;
+                if (isDir) {
+                    // Folder: check if ALL files under it are watched
+                    isWatched = this.areAllDescendantsWatched(btnPath, watchedFiles);
+                } else {
+                    // File: exact match
+                    isWatched = watchedFiles.has(btnPath);
+                }
                 (btn as HTMLElement).style.backgroundColor = isWatched ? '#4ade80' : '#ccc';
             }
         });
     }
 
     /**
-     * Check if a path or any of its ancestors is in the watched set.
+     * Check if ALL parsable files under a folder path are watched.
+     * Returns false if there are no files, or if any file is not watched.
      */
-    private isPathOrAncestorWatched(path: string, watchedPaths: Set<string>): boolean {
-        // Check exact match first
-        if (watchedPaths.has(path)) {
-            return true;
+    private areAllDescendantsWatched(folderPath: string, watchedFiles: Set<string>): boolean {
+        // Get all file buttons under this folder
+        const descendantFiles = this.collectAllFilePaths(folderPath);
+
+        // If no files, folder is not "watched"
+        if (descendantFiles.length === 0) {
+            return false;
         }
-        // Check all ancestors
-        const parts = path.split('/');
-        for (let i = 1; i < parts.length; i++) {
-            const ancestorPath = parts.slice(0, i).join('/');
-            if (watchedPaths.has(ancestorPath)) {
+
+        // Check if ALL files are watched
+        for (const filePath of descendantFiles) {
+            if (!watchedFiles.has(filePath)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Check if ANY file under a folder path is watched.
+     * Used for toggle detection (to know if there's something to untoggle).
+     */
+    private hasWatchedDescendant(folderPath: string, watchedFiles: Set<string>): boolean {
+        const descendantFiles = this.collectAllFilePaths(folderPath);
+        for (const filePath of descendantFiles) {
+            if (watchedFiles.has(filePath)) {
                 return true;
             }
         }
