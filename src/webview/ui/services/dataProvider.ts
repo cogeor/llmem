@@ -1,5 +1,5 @@
 
-import { GraphData, WorkTreeNode } from '../types';
+import { GraphData, WorkTreeNode, VisNode, VisEdge } from '../types';
 
 /**
  * DataProvider interface for loading webview data.
@@ -25,6 +25,13 @@ export interface DataProvider {
      * @returns Unsubscribe function
      */
     onRefresh(callback: () => void): () => void;
+
+    /**
+     * Load nodes and edges for a specific folder on-demand.
+     * Used for call graph lazy loading.
+     * Returns null if not supported (e.g., static mode).
+     */
+    loadFolderNodes?(folderPath: string): Promise<{ nodes: VisNode[]; edges: VisEdge[] } | null>;
 
     /**
      * Get the VS Code API for sending messages (VS Code mode only).

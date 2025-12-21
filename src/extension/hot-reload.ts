@@ -21,6 +21,7 @@ export class HotReloadService {
 
     private debounceTimers: { source?: NodeJS.Timeout; arch?: NodeJS.Timeout; tree?: NodeJS.Timeout; edgelist?: NodeJS.Timeout } = {};
     private pendingChangedFiles: Set<string> = new Set();
+    private watchedPaths: Set<string> = new Set();  // Paths with active file watching
 
     private artifactRoot: string;
     private projectRoot: string;
@@ -129,6 +130,34 @@ export class HotReloadService {
         console.log('[HotReload] Watchers stopped');
     }
 
+    /**
+     * Add a path to the watched set.
+     */
+    public addWatchedPath(relativePath: string) {
+        this.watchedPaths.add(relativePath);
+        console.log(`[HotReload] Added to watch: ${relativePath}`);
+    }
+
+    /**
+     * Remove a path from the watched set.
+     */
+    public removeWatchedPath(relativePath: string) {
+        this.watchedPaths.delete(relativePath);
+        console.log(`[HotReload] Removed from watch: ${relativePath}`);
+    }
+
+    /**
+     * Check if a file is within any watched path.
+     */
+    private isInWatchedPath(relativePath: string): boolean {
+        for (const watchedPath of this.watchedPaths) {
+            if (relativePath === watchedPath || relativePath.startsWith(watchedPath + '/')) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private queueSourceRebuild(uri: vscode.Uri) {
         // Track the changed file
         const relativePath = path.relative(this.projectRoot, uri.fsPath).replace(/\\/g, '/');
@@ -140,10 +169,23 @@ export class HotReloadService {
             const changedFiles = Array.from(this.pendingChangedFiles);
             this.pendingChangedFiles.clear();
 
-            console.log('[HotReload] Source files changed:', changedFiles);
+            // Filter to only files in watched paths
+            const watchedChangedFiles = changedFiles.filter(f => this.isInWatchedPath(f));
+
+            if (watchedChangedFiles.length === 0) {
+                console.log('[HotReload] Source files changed (not in watched paths):', changedFiles);
+                return;
+            }
+
+            console.log('[HotReload] Watched files changed, regenerating edges:', watchedChangedFiles);
             try {
-                // TODO: Update edge list incrementally for changed files
-                // For now, just refresh the current data
+                // Regenerate edges for each changed file in watched paths
+                const { generateCallEdgesForFile } = await import('../scripts/generate-call-edges');
+                for (const file of watchedChangedFiles) {
+                    await generateCallEdgesForFile(this.projectRoot, file, this.artifactRoot);
+                }
+
+                // Refresh the webview data
                 await this.sendUpdate();
             } catch (e) {
                 console.error('[HotReload] Source rebuild failed:', e);

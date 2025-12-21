@@ -47,6 +47,9 @@ export class HierarchicalLayout {
     private width: number;
     private height: number;
 
+    // Persistent layout state for incremental updates
+    private folderTree: FolderNode | null = null;
+
     constructor(width: number, height: number) {
         this.width = width;
         this.height = height;
@@ -57,8 +60,8 @@ export class HierarchicalLayout {
         edges: VisEdge[],
         worktree: WorkTreeNode
     ): LayoutResult {
-        // Build folder tree
-        const root = this.buildFolderTree(nodes);
+        // Build folder tree and store for incremental updates
+        this.folderTree = this.buildFolderTree(nodes);
 
         // NEW FLOW:
         // 1. Position nodes FIRST (relative to folder origin) with dynamic spacing
@@ -67,26 +70,26 @@ export class HierarchicalLayout {
         // 4. Finalize node positions (convert relative to absolute)
 
         // Step 1: Position nodes relative to (0, 0) for each folder
-        this.computeNodePositionsRelative(root);
+        this.computeNodePositionsRelative(this.folderTree);
 
         // Step 2: Compute exact sizes from actual node positions (bottom-up)
-        this.computeSizesFromPositions(root);
+        this.computeSizesFromPositions(this.folderTree);
 
         // Step 3: Arrange folders using shelf packing
 
         // FORCE ROOT WIDTH: make the root folder fill the container
-        root.width = Math.max(root.width, this.width - PADDING * 2);
+        this.folderTree.width = Math.max(this.folderTree.width, this.width - PADDING * 2);
 
-        this.arrangeFolders(root, PADDING, PADDING, this.width - PADDING * 2);
+        this.arrangeFolders(this.folderTree, PADDING, PADDING, this.width - PADDING * 2);
 
         // Step 4: Finalize node positions (add folder offset)
-        this.finalizeNodePositions(root);
+        this.finalizeNodePositions(this.folderTree);
 
         // Extract results
         const nodePositions = new Map<string, { x: number; y: number }>();
         const folders: FolderRegion[] = [];
         const fileRegions: FileRegion[] = [];
-        this.extractResults(root, nodePositions, folders, fileRegions);
+        this.extractResults(this.folderTree, nodePositions, folders, fileRegions);
 
         // Diagnostic: Check for missing positions
         const missingPositions: string[] = [];
@@ -534,6 +537,205 @@ export class HierarchicalLayout {
         // Recurse
         for (const child of folder.children.values()) {
             this.extractResults(child, nodePositions, folders, fileRegions);
+        }
+    }
+
+    // ========================================================================
+    // Incremental Layout Methods
+    // ========================================================================
+
+    /**
+     * Add nodes to a specific folder incrementally.
+     * Only re-layouts the affected folder and its ancestors.
+     */
+    addNodes(newNodes: VisNode[], targetFolderPath: string): LayoutResult {
+        if (!this.folderTree) {
+            throw new Error('Must call compute() before addNodes()');
+        }
+
+        // Step 1: Find the target folder
+        const targetFolder = this.findFolder(this.folderTree, targetFolderPath);
+        if (!targetFolder) {
+            // Folder doesn't exist yet - create it
+            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+            const folder = this.ensureFolder(this.folderTree, targetFolderPath)!;
+            folder.nodes.push(...newNodes);
+        } else {
+            // Filter duplicates
+            const existingIds = new Set(targetFolder.nodes.map(n => n.id));
+            const uniqueNewNodes = newNodes.filter(n => !existingIds.has(n.id));
+            targetFolder.nodes.push(...uniqueNewNodes);
+        }
+
+        const folder = targetFolder || this.findFolder(this.folderTree, targetFolderPath)!;
+
+        // Step 2: Recompute relative positions for this folder only
+        this.computeNodePositionsRelative(folder);
+
+        // Step 3: Recompute sizes from this folder up to root
+        this.recomputeSizesUpward(folder);
+
+        // Step 4: Re-arrange siblings if folder grew
+        this.rearrangeSiblings(folder);
+
+        // Step 5: Finalize all node positions
+        this.finalizeNodePositions(this.folderTree);
+
+        // Step 6: Extract and return results
+        const nodePositions = new Map<string, { x: number; y: number }>();
+        const folders: FolderRegion[] = [];
+        const fileRegions: FileRegion[] = [];
+        this.extractResults(this.folderTree, nodePositions, folders, fileRegions);
+
+        console.log(`[HierarchicalLayout] Incremental add: ${newNodes.length} nodes to ${targetFolderPath}`);
+
+        return { folders, fileRegions, nodePositions };
+    }
+
+    /**
+     * Find a folder by path in the tree.
+     */
+    private findFolder(root: FolderNode, path: string): FolderNode | null {
+        if (root.path === path) return root;
+        for (const child of root.children.values()) {
+            const found = this.findFolder(child, path);
+            if (found) return found;
+        }
+        return null;
+    }
+
+    /**
+     * Find the parent of a folder.
+     */
+    private findParent(root: FolderNode, target: FolderNode): FolderNode | null {
+        for (const child of root.children.values()) {
+            if (child === target) return root;
+            const found = this.findParent(child, target);
+            if (found) return found;
+        }
+        return null;
+    }
+
+    /**
+     * Compute size for a single folder (used in incremental updates).
+     */
+    private computeSingleFolderSize(folder: FolderNode): void {
+        // Compute node grid size from positions
+        let nodeGridWidth = 0;
+        let nodeGridHeight = 0;
+
+        if (folder.nodes.length > 0) {
+            let maxX = 0;
+            let maxY = 0;
+            for (const node of folder.nodes) {
+                const relX = (node as any)._relX || 0;
+                const relY = (node as any)._relY || 0;
+                const labelLen = this.getLabelLength(node);
+                const labelPadding = Math.max(20, labelLen * 4);
+                maxX = Math.max(maxX, relX + labelPadding);
+                maxY = Math.max(maxY, relY + NODE_SPACING / 2 + 10);
+            }
+            nodeGridWidth = maxX + FILE_PADDING;
+            nodeGridHeight = maxY + FILE_PADDING;
+        }
+
+        // Compute children layout size
+        let childrenWidth = 0;
+        let childrenHeight = 0;
+
+        if (folder.children.size > 0) {
+            const childArray = Array.from(folder.children.values());
+            childArray.sort((a, b) => b.height - a.height);
+
+            let totalChildArea = 0;
+            for (const child of childArray) {
+                totalChildArea += child.width * child.height;
+            }
+
+            const targetSquareWidth = Math.sqrt(totalChildArea * 1.1);
+            const maxRowWidth = Math.max(300, targetSquareWidth, nodeGridWidth + PADDING * 2);
+            let rowWidth = 0;
+            let rowHeight = 0;
+            let totalHeight = 0;
+            let maxWidth = 0;
+
+            for (const child of childArray) {
+                if (rowWidth > 0 && rowWidth + child.width + FOLDER_GAP > maxRowWidth) {
+                    totalHeight += rowHeight + FOLDER_GAP;
+                    maxWidth = Math.max(maxWidth, rowWidth);
+                    rowWidth = 0;
+                    rowHeight = 0;
+                }
+                rowWidth += child.width + (rowWidth > 0 ? FOLDER_GAP : 0);
+                rowHeight = Math.max(rowHeight, child.height);
+            }
+            totalHeight += rowHeight;
+            maxWidth = Math.max(maxWidth, rowWidth);
+
+            childrenWidth = maxWidth;
+            childrenHeight = totalHeight;
+        }
+
+        // Set folder dimensions
+        folder.contentWidth = Math.max(nodeGridWidth, childrenWidth);
+        folder.contentHeight = childrenHeight + (childrenHeight > 0 && nodeGridHeight > 0 ? FOLDER_GAP : 0) + nodeGridHeight;
+        folder.width = folder.contentWidth + PADDING * 2;
+        folder.height = LABEL_HEIGHT + folder.contentHeight + PADDING * 2;
+        folder.width = Math.max(folder.width, 60);
+        folder.height = Math.max(folder.height, 40);
+    }
+
+    /**
+     * Recompute sizes from a folder up to root.
+     */
+    private recomputeSizesUpward(folder: FolderNode): void {
+        this.computeSingleFolderSize(folder);
+
+        if (!this.folderTree) return;
+
+        const parent = this.findParent(this.folderTree, folder);
+        if (parent) {
+            this.recomputeSizesUpward(parent);
+        }
+    }
+
+    /**
+     * Re-arrange siblings when a folder's size changes.
+     */
+    private rearrangeSiblings(changedFolder: FolderNode): void {
+        if (!this.folderTree) return;
+
+        const parent = this.findParent(this.folderTree, changedFolder);
+        if (!parent) return; // Root folder, no siblings
+
+        // Re-run shelf packing on parent's children
+        const contentX = parent.x + PADDING;
+        const contentY = parent.y + LABEL_HEIGHT + PADDING;
+
+        const childArray = Array.from(parent.children.values());
+        childArray.sort((a, b) => b.height - a.height);
+
+        let rowX = contentX;
+        let rowY = contentY;
+        let rowHeight = 0;
+
+        for (const child of childArray) {
+            if (rowX > contentX && rowX + child.width > parent.x + parent.width - PADDING) {
+                rowY += rowHeight + FOLDER_GAP;
+                rowX = contentX;
+                rowHeight = 0;
+            }
+
+            child.x = rowX;
+            child.y = rowY;
+
+            rowX += child.width + FOLDER_GAP;
+            rowHeight = Math.max(rowHeight, child.height);
+        }
+
+        // Recursively update children's children positions
+        for (const child of childArray) {
+            this.arrangeFolders(child, child.x, child.y, child.width);
         }
     }
 }

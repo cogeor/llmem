@@ -162,11 +162,9 @@ export class GraphView {
             if (graphType === 'call') {
                 this.graphRenderer.highlightFile(selectedPath);
             } else {
-                this.graphRenderer.panTo(selectedPath, true);
                 this.graphRenderer.highlightNeighbors(selectedPath);
             }
         } else if (selectedType === "directory") {
-            this.graphRenderer.panToFolder(selectedPath, true);
             this.graphRenderer.highlightFolder(selectedPath);
         }
     }

@@ -112,11 +112,10 @@ router.registerRoute('graph', graphView);
 
 // Subscribe to refresh events (hot reload)
 dataProvider.onRefresh(async () => {
-    console.log('[Webview] Refresh triggered - reloading components');
-    const promises = [graphView.mount()];
-    if (worktree) promises.push(worktree.mount());
-    if (designTextView) promises.push(designTextView.mount());
-    await Promise.all(promises);
+    console.log('[Webview] Refresh triggered - reloading graph');
+    // Only refresh graph view - Worktree structure doesn't change on edge refresh
+    await graphView.mount();
+    if (designTextView) await designTextView.mount();
 });
 
 // Bootstrap

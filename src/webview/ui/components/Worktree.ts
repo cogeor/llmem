@@ -74,28 +74,40 @@ export class Worktree {
         this.el.innerHTML = `<ul class="tree-list">${this.renderNode(rootNode, 0)}</ul>`;
     }
 
+    /**
+     * Check if a file is parsable based on extension.
+     */
+    isParsableFile(filename: string): boolean {
+        const ext = '.' + filename.split('.').pop()?.toLowerCase();
+        const parsableExtensions = ['.ts', '.tsx', '.js', '.jsx', '.py', '.java', '.go', '.rs', '.c', '.cpp', '.h', '.hpp'];
+        return parsableExtensions.includes(ext);
+    }
+
     renderNode(node: WorkTreeNode, depth: number): string {
         const isDir = node.type === 'directory';
 
-        // Status button tooltip
-        const statusTitle = `Click to generate edges for this ${isDir ? 'folder' : 'file'}.`;
+        // Check if we should show toggle button (always for dirs, only for parsable files)
+        const showToggle = isDir || this.isParsableFile(node.name);
+        const statusTitle = showToggle
+            ? `Click to toggle file watching for this ${isDir ? 'folder' : 'file'}.`
+            : '';
 
         let html = `
             <li class="tree-node" data-path="${node.path}" data-type="${node.type}">
                 <div class="tree-item" style="padding-left: ${depth * 12 + 12}px">
-                    <span class="tree-arrow">${isDir ? '' : ''}</span>
+                    ${isDir ? '<span class="tree-arrow"></span>' : ''}
                     <span class="icon">${isDir ? '📁' : '📄'}</span>
                     <span class="label">${node.name}</span>
-                    <button class="status-btn" data-path="${node.path}" title="${statusTitle}" style="
+                    ${showToggle ? `<button class="status-btn" data-path="${node.path}" title="${statusTitle}" onclick="event.stopPropagation(); event.preventDefault();" style="
                         width: 10px;
                         height: 10px;
                         border-radius: 50%;
                         border: none;
-                        background-color: #888;
+                        background-color: #ccc;
                         margin-left: auto;
                         cursor: pointer;
                         flex-shrink: 0;
-                    "></button>
+                    "></button>` : ''}
                 </div>
         `;
 
@@ -114,9 +126,10 @@ export class Worktree {
     handleClick(e: Event) {
         const target = e.target as HTMLElement;
 
-        // Check if status button was clicked
+        // Check if status button was clicked - prevent any other action
         if (target.classList.contains('status-btn')) {
             e.stopPropagation();
+            e.preventDefault();
             const path = target.dataset.path || '';
             this.handleStatusButtonClick(path);
             return;
@@ -148,21 +161,76 @@ export class Worktree {
     }
 
     /**
-     * Handle status button click - trigger edge regeneration for the path.
+     * Handle status button click - toggle watch state for the path and all children.
      */
     handleStatusButtonClick(path: string) {
-        console.log(`[Worktree] Status button clicked for: ${path}`);
+        const currentState = this.state.get();
+        const isCurrentlyWatched = currentState.watchedPaths.has(path);
+        const newWatchedPaths = new Set<string>(currentState.watchedPaths);
 
-        // Send message to VS Code extension to regenerate edges
+        // Collect all paths to toggle (the clicked path + all children)
+        const pathsToToggle = this.collectAllPaths(path);
+
+        if (isCurrentlyWatched) {
+            // Unwatch all paths
+            for (const p of pathsToToggle) {
+                newWatchedPaths.delete(p);
+            }
+            console.log(`[Worktree] Unwatching ${pathsToToggle.length} paths under: ${path}`);
+        } else {
+            // Watch all paths
+            for (const p of pathsToToggle) {
+                newWatchedPaths.add(p);
+            }
+            console.log(`[Worktree] Watching ${pathsToToggle.length} paths under: ${path}`);
+        }
+
+        // Update local state
+        this.state.set({ watchedPaths: newWatchedPaths });
+
+        // Update button color immediately
+        this.updateWatchedButtons(newWatchedPaths);
+
+        // Send message to VS Code extension
         if (this.vscodeApi) {
             this.vscodeApi.postMessage({
-                type: 'regenerateEdges',
-                path: path
+                type: 'toggleWatch',
+                path: path,
+                watched: !isCurrentlyWatched
             });
-        } else {
-            // Running in standalone mode - show alert
-            alert(`Edge regeneration requested for: ${path}\n\nRun this command:\nnpx ts-node src/scripts/generate-call-edges.ts ${path} --recursive`);
         }
+    }
+
+    /**
+     * Collect all paths under a given path (including the path itself).
+     */
+    collectAllPaths(path: string): string[] {
+        const paths: string[] = [path];
+
+        // Find all status buttons with paths that start with this path
+        const buttons = this.el.querySelectorAll('.status-btn');
+        buttons.forEach(btn => {
+            const btnPath = (btn as HTMLElement).dataset.path;
+            if (btnPath && btnPath !== path && btnPath.startsWith(path + '/')) {
+                paths.push(btnPath);
+            }
+        });
+
+        return paths;
+    }
+
+    /**
+     * Update toggle button colors based on watched state.
+     */
+    updateWatchedButtons(watchedPaths: Set<string>) {
+        const buttons = this.el.querySelectorAll('.status-btn');
+        buttons.forEach(btn => {
+            const path = (btn as HTMLElement).dataset.path;
+            if (path) {
+                const isWatched = watchedPaths.has(path);
+                (btn as HTMLElement).style.backgroundColor = isWatched ? '#4ade80' : '#ccc';
+            }
+        });
     }
 
     updateSelection({ selectedPath }: AppState) {

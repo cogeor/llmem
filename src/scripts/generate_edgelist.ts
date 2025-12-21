@@ -14,6 +14,7 @@ import { ImportEdgeListStore, CallEdgeListStore } from '../graph/edgelist';
 import { TypeScriptService } from '../parser/ts-service';
 import { TypeScriptExtractor } from '../parser/ts-extractor';
 import { artifactToEdgeList } from '../graph/artifact-converter';
+import { LAZY_CODEBASE_LINE_THRESHOLD } from '../parser/config';
 
 async function main() {
     console.log('='.repeat(60));
@@ -56,6 +57,15 @@ async function main() {
 
     console.log(`\nFound ${sourceFiles.length} TypeScript files to process`);
 
+    // Count total lines in the codebase to determine eager vs lazy mode
+    let totalCodebaseLines = 0;
+    for (const sf of sourceFiles) {
+        totalCodebaseLines += sf.getEnd(); // Approximate line count from source file length
+    }
+
+    const isLazyMode = totalCodebaseLines > LAZY_CODEBASE_LINE_THRESHOLD;
+    console.log(`Total codebase lines: ~${totalCodebaseLines}, lazy mode: ${isLazyMode} (threshold: ${LAZY_CODEBASE_LINE_THRESHOLD})`);
+
     // Create split edge list stores
     const importStore = new ImportEdgeListStore(artifactDir);
     const callStore = new CallEdgeListStore(artifactDir);
@@ -71,6 +81,21 @@ async function main() {
         const relativePath = path.relative(root, filePath).replace(/\\/g, '/');
 
         try {
+            // In lazy mode, only create file node (edges loaded on demand)
+            if (isLazyMode) {
+                const fileNode = {
+                    id: relativePath,
+                    name: path.basename(filePath),
+                    kind: 'file' as const,
+                    fileId: relativePath
+                };
+                importStore.addNode(fileNode);
+                callStore.addNode(fileNode);
+                processed++;
+                if (processed % 20 === 0) console.log(`  Processed ${processed} files...`);
+                continue;
+            }
+
             const artifact = await tsExtractor.extract(filePath);
             if (!artifact) {
                 console.log(`  SKIP: ${relativePath} (no artifact returned)`);

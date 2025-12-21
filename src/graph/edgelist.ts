@@ -153,6 +153,17 @@ abstract class BaseEdgeListStore {
         return this.data.nodes.filter(n => n.fileId === fileId);
     }
 
+    /**
+     * Get all nodes within a folder (or exact file match).
+     * Works for both folder paths and file paths.
+     */
+    getNodesByFolder(folderPath: string): NodeEntry[] {
+        return this.data.nodes.filter(n =>
+            n.fileId === folderPath ||
+            n.fileId.startsWith(folderPath + '/')
+        );
+    }
+
     // ========================================================================
     // Edge Operations
     // ========================================================================
