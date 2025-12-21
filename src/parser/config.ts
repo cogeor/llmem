@@ -42,7 +42,11 @@ export const ALL_SUPPORTED_EXTENSIONS = [
     // C/C++ (LSP)
     '.cpp', '.hpp', '.c', '.h', '.cc',
     // R (LSP)
-    '.R', '.r'
+    '.R', '.r',
+    // Dart (LSP)
+    '.dart',
+    // Rust (LSP)
+    '.rs'
 ];
 
 // ============================================================================
