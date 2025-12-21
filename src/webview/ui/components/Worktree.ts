@@ -228,16 +228,36 @@ export class Worktree {
 
     /**
      * Update toggle button colors based on watched state.
+     * A path is considered watched if it OR any of its ancestors are in watchedPaths.
      */
     updateWatchedButtons(watchedPaths: Set<string>) {
         const buttons = this.el.querySelectorAll('.status-btn');
         buttons.forEach(btn => {
             const path = (btn as HTMLElement).dataset.path;
             if (path) {
-                const isWatched = watchedPaths.has(path);
+                const isWatched = this.isPathOrAncestorWatched(path, watchedPaths);
                 (btn as HTMLElement).style.backgroundColor = isWatched ? '#4ade80' : '#ccc';
             }
         });
+    }
+
+    /**
+     * Check if a path or any of its ancestors is in the watched set.
+     */
+    private isPathOrAncestorWatched(path: string, watchedPaths: Set<string>): boolean {
+        // Check exact match first
+        if (watchedPaths.has(path)) {
+            return true;
+        }
+        // Check all ancestors
+        const parts = path.split('/');
+        for (let i = 1; i < parts.length; i++) {
+            const ancestorPath = parts.slice(0, i).join('/');
+            if (watchedPaths.has(ancestorPath)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     updateSelection({ selectedPath, selectionSource }: AppState) {

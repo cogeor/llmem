@@ -393,11 +393,6 @@ export class LLMemPanel {
 
             // Collect watched paths for webview
             watchedPaths = savedState.watchedPaths.map(p => p.path);
-
-            // Add watched paths to hot reload
-            for (const entry of savedState.watchedPaths) {
-                // Hot reload added after service starts
-            }
         } else {
             console.log('[LLMemPanel] No persisted state, starting fresh');
         }
@@ -416,6 +411,11 @@ export class LLMemPanel {
 
         this._hotReload.start();
         this._disposables.push({ dispose: () => this._hotReload?.stop() });
+
+        // Add watched paths to hot reload (must be after service is created)
+        for (const p of watchedPaths) {
+            this._hotReload.addWatchedPath(p);
+        }
 
         // Send initial data
         try {
