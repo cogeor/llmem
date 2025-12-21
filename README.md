@@ -5,9 +5,10 @@
 ## 🚀 Key Features
 
 - **MCP-Native**: Operates as a pure Model Context Protocol server. It provides tools to the Antigravity Agent without requiring a separate UI.
-- **Shadow Filesystem**: Maintains a parallel `.artifacts/` directory. For every source file (e.g., `src/foo.ts`), LLMem creates corresponding context files (e.g., `.artifacts/src/foo.ts.artifact`).
-- **Strategic Summarization**: Automatically generates high-level summaries for folders and modules, allowing the LLM to understand the codebase structure without reading every file.
-- **Code Intelligence**: detailed structural analysis (imports, exports, function signatures) using Tree-sitter.
+- **Shadow Filesystem**: Maintains a parallel `.arch/` directory. For every source file or folder, LLMem creates corresponding documentation files.
+- **Strategic Summarization**: Automatically generates high-level summaries for folders and files, allowing the LLM to understand the codebase structure without reading every file.
+- **Code Intelligence**: Detailed structural analysis (imports, exports, function signatures) using Tree-sitter.
+- **Graph Visualization**: Interactive visualization of import dependencies and function calls across your codebase.
 
 ## 📦 Installation
 
@@ -34,60 +35,75 @@ Prerequisites:
 4. **Open in Antigravity IDE**
    Open the folder in Antigravity. The extension should activate automatically, starting the MCP server.
 
-## 🔧 Configuration
+## 💡 MCP Tools Usage
 
-LLMem can be configured via Environment Variables or VS Code settings.
+LLMem exposes MCP tools to the Antigravity Agent. These tools provide semantic documentation generation for files and folders.
 
-### Environment Variables
-- `ARTIFACT_ROOT`: The directory where artifacts are stored (default: `.artifacts`).
-- `MAX_FILES_PER_FOLDER`: Limit context size during retrieval (default: 20).
-- `MAX_FILE_SIZE_KB`: Limit individual file size selection (default: 512).
+### `folder_info` - Get Folder Documentation
 
-## 💡 Usage
+Summarizes a folder using the EdgeList graph and returns a prompt for the LLM to generate high-level folder documentation. Reads existing docs from `.arch/{path}/README.md` if present.
 
-LLMem exposes tools to the Antigravity Agent. You do not run these commands manually; instead, you ask the Agent to perform tasks that trigger them.
+**Example interaction:**
+> "Run mcp folder_info on src/graph"
 
-### Common Interactions
+The tool returns structural analysis including:
+- File count and graph statistics
+- Function/class signatures for each file
+- Import and call edges between files
 
-**1. "Summarize this folder"**
-- **Agent Action**: Calls `analyze_codebase` to analyze the directory structure.
-- **LLMem Response**: Returns file signatures and import/export graphs.
-- **Agent Action**: Calls `report_analysis` to save a generated Markdown summary.
+### `file_info` - Get File Documentation
 
-**2. "Explain the auth module"**
-- **Agent Action**: Calls `analyze_codebase` on the `auth` directory.
-- **LLMem Response**: Provides a comprehensive context map of the module, which the Agent uses to answer your question.
+Extracts detailed file information and returns a prompt for the LLM to generate documentation. Returns structural info including functions, classes, and their relationships.
 
-### Tools Available to Agent
-1. **`analyze_codebase`**: The entry point. Generates context prompts and triggers the analysis workflow.
-2. **`inspect_source`**: Allows the agent to read specific blocks of code for detailed inspection.
-3. **`report_analysis`**: The final step where the agent submits its generated summaries for storage.
+**Example interaction:**
+> "Run mcp file_info on src/mcp/tools.ts"
 
-## 📊 Visualization
+### `report_folder_info` / `report_file_info` - Save Documentation
 
-![Graph Visualization](data/graph-preview.png)
+Callback tools that receive LLM-generated enrichment and save the documentation:
+- `report_folder_info` saves to `.arch/{folder}/README.md`
+- `report_file_info` saves to `.arch/{file}.md`
 
-LLMem provides a generated visualization of your codebase structure.
+### `inspect_source` - Read Source Lines
 
-1. **Generate the graph**:
-   ```bash
-   npm run view:graph
-   ```
-2. **View the graph**:
-   Open `data/graph/index.html` in your browser.
+Allows the agent to read specific line ranges from a source file for detailed inspection.
 
-   > [!TIP]
-   > The graph provides an interactive view of imports and function calls, helping you visualize dependencies.
+### `open_window` - Generate Static Webview
 
+Generates a static webview of the graph visualization for browser viewing.
 
-### Architecture
+## 📊 Graph Visualization
+
+![Graph Visualization](images/graph-preview.png)
+
+LLMem provides an interactive graph visualization of your codebase structure, showing import dependencies and function call relationships.
+
+**Features:**
+- Interactive pan and zoom navigation
+- Node selection with edge highlighting
+- Folder-level grouping of files
+- Import edges and function call edges visualization
+
+**Generate and view the graph:**
+```bash
+npm run view:graph
+```
+
+This generates a static HTML page at `data/graph/index.html` that can be opened in any browser.
+
+> [!TIP]
+> The graph helps you visualize dependencies, identify tightly-coupled modules, and understand the overall architecture at a glance.
+
+## 🏗️ Architecture
+
 The user flows from **User** -> **Antigravity Agent** -> **LLMem MCP Server**.
 
-- **User**: Asks a question.
+- **User**: Asks a question about the codebase.
 - **Agent**: Determines it needs code context and calls MCP tools.
 - **LLMem**:
-    1.  Looks up or generates artifacts in `.artifacts/`.
-    2.  Returns concise, structurally-aware context to the Agent.
+    1. Analyzes the codebase using Tree-sitter and edge graph data.
+    2. Generates prompts for the LLM to create documentation.
+    3. Saves documentation to `.arch/` directory.
 - **Agent**: Uses the context to answer the User.
 
 ## 🛠️ Development
@@ -98,10 +114,14 @@ The user flows from **User** -> **Antigravity Agent** -> **LLMem MCP Server**.
 
 ## 📁 Directory Structure
 
-- `src/extension`: VS Code integration.
-- `src/mcp`: The MCP server implementation (tools: `analyze_codebase`, `inspect_source`, `report_analysis`).
+- `src/extension`: VS Code/Antigravity IDE integration.
+- `src/mcp`: MCP server implementation with tool handlers (`file_info`, `folder_info`, `inspect_source`, etc.).
 - `src/artifact`: Core logic for managing the artifact filesystem and path mapping.
 - `src/parser`: Tree-sitter based code analysis and signature extraction.
+- `src/graph`: EdgeList graph data structures for tracking imports and function calls.
+- `src/info`: Information extraction utilities for file and folder documentation.
+- `src/webview`: Interactive graph visualization UI components.
+- `images/`: Screenshot assets for documentation.
 
 ## 📄 License
 
