@@ -12,6 +12,7 @@ export class VSCodeDataProvider implements DataProvider {
     private vscode: any;
     private refreshListeners: Set<() => void> = new Set();
     private watchedPathsListeners: Set<(paths: string[]) => void> = new Set();
+    private cachedWatchedPaths: string[] | null = null;
 
     // Cached data from extension
     private graphData: GraphData | null = null;
@@ -77,6 +78,7 @@ export class VSCodeDataProvider implements DataProvider {
             case 'state:watchedPaths':
                 // Restore watched paths from persisted state
                 console.log(`[VSCodeDataProvider] Received ${message.paths?.length || 0} watched paths`);
+                this.cachedWatchedPaths = message.paths || [];
                 this.watchedPathsListeners.forEach(cb => cb(message.paths || []));
                 break;
         }
@@ -108,6 +110,10 @@ export class VSCodeDataProvider implements DataProvider {
      */
     onWatchedPathsRestored(callback: (paths: string[]) => void): () => void {
         this.watchedPathsListeners.add(callback);
+        // If paths already received, call immediately
+        if (this.cachedWatchedPaths !== null) {
+            callback(this.cachedWatchedPaths);
+        }
         return () => this.watchedPathsListeners.delete(callback);
     }
 
