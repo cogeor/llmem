@@ -1,6 +1,7 @@
 
 import { DataProvider } from '../services/dataProvider';
 import { WorkTreeNode, DirectoryNode, AppState, GraphStatus } from '../types';
+import { isSupportedFile } from '../../../parser/config';
 
 // VS Code webview API type declaration
 declare function acquireVsCodeApi(): { postMessage: (message: any) => void };
@@ -81,9 +82,7 @@ export class Worktree {
      * Check if a file is parsable based on extension.
      */
     isParsableFile(filename: string): boolean {
-        const ext = '.' + filename.split('.').pop()?.toLowerCase();
-        const parsableExtensions = ['.ts', '.tsx', '.js', '.jsx', '.py', '.java', '.go', '.rs', '.c', '.cpp', '.h', '.hpp'];
-        return parsableExtensions.includes(ext);
+        return isSupportedFile(filename);
     }
 
     renderNode(node: WorkTreeNode, depth: number): string {
