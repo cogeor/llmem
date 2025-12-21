@@ -7,7 +7,7 @@
 import { FileArtifact, Entity, ImportSpec, CallSite } from '../parser/types';
 import { NodeEntry, EdgeEntry } from './edgelist';
 import { normalizePath } from './utils';
-import { TYPESCRIPT_EXTENSIONS } from '../parser/config';
+import { ALL_SUPPORTED_EXTENSIONS } from '../parser/config';
 
 export interface ConversionResult {
     nodes: NodeEntry[];
@@ -95,8 +95,8 @@ function resolveImportTarget(sourceFileId: string, imp: ImportSpec): string | nu
         let resolved = path.join(sourceDir, imp.source);
         resolved = normalizePath(resolved);
 
-        // Try common extensions (should match common source extensions)
-        const extensions = ['', ...TYPESCRIPT_EXTENSIONS, '.dart', '.rs'];
+        // Try common extensions (uses central config)
+        const extensions = ['', ...ALL_SUPPORTED_EXTENSIONS];
         for (const ext of extensions) {
             const candidate = resolved + ext;
             // We can't check if file exists here (no FS access in pure conversion)
