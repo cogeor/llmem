@@ -15,6 +15,7 @@ import { buildReverseCallIndex } from './reverse-index';
 import { extractFileInfo } from './extractor';
 import { renderFileInfoMarkdown } from './renderer';
 import { FileInfo, ReverseCallIndex } from './types';
+import { getLanguageFromPath } from '../parser/config';
 
 /**
  * Enriched function data from LLM
@@ -188,8 +189,7 @@ export function buildEnrichmentPrompt(
     sourceCode: string
 ): string {
     const lineCount = sourceCode.split('\n').length;
-    const language = filePath.endsWith('.ts') || filePath.endsWith('.tsx') ? 'typescript' :
-        filePath.endsWith('.py') ? 'python' : 'code';
+    const language = getLanguageFromPath(filePath);
 
     return `# DESIGN DOCUMENT GENERATION TASK
 
