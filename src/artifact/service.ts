@@ -112,7 +112,7 @@ export async function initializeArtifactService(root: string) {
     // Dynamic Language Detection & Registration
     const availableLangs = await detectAvailableLanguages();
     for (const lang of availableLangs) {
-        if (lang.id === 'python' || lang.id === 'cpp' || lang.id === 'r') {
+        if (lang.id === 'python' || lang.id === 'cpp' || lang.id === 'r' || lang.id === 'dart' || lang.id === 'rust') {
             const lspExtractor = new LspExtractor(lang.lspCommand, lang.lspArgs, lang.id);
             // We should start the LSP? Or start on demand?
             // Starting process for every language might be heavy. Let's start it lazily in extractor.extract()

@@ -25,6 +25,18 @@ export const SUPPORTED_LANGUAGES: LanguageConfig[] = [
         extensions: ['.R', '.r'],
         lspCommand: 'R',
         lspArgs: ['--slave', '-e', 'languageserver::run()']
+    },
+    {
+        id: 'dart',
+        extensions: ['.dart'],
+        lspCommand: 'dart',
+        lspArgs: ['language-server']
+    },
+    {
+        id: 'rust',
+        extensions: ['.rs'],
+        lspCommand: 'rust-analyzer',
+        lspArgs: []
     }
 ];
 
