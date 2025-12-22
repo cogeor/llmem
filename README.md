@@ -1,6 +1,6 @@
 # LLMem - Codebase Summary Tool
 
-**LLMem** is an MCP (Model Context Protocol) server extension for the Antigravity IDE. It provides **interactive graph visualization** of your codebase's import dependencies and function calls, alongside tools for generating architectural documentation.
+**LLMem** is an MCP (Model Context Protocol) server extension designed for the Antigravity IDE. It provides **interactive graph visualization** of your codebase's import dependencies and function calls, alongside tools for generating architectural documentation.
 
 By pre-computing dependency graphs and structural summaries, LLMem allows the MCP agent to provide rich codebase context **without additional reasoning or searching**. This reduces output tokens and enables a broader understanding of the codebase in a single query.
 
@@ -11,8 +11,25 @@ By pre-computing dependency graphs and structural summaries, LLMem allows the MC
 - **MCP-Native**: Operates as a pure Model Context Protocol server. It provides tools to the Antigravity Agent without requiring a separate UI.
 - **Shadow Filesystem**: Maintains a parallel `.arch/` directory. For every source file or folder, LLMem creates corresponding documentation files.
 - **Strategic Summarization**: Automatically generates high-level summaries for folders and files, allowing the LLM to understand the codebase structure without reading every file.
-- **Code Intelligence**: Detailed structural analysis (imports, exports, function signatures) using Tree-sitter.
+- **Code Intelligence**: Detailed structural analysis (imports, exports, function signatures) using the language server protocol.
 - **Graph Visualization**: Interactive visualization of import dependencies and function calls across your codebase.
+
+## 🌐 Supported Languages
+
+LLMem supports the following languages. TypeScript/JavaScript works out of the box; other languages require an LSP server to be installed and available in your PATH.
+
+| Language | Extensions | LSP Server | Installation |
+|----------|------------|------------|--------------|
+| TypeScript | `.ts`, `.tsx` | Built-in | — |
+| JavaScript | `.js`, `.jsx` | Built-in | — |
+| Python | `.py` | `pylsp` | `pip install python-lsp-server` |
+| C/C++ | `.c`, `.h`, `.cpp`, `.hpp`, `.cc` | `clangd` | [clangd.llvm.org](https://clangd.llvm.org/installation) |
+| Rust | `.rs` | `rust-analyzer` | `rustup component add rust-analyzer` |
+| Dart | `.dart` | `dart language-server` | Included with Dart SDK |
+| R | `.R`, `.r` | `languageserver` | `install.packages("languageserver")` in R |
+
+> [!TIP]
+> LLMem automatically detects which LSP servers are available. If a language's LSP is not found, files of that type will still appear in the graph but without call-edge analysis.
 
 ## 📦 Installation
 
