@@ -2,15 +2,17 @@
 
 **LLMem** is an MCP (Model Context Protocol) server extension designed for the Antigravity IDE. It provides **interactive graph visualization** of your codebase's import dependencies and function calls, alongside tools for generating architectural documentation.
 
-By pre-computing dependency graphs and structural summaries, LLMem allows the MCP agent to provide rich codebase context **without additional reasoning or searching**. This reduces output tokens and enables a broader understanding of the codebase in a single query.
+By pre-computing dependency graphs and structural summaries, LLMem allows the MCP agent to provide rich codebase context **without additional reasoning or searching**. This reduces the number of output tokens and enables a broader understanding of the codebase in a single query.
 
 ![LLMem Plugin Overview](images/graph-preview.png)
 
+**Note:** This project started December 11th, 2025 and is in the alpha stage. I am a team of one, developing this as a hobby. It will always stay free and open-source. If you find issues, or have suggestions, please don't hesitate to contact me. You can find more information on the design of the project, and other topics on my [personal website](https://www.costasnotes.ch) and (soon) [substack](https://substack.com/@costageorgantas).
+
 ## 🚀 Key Features
 
-- **MCP-Native**: Operates as a pure Model Context Protocol server. It provides tools to the Antigravity Agent without requiring a separate UI.
+- **MCP-Native**: Operates as a Model Context Protocol server, compatible with any VS Code-like IDE.
 - **Shadow Filesystem**: Maintains a parallel `.arch/` directory. For every source file or folder, LLMem creates corresponding documentation files.
-- **Strategic Summarization**: Automatically generates high-level summaries for folders and files, allowing the LLM to understand the codebase structure without reading every file.
+- **Strategic Summarization**: Generates high-level summaries for folders and files, allowing the LLM to understand the codebase structure without requiring full file contents in context.
 - **Code Intelligence**: Detailed structural analysis (imports, exports, function signatures) using the language server protocol.
 - **Graph Visualization**: Interactive visualization of import dependencies and function calls across your codebase.
 
@@ -116,7 +118,7 @@ The graph (shown in the preview image above) displays:
 
 ### Step 4: Generate Documentation via MCP
 
-Once edges are computed, use the Antigravity Agent to generate documentation:
+Once edges are computed, use your MCP-compatible agent (e.g., Antigravity) to generate documentation:
 
 **Folder documentation:**
 > "Run mcp folder_info on src/graph"
@@ -144,7 +146,7 @@ The agent uses the computed graph to understand dependencies and generates detai
 
 ## 🏗️ Architecture
 
-The user flows from **User** -> **Antigravity Agent** -> **LLMem MCP Server**.
+The user flows from **User** -> **MCP Agent** -> **LLMem MCP Server**.
 
 - **User**: Asks a question about the codebase.
 - **Agent**: Determines it needs code context and calls MCP tools.
