@@ -1,6 +1,10 @@
 # LLMem - Codebase Summary Tool
 
-**LLMem** is an MCP (Model Context Protocol) server extension for the Antigravity IDE. It is designed to enhance the efficiency of LLM context windows by managing a shadow filesystem of "artifacts"—high-level summaries, code outlines, and architectural notes—that exist alongside your source code.
+**LLMem** is an MCP (Model Context Protocol) server extension for the Antigravity IDE. It provides **interactive graph visualization** of your codebase's import dependencies and function calls, alongside tools for generating architectural documentation.
+
+By pre-computing dependency graphs and structural summaries, LLMem allows the MCP agent to provide rich codebase context **without additional reasoning or searching**. This reduces output tokens and enables a broader understanding of the codebase in a single query.
+
+![LLMem Plugin Overview](images/graph-preview.png)
 
 ## 🚀 Key Features
 
@@ -13,8 +17,28 @@
 ## 📦 Installation
 
 Prerequisites:
-- Antigravity IDE
+- Antigravity IDE (or VS Code)
 - Node.js (v18+)
+
+### Install as Extension
+
+1. **Clone and build**
+   ```bash
+   git clone https://github.com/your-org/llmem.git
+   cd llmem
+   npm install
+   npm run package
+   ```
+   This creates a `.vsix` file in the project root.
+
+2. **Install the VSIX**
+   ```bash
+   antigravity --install-extension llmem-0.1.0.vsix
+   ```
+
+### Development Mode
+
+For contributors who want to run/debug the extension:
 
 1. **Clone the repository**
    ```bash
@@ -27,13 +51,13 @@ Prerequisites:
    npm install
    ```
 
-3. **Compile the extension**
+3. **Build the extension**
    ```bash
-   npm run compile
+   npm run build
    ```
 
-4. **Open in Antigravity IDE**
-   Open the folder in Antigravity. The extension should activate automatically, starting the MCP server.
+4. **Launch in development mode**
+   Open the folder in Antigravity/VS Code, then press `F5` to launch the Extension Development Host. The extension will be active in the new window.
 
 ## 🎯 Usage Workflow
 
@@ -53,18 +77,17 @@ This opens the LLMem webview showing your workspace file tree and the dependency
 
 For large codebases, graph edges are computed **lazily** to save resources:
 
-1. In the file explorer (left panel), you'll see toggle buttons (circles) next to files and folders
-2. Click a toggle to **watch** a file/folder — this triggers edge computation
-3. Watched items turn green; their import and call relationships appear in the graph
+1. In the file explorer (left panel), you'll see toggle buttons (circles) next to files and folders — these are toggled watch lists
+2. **Grey** circles indicate unwatched items; **green** circles indicate watched items
+3. Click a toggle to **watch** a file/folder — this triggers edge computation and turns the button green
+4. Watched items have their import and call relationships appear in the graph
 
 > [!TIP]
 > Toggle an entire folder to watch all files within it at once.
 
 ### Step 3: Explore the Graph
 
-![Graph Visualization](images/graph-preview.png)
-
-The graph shows:
+The graph (shown in the preview image above) displays:
 - **Import edges**: File-to-file import dependencies
 - **Call edges**: Function-to-function call relationships
 - **Node selection**: Click a node to highlight its connections
