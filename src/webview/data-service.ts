@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { generateWorkTree, ITreeNode } from './worktree';
 import { prepareWebviewDataFromSplitEdgeLists, prepareWebviewDataFromEdgeList, WebviewGraphData } from '../graph/webview-data';
-import { DesignDocManager } from './design-docs';
+import { DesignDocManager, DesignDoc } from './design-docs';
 import { ImportEdgeListStore, CallEdgeListStore, EdgeListStore } from '../graph/edgelist';
 import { TypeScriptService } from '../parser/ts-service';
 import { TypeScriptExtractor } from '../parser/ts-extractor';
@@ -10,11 +10,12 @@ import { artifactToEdgeList } from '../graph/artifact-converter';
 import { countFolderLines } from '../parser/line-counter';
 import { LAZY_CODEBASE_LINE_THRESHOLD, IGNORED_FOLDERS } from '../parser/config';
 import { computeAllFolderStatuses } from './graph-status';
+import { WatchService } from '../graph/worktree-state';
 
 export interface WebviewData {
     graphData: WebviewGraphData;
     workTree: ITreeNode;
-    designDocs: { [key: string]: string };
+    designDocs: { [key: string]: DesignDoc };
 }
 
 /**
@@ -78,10 +79,17 @@ export class WebviewDataService {
             }
         }
 
-        // 1. Graph Data (from split edge lists)
+        // Load watched files state
+        const watchService = new WatchService(artifactRoot, projectRoot);
+        await watchService.load();
+        const watchedFiles = new Set(watchService.getWatchedFiles());
+        console.log(`[WebviewDataService] Loaded ${watchedFiles.size} watched files`);
+
+        // 1. Graph Data (from split edge lists, filtered by watched files)
         const graphData = prepareWebviewDataFromSplitEdgeLists(
             importStore.getData(),
-            callStore.getData()
+            callStore.getData(),
+            watchedFiles.size > 0 ? watchedFiles : undefined  // Only filter if there are watched files
         );
         console.log(`[WebviewDataService] Graph data prepared: import ${graphData.importGraph.nodes.length} nodes, call ${graphData.callGraph.nodes.length} nodes`);
 
@@ -227,7 +235,8 @@ export class WebviewDataService {
     static async collectDataWithSplitEdgeLists(
         projectRoot: string,
         importStore: ImportEdgeListStore,
-        callStore: CallEdgeListStore
+        callStore: CallEdgeListStore,
+        artifactRoot?: string
     ): Promise<WebviewData> {
         // Ensure .arch exists
         const archRoot = path.join(projectRoot, '.arch');
@@ -239,10 +248,21 @@ export class WebviewDataService {
             }
         }
 
-        // 1. Graph Data (from provided split edge lists)
+        // Load watched files state (if artifactRoot provided)
+        let watchedFiles: Set<string> | undefined;
+        if (artifactRoot) {
+            const watchService = new WatchService(artifactRoot, projectRoot);
+            await watchService.load();
+            const watchedFilesArray = watchService.getWatchedFiles();
+            watchedFiles = watchedFilesArray.length > 0 ? new Set(watchedFilesArray) : undefined;
+            console.log(`[WebviewDataService] Loaded ${watchedFilesArray.length} watched files`);
+        }
+
+        // 1. Graph Data (from provided split edge lists, filtered by watched files)
         const graphData = prepareWebviewDataFromSplitEdgeLists(
             importStore.getData(),
-            callStore.getData()
+            callStore.getData(),
+            watchedFiles
         );
 
         // 2. Work Tree

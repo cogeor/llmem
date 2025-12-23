@@ -308,7 +308,10 @@ async function main() {
     }
 }
 
-main().catch(e => {
-    console.error('Script failed:', e);
-    process.exit(1);
-});
+// Only run main() if this file is executed directly (not imported as a module)
+if (require.main === module) {
+    main().catch(e => {
+        console.error('Script failed:', e);
+        process.exit(1);
+    });
+}

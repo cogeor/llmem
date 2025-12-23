@@ -1,3 +1,4 @@
+import { DesignDoc } from '../types';
 
 export class DesignDocService {
     /**
@@ -41,8 +42,9 @@ export class DesignDocService {
                 const htmlKey = `${key}.html`;
                 const txtKey = `${key}.txt`;
 
-                if (bundledDocs[htmlKey]) return bundledDocs[htmlKey];
-                if (bundledDocs[txtKey]) return bundledDocs[txtKey];
+                // Extract HTML from DesignDoc if it exists
+                if (bundledDocs[htmlKey]) return bundledDocs[htmlKey].html;
+                if (bundledDocs[txtKey]) return bundledDocs[txtKey].html;
             }
 
             // PHASE 2: Fetch (Fallthrough - ONLY if bundle is empty)

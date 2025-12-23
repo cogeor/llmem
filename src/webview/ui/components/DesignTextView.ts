@@ -1,6 +1,7 @@
 
 import { DataProvider } from '../services/dataProvider';
-import { AppState } from '../types';
+import { AppState, DesignDoc, DesignViewMode } from '../types';
+import { DesignRender } from './DesignRender';
 
 interface DesignTextViewProps {
     el: HTMLElement;
@@ -11,32 +12,33 @@ interface DesignTextViewProps {
 // Inline styles for the Shadow DOM (works in both VS Code and standalone)
 const DETAIL_STYLES = `
 <style>
-.detail-view {
-    padding: 16px;
+/* View Mode */
+.design-view-content {
+    width: 100%;
+    padding: 0 16px;
     font-size: 14px;
     line-height: 1.5;
-    white-space: pre-wrap;
-    word-wrap: break-word;
     color: var(--foreground, #333);
+    box-sizing: border-box;
 }
 
-.detail-view h1, .detail-view h2, .detail-view h3,
-.detail-view h4, .detail-view h5, .detail-view h6 {
+.design-view-content h1, .design-view-content h2, .design-view-content h3,
+.design-view-content h4, .design-view-content h5, .design-view-content h6 {
     color: var(--foreground, #333);
     margin-top: 1.5em;
     margin-bottom: 0.5em;
 }
 
-.detail-view a {
+.design-view-content a {
     color: var(--focus-outline, #007acc);
     text-decoration: none;
 }
 
-.detail-view a:hover {
+.design-view-content a:hover {
     text-decoration: underline;
 }
 
-.detail-view pre {
+.design-view-content pre {
     background-color: var(--code-background, #f5f5f5);
     padding: 8px;
     border-radius: 4px;
@@ -45,7 +47,7 @@ const DETAIL_STYLES = `
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
 }
 
-.detail-view code {
+.design-view-content code {
     background-color: var(--code-background, #f5f5f5);
     padding: 2px 4px;
     border-radius: 3px;
@@ -53,12 +55,29 @@ const DETAIL_STYLES = `
     font-size: 0.9em;
 }
 
-.detail-view pre code {
+.design-view-content pre code {
     background-color: transparent;
     padding: 0;
     border: none;
 }
 
+/* Edit Mode - Full height textarea */
+.design-markdown-editor {
+    width: 100%;
+    height: 100%;
+    padding: 0 16px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    border: none;
+    outline: none;
+    resize: none;
+    box-sizing: border-box;
+    background-color: var(--background, #fff);
+    color: var(--foreground, #333);
+}
+
+/* Empty/Loading States */
 .detail-empty {
     padding: 24px;
     color: var(--foreground-muted, #888);
@@ -75,45 +94,83 @@ const DETAIL_STYLES = `
 
 /**
  * DesignTextView Component
- * Displays design documentation for the selected file/folder.
+ * Displays design documentation for the selected file/folder with view/edit toggle.
  */
 export class DesignTextView {
     public el: HTMLElement;
     private state: any;
     private dataProvider: DataProvider;
     private shadow: ShadowRoot;
+    private container: HTMLElement;
     private unsubscribe?: () => void;
-    private designDocs: Record<string, string> = {};
+    private designDocs: Record<string, DesignDoc> = {};
+    private renderer: DesignRender | null = null;
+    private currentPath: string | null = null;
 
     constructor({ el, state, dataProvider }: DesignTextViewProps) {
         this.el = el;
         this.state = state;
         this.dataProvider = dataProvider;
         this.shadow = this.el.attachShadow({ mode: 'open' });
+
+        // Setup shadow DOM with styles and content container
+        this.shadow.innerHTML = DETAIL_STYLES;
+        this.container = document.createElement('div');
+        this.container.style.width = '100%';
+        this.container.style.minHeight = '100%';
+        this.shadow.appendChild(this.container);
     }
 
     async mount() {
         // Load design docs
         this.designDocs = await this.dataProvider.loadDesignDocs();
 
-        // Subscribe to state changes
+        // Subscribe to state changes (will call callback immediately with current state)
         this.unsubscribe = this.state.subscribe((s: AppState) => this.onState(s));
     }
 
-    async onState({ selectedPath, selectedType }: AppState) {
+    async onState({ selectedPath, selectedType, designViewMode }: AppState) {
         if (!selectedPath) {
-            this.shadow.innerHTML = `${DETAIL_STYLES}<div class="detail-empty">Select a file or folder to view its design document.</div>`;
+            this.container.innerHTML = `<div class="detail-empty">Select a file or folder to view its design document.</div>`;
+            this.currentPath = null;
+            this.renderer = null;
             return;
         }
 
-        this.shadow.innerHTML = `${DETAIL_STYLES}<div class="detail-loading">Loading...</div>`;
+        const doc = this.fetchDesignDoc(selectedPath, selectedType);
 
-        const content = this.fetchDesignDoc(selectedPath, selectedType);
+        if (!doc) {
+            this.container.innerHTML = `<div class="detail-empty">There is no design file for this selection.</div>`;
+            this.currentPath = null;
+            this.renderer = null;
+            return;
+        }
 
-        if (content) {
-            this.shadow.innerHTML = `${DETAIL_STYLES}<div class="detail-view">${content}</div>`;
+        // Check if we're rendering a different document or mode changed
+        const pathChanged = this.currentPath !== selectedPath;
+        if (pathChanged || !this.renderer) {
+            // Create new renderer
+            this.currentPath = selectedPath;
+            this.renderer = new DesignRender({
+                markdown: doc.markdown,
+                html: doc.html,
+                mode: designViewMode,
+                onModeChange: (mode: DesignViewMode) => {
+                    this.state.set({ designViewMode: mode });
+                },
+                // onSave will be implemented in Phase 2
+            });
+
+            // Mount renderer
+            this.renderer.mount(this.container);
         } else {
-            this.shadow.innerHTML = `${DETAIL_STYLES}<div class="detail-empty">There is no design file for this selection.</div>`;
+            // Update existing renderer (mode changed)
+            this.renderer.updateProps({
+                mode: designViewMode,
+                markdown: doc.markdown,
+                html: doc.html,
+            });
+            this.renderer.mount(this.container);
         }
     }
 
@@ -122,7 +179,7 @@ export class DesignTextView {
      * Tries various path patterns to find a match.
      * For directories, prioritizes README.md files.
      */
-    private fetchDesignDoc(selectedPath: string | null, selectedType: "file" | "directory" | null): string | null {
+    private fetchDesignDoc(selectedPath: string | null, selectedType: "file" | "directory" | null): DesignDoc | null {
         if (!selectedPath) return null;
 
         // Normalize path
@@ -149,10 +206,16 @@ export class DesignTextView {
 
             // Check each candidate
             for (const key of candidates) {
-                // For directories, check README.md first (the new .arch/{path}/README.md format)
+                // For directories, check README files (the new .arch/{path}/README.md format)
                 if (selectedType === 'directory') {
-                    const readmeKey = `${key}/README.md`;
-                    if (this.designDocs[readmeKey]) return this.designDocs[readmeKey];
+                    // Check for README.html (converted from .md), README.txt, and README.md
+                    const readmeHtml = `${key}/README.html`;
+                    const readmeTxt = `${key}/README.txt`;
+                    const readmeMd = `${key}/README.md`;
+
+                    if (this.designDocs[readmeHtml]) return this.designDocs[readmeHtml];
+                    if (this.designDocs[readmeTxt]) return this.designDocs[readmeTxt];
+                    if (this.designDocs[readmeMd]) return this.designDocs[readmeMd];
                 }
 
                 // Then check legacy formats

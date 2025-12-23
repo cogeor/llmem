@@ -52,6 +52,19 @@ export interface DirectoryNode {
 
 export type WorkTreeNode = FileNode | DirectoryNode;
 
+/**
+ * Design view mode: view (rendered HTML) or edit (markdown source)
+ */
+export type DesignViewMode = 'view' | 'edit';
+
+/**
+ * Design document with both markdown source and rendered HTML
+ */
+export interface DesignDoc {
+    markdown: string;
+    html: string;
+}
+
 export interface AppState {
     currentView: "design" | "graph";
     graphType: "import" | "call";
@@ -60,13 +73,14 @@ export interface AppState {
     selectionSource?: "explorer" | "graph";  // Track where selection came from
     expandedFolders: Set<string>;
     watchedPaths: Set<string>;  // Paths with active file watching
+    designViewMode: DesignViewMode;  // View or edit mode for design docs
 }
 
 declare global {
     interface Window {
         GRAPH_DATA?: GraphData;
         WORK_TREE?: WorkTreeNode; // Root node
-        DESIGN_DOCS?: { [key: string]: string };
+        DESIGN_DOCS?: { [key: string]: DesignDoc };  // Updated: Now includes markdown + HTML
         GRAPH_DATA_URL?: string; // Optional if loading via URL
     }
 }
