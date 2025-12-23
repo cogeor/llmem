@@ -2,6 +2,23 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 /**
+ * Design document with both markdown source and rendered HTML
+ */
+export interface DesignDoc {
+    markdown: string;
+    html: string;
+}
+
+/**
+ * Load all design docs for a given project root
+ * Convenience function for generator and data service
+ */
+export async function loadDesignDocs(projectRoot: string): Promise<Record<string, DesignDoc>> {
+    const manager = new DesignDocManager(projectRoot);
+    return await manager.getAllDocsAsync();
+}
+
+/**
  * Manages design documents, handling data conversion and retrieval.
  */
 export class DesignDocManager {
@@ -13,14 +30,14 @@ export class DesignDocManager {
     }
 
     /**
-     * Retrieves all design documents as a map of relative path -> HTML content.
+     * Retrieves all design documents as a map of relative path -> DesignDoc (markdown + HTML).
      */
-    public getAllDocs(): Record<string, string> {
+    public getAllDocs(): Record<string, DesignDoc> {
         // Sync version not supported due to ESM dependency
         return {};
     }
 
-    public async getAllDocsAsync(): Promise<Record<string, string>> {
+    public async getAllDocsAsync(): Promise<Record<string, DesignDoc>> {
         console.log('[DesignDocManager] Starting getAllDocsAsync');
         // Dynamic import for ESM module support in CommonJS
         // TSC compiles import() to require() when module is commonjs, which fails for ESM-only packages like marked.
@@ -35,7 +52,7 @@ export class DesignDocManager {
             return {};
         }
 
-        const docs: Record<string, string> = {};
+        const docs: Record<string, DesignDoc> = {};
 
         console.log(`[DesignDocManager] archRoot: ${this.archRoot}`);
         if (!fs.existsSync(this.archRoot)) {
@@ -54,8 +71,8 @@ export class DesignDocManager {
         for (const filePath of files) {
             if (filePath.endsWith('.md')) {
                 try {
-                    const content = fs.readFileSync(filePath, 'utf-8');
-                    const html = await marked.parse(content);
+                    const markdown = fs.readFileSync(filePath, 'utf-8');
+                    const html = await marked.parse(markdown);
 
                     // Key mapping:
                     // .arch/src/parser.md -> src/parser.html (legacy file docs)
@@ -70,7 +87,8 @@ export class DesignDocManager {
 
                     console.log(`[DesignDocManager] Processed: ${relPath} -> ${key}`);
 
-                    docs[key] = html;
+                    // Store both markdown and HTML
+                    docs[key] = { markdown, html };
                 } catch (e) {
                     console.error(`Failed to convert design doc: ${filePath}`, e);
                 }

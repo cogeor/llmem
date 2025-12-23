@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as esbuild from 'esbuild';
 import { generateWorkTree } from './worktree';
 import { convertAllMarkdown } from './utils/md-converter';
+import { loadDesignDocs } from './design-docs';
 
 /**
  * Options for the static webview generator
@@ -15,18 +16,20 @@ export interface GeneratorOptions {
 
 /**
  * Generate a static webview folder in the artifacts directory.
- * 
+ *
  * @param destinationDir - The directory where the static webview should be generated (e.g., .artifacts/webview)
  * @param extensionRoot - The root of the extension (to find source src/webview files)
  * @param graphData - The graph data object to inject
  * @param options - Optional generator configuration
+ * @param watchedFiles - Optional array of watched file paths to initialize UI state
  * @returns The absolute path to the generated index.html
  */
 export async function generateStaticWebview(
     destinationDir: string,
     extensionRoot: string,
     graphData: any,
-    options: GeneratorOptions = {}
+    options: GeneratorOptions = {},
+    watchedFiles?: string[]
 ): Promise<string> {
 
     const { graphOnly = false } = options;
@@ -113,31 +116,18 @@ export async function generateStaticWebview(
 
     // Write graph data to JS file
     const graphDataPath = path.join(destinationDir, 'graph_data.js');
-    const graphDataContent = `window.GRAPH_DATA = ${JSON.stringify(graphData, null, 2)};`;
+    let graphDataContent = `window.GRAPH_DATA = ${JSON.stringify(graphData, null, 2)};`;
+
+    // Add watched files if provided
+    if (watchedFiles && watchedFiles.length > 0) {
+        graphDataContent += `\nwindow.WATCHED_FILES = ${JSON.stringify(watchedFiles, null, 2)};`;
+    }
+
     fs.writeFileSync(graphDataPath, graphDataContent, 'utf8');
 
     // 6. Bundle Design Docs (skip in graph-only mode)
     if (!graphOnly) {
-        const designDocs: { [key: string]: string } = {};
-        if (fs.existsSync(archDest)) {
-            const readDocs = (dir: string, base: string) => {
-                const files = fs.readdirSync(dir, { withFileTypes: true });
-                for (const file of files) {
-                    const fullPath = path.join(dir, file.name);
-                    const relPath = path.posix.join(base, file.name);
-                    if (file.isDirectory()) {
-                        readDocs(fullPath, relPath);
-                    } else if (file.isFile() && (file.name.endsWith('.txt') || file.name.endsWith('.html'))) {
-                        // For now assuming .txt or .html
-                        const content = fs.readFileSync(fullPath, 'utf8');
-                        // Store with relative path relative to 'arch/'
-                        // e.g. "src/foo.txt"
-                        designDocs[relPath] = content;
-                    }
-                }
-            };
-            readDocs(archDest, '');
-        }
+        const designDocs = await loadDesignDocs(extensionRoot);
         const designDocsPath = path.join(destinationDir, 'design_docs.js');
         const designDocsContent = `window.DESIGN_DOCS = ${JSON.stringify(designDocs, null, 2)};`;
         fs.writeFileSync(designDocsPath, designDocsContent, 'utf8');

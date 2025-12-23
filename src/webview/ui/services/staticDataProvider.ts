@@ -1,6 +1,6 @@
 
 import { DataProvider } from './dataProvider';
-import { GraphData, WorkTreeNode } from '../types';
+import { GraphData, WorkTreeNode, DesignDoc } from '../types';
 
 /**
  * DataProvider for standalone HTML mode.
@@ -19,7 +19,7 @@ export class StaticDataProvider implements DataProvider {
         return window.WORK_TREE || { name: "root", path: "", type: "directory", children: [] } as WorkTreeNode;
     }
 
-    async loadDesignDocs(): Promise<Record<string, string>> {
+    async loadDesignDocs(): Promise<Record<string, DesignDoc>> {
         return window.DESIGN_DOCS || {};
     }
 

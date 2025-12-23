@@ -4,18 +4,19 @@ import { ThemeManager } from './theme';
 import { Router } from './router';
 import { createDataProvider } from './services/dataProviderFactory';
 import { Worktree } from './components/Worktree';
-import { ViewToggle } from './components/ViewToggle';
 import { GraphTypeToggle } from './components/GraphTypeToggle';
+import { DesignModeToggle } from './components/DesignModeToggle';
 import { DesignTextView } from './components/DesignTextView';
 import { GraphView } from './components/GraphView';
 import { Splitter } from './libs/Splitter';
+import '../live-reload'; // WebSocket live reload for HTTP server mode
 
 // Create data provider for this environment (auto-detects VS Code vs standalone)
 const dataProvider = createDataProvider();
 
 // Elements
 const elWorktree = document.getElementById('worktree-root') as HTMLElement;
-const elViewToggle = document.getElementById('view-toggle') as HTMLElement;
+const elDesignModeToggle = document.getElementById('design-mode-toggle') as HTMLElement;
 const elGraphToggle = document.getElementById('graph-type-toggle') as HTMLElement;
 const elDesignView = document.getElementById('design-view') as HTMLElement;
 const elGraphView = document.getElementById('graph-view') as HTMLElement;
@@ -71,7 +72,7 @@ const router = new Router({
 // Components - inject dataProvider
 // We only init Worktree and DesignView if not in graph-only mode
 let worktree: Worktree | undefined;
-let viewToggle: ViewToggle | undefined;
+let designModeToggle: DesignModeToggle | undefined;
 let designTextView: DesignTextView | undefined;
 
 if (!isGraphOnlyMode) {
@@ -81,8 +82,8 @@ if (!isGraphOnlyMode) {
         dataProvider
     });
 
-    viewToggle = new ViewToggle({
-        el: elViewToggle,
+    designModeToggle = new DesignModeToggle({
+        el: elDesignModeToggle,
         state
     });
 
@@ -126,6 +127,13 @@ if (dataProvider.onWatchedPathsRestored) {
     });
 }
 
+// Initialize watched paths from window.WATCHED_FILES (for static mode)
+if (!isVsCode && (window as any).WATCHED_FILES) {
+    const watchedFiles = (window as any).WATCHED_FILES as string[];
+    console.log(`[Webview] Initializing ${watchedFiles.length} watched paths from static data`);
+    state.set({ watchedPaths: new Set(watchedFiles) });
+}
+
 // Bootstrap
 (async () => {
     try {
@@ -143,7 +151,7 @@ if (dataProvider.onWatchedPathsRestored) {
         ];
 
         if (worktree) mountPromises.push(worktree.mount());
-        if (viewToggle) mountPromises.push(viewToggle.mount());
+        if (designModeToggle) mountPromises.push(designModeToggle.mount());
         if (designTextView) mountPromises.push(designTextView.mount());
 
         await Promise.all(mountPromises);

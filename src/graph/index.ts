@@ -12,10 +12,15 @@ export { savePlot } from './plot/generator';
 /**
  * Build graphs from separate import and call edge list data.
  * This is the primary function for the new split-store architecture.
+ *
+ * @param importData - Import edge list data
+ * @param callData - Call edge list data
+ * @param watchedFiles - Optional set of watched file paths. If provided, only include nodes/edges for watched files.
  */
 export function buildGraphsFromSplitEdgeLists(
     importData: EdgeListData,
-    callData: EdgeListData
+    callData: EdgeListData,
+    watchedFiles?: Set<string>
 ): {
     importGraph: ImportGraph;
     callGraph: CallGraph;
@@ -27,7 +32,10 @@ export function buildGraphsFromSplitEdgeLists(
     // Collect unique file IDs from import nodes
     const fileIds = new Set<string>();
     for (const node of importData.nodes) {
-        fileIds.add(node.fileId);
+        // Filter: only include files that are watched (if watchedFiles provided)
+        if (!watchedFiles || watchedFiles.has(node.fileId)) {
+            fileIds.add(node.fileId);
+        }
     }
 
     // Create file nodes
@@ -41,9 +49,13 @@ export function buildGraphsFromSplitEdgeLists(
         });
     }
 
-    // Add import edges (only where both source and target are known files)
+    // Add import edges (only where both source and target are in watched files)
     for (const edge of importData.edges) {
-        if (fileIds.has(edge.source) && fileIds.has(edge.target)) {
+        const sourceWatched = !watchedFiles || watchedFiles.has(edge.source);
+        const targetWatched = !watchedFiles || watchedFiles.has(edge.target);
+
+        // Only include edge if BOTH source and target are watched (or no filter)
+        if (sourceWatched && targetWatched && fileIds.has(edge.source) && fileIds.has(edge.target)) {
             if (!importNodes.has(edge.source)) {
                 importNodes.set(edge.source, {
                     id: edge.source,
@@ -81,19 +93,22 @@ export function buildGraphsFromSplitEdgeLists(
     const callNodes = new Map<string, EntityNode>();
     const callEdgesOut: CallEdge[] = [];
 
-    // Create entity nodes from call data
+    // Create entity nodes from call data (filter by watched files)
     for (const node of callData.nodes) {
         if (node.kind !== 'file') {
-            callNodes.set(node.id, {
-                id: node.id,
-                kind: node.kind as 'function' | 'class' | 'method',
-                label: node.name,
-                fileId: node.fileId
-            });
+            // Only include node if its file is watched (or no filter)
+            if (!watchedFiles || watchedFiles.has(node.fileId)) {
+                callNodes.set(node.id, {
+                    id: node.id,
+                    kind: node.kind as 'function' | 'class' | 'method',
+                    label: node.name,
+                    fileId: node.fileId
+                });
+            }
         }
     }
 
-    // Add call edges
+    // Add call edges (only between watched nodes)
     for (const edge of callData.edges) {
         if (callNodes.has(edge.source) && callNodes.has(edge.target)) {
             callEdgesOut.push({

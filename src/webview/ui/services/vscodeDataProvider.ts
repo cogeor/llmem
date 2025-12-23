@@ -1,6 +1,6 @@
 
 import { DataProvider } from './dataProvider';
-import { GraphData, WorkTreeNode, VisNode, VisEdge } from '../types';
+import { GraphData, WorkTreeNode, VisNode, VisEdge, DesignDoc } from '../types';
 
 declare const acquireVsCodeApi: () => any;
 
@@ -17,7 +17,7 @@ export class VSCodeDataProvider implements DataProvider {
     // Cached data from extension
     private graphData: GraphData | null = null;
     private workTree: WorkTreeNode | null = null;
-    private designDocs: Record<string, string> = {};
+    private designDocs: Record<string, DesignDoc> = {};
 
     // Promise for initial data load
     private dataReady: Promise<void>;
@@ -94,7 +94,7 @@ export class VSCodeDataProvider implements DataProvider {
         return this.workTree!;
     }
 
-    async loadDesignDocs(): Promise<Record<string, string>> {
+    async loadDesignDocs(): Promise<Record<string, DesignDoc>> {
         await this.dataReady;
         return this.designDocs;
     }

@@ -2,6 +2,7 @@
 import { DataProvider } from '../services/dataProvider';
 import { WorkTreeNode, DirectoryNode, AppState, GraphStatus } from '../types';
 import { isSupportedFile } from '../../../parser/config';
+import { WatchApiClient } from '../services/watchApiClient';
 
 // VS Code webview API type declaration
 declare function acquireVsCodeApi(): { postMessage: (message: any) => void };
@@ -45,6 +46,7 @@ export class Worktree {
     private tree: WorkTreeNode | null = null;
     private unsubscribe?: () => void;
     private vscodeApi: any = null;
+    private watchApiClient: WatchApiClient | null = null;
 
     constructor({ el, state, dataProvider }: Props) {
         this.el = el;
@@ -53,6 +55,11 @@ export class Worktree {
 
         // Get VS Code API from the shared data provider
         this.vscodeApi = dataProvider.getVscodeApi();
+
+        // If not in VSCode, create HTTP API client for standalone mode
+        if (!this.vscodeApi) {
+            this.watchApiClient = new WatchApiClient();
+        }
     }
 
     private clickHandlerBound: boolean = false;
@@ -60,6 +67,9 @@ export class Worktree {
     async mount() {
         this.tree = await this.dataProvider.loadWorkTree();
         this.render(this.tree);
+
+        // Restore expansion state from previous session
+        this.restoreExpansionState();
 
         // Listen for clicks (only add once)
         if (!this.clickHandlerBound) {
@@ -85,11 +95,34 @@ export class Worktree {
         return isSupportedFile(filename);
     }
 
+    /**
+     * Check if a directory contains any parsable files (recursively).
+     */
+    hasAnyParsableFiles(dirNode: WorkTreeNode): boolean {
+        if (dirNode.type === 'file') {
+            return this.isParsableFile(dirNode.name);
+        }
+
+        if (dirNode.type === 'directory' && (dirNode as DirectoryNode).children) {
+            for (const child of (dirNode as DirectoryNode).children) {
+                if (this.hasAnyParsableFiles(child)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     renderNode(node: WorkTreeNode, depth: number): string {
         const isDir = node.type === 'directory';
 
-        // Check if we should show toggle button (always for dirs, only for parsable files)
-        const showToggle = isDir || this.isParsableFile(node.name);
+        // Check if we should show toggle button:
+        // - For files: only if parsable
+        // - For dirs: only if contains parsable files (recursively)
+        const showToggle = isDir
+            ? this.hasAnyParsableFiles(node)
+            : this.isParsableFile(node.name);
         const statusTitle = showToggle
             ? `Click to toggle file watching for this ${isDir ? 'folder' : 'file'}.`
             : '';
@@ -100,7 +133,7 @@ export class Worktree {
                     ${isDir ? '<span class="tree-arrow"></span>' : ''}
                     <span class="icon">${isDir ? '📁' : '📄'}</span>
                     <span class="label">${node.name}</span>
-                    ${showToggle ? `<button class="status-btn" data-path="${node.path}" title="${statusTitle}" onclick="event.stopPropagation(); event.preventDefault();" style="
+                    ${showToggle ? `<button class="status-btn" data-path="${node.path}" title="${statusTitle}" style="
                         width: 12px;
                         height: 12px;
                         min-width: 12px;
@@ -154,6 +187,9 @@ export class Worktree {
                 const isExpanded = childrenUl.classList.contains('is-expanded');
                 childrenUl.classList.toggle('is-expanded');
                 item.setAttribute('aria-expanded', String(!isExpanded));
+
+                // Save expansion state
+                this.saveExpansionState();
             }
         }
 
@@ -167,11 +203,60 @@ export class Worktree {
     }
 
     /**
+     * Save current tree expansion state to localStorage (HTTP mode only).
+     */
+    private saveExpansionState(): void {
+        // Only save in HTTP mode (not VSCode)
+        if (this.vscodeApi) return;
+
+        const expandedPaths: string[] = [];
+        const expandedElements = this.el.querySelectorAll('.tree-children.is-expanded');
+        expandedElements.forEach(el => {
+            const path = (el as HTMLElement).dataset.path;
+            if (path) expandedPaths.push(path);
+        });
+
+        try {
+            localStorage.setItem('llmem:expandedPaths', JSON.stringify(expandedPaths));
+        } catch (e) {
+            console.warn('[Worktree] Failed to save expansion state:', e);
+        }
+    }
+
+    /**
+     * Restore tree expansion state from localStorage (HTTP mode only).
+     */
+    private restoreExpansionState(): void {
+        // Only restore in HTTP mode (not VSCode)
+        if (this.vscodeApi) return;
+
+        try {
+            const saved = localStorage.getItem('llmem:expandedPaths');
+            if (!saved) return;
+
+            const expandedPaths = JSON.parse(saved) as string[];
+            for (const path of expandedPaths) {
+                const childrenEl = this.el.querySelector(`.tree-children[data-path="${CSS.escape(path)}"]`);
+                if (childrenEl) {
+                    childrenEl.classList.add('is-expanded');
+                    const parentNodeLi = childrenEl.parentElement;
+                    const parentItem = parentNodeLi?.querySelector('.tree-item');
+                    if (parentItem) {
+                        parentItem.setAttribute('aria-expanded', 'true');
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('[Worktree] Failed to restore expansion state:', e);
+        }
+    }
+
+    /**
      * Handle status button click - toggle watch state for the path.
      * For folders: toggles all files underneath.
      * For files: toggles the single file.
      */
-    handleStatusButtonClick(clickedPath: string) {
+    async handleStatusButtonClick(clickedPath: string) {
         const currentState = this.state.get();
         const nodeEl = this.el.querySelector(`.tree-node[data-path="${CSS.escape(clickedPath)}"]`) as HTMLElement;
         const isDir = nodeEl?.dataset.type === 'directory';
@@ -186,17 +271,72 @@ export class Worktree {
             isCurrentlyWatched = currentState.watchedPaths.has(clickedPath);
         }
 
-        console.log(`[Worktree] Toggle ${isDir ? 'folder' : 'file'}: ${clickedPath} -> ${!isCurrentlyWatched}`);
+        const newWatchedState = !isCurrentlyWatched;
+        console.log(`[Worktree] Toggle ${isDir ? 'folder' : 'file'}: ${clickedPath} -> ${newWatchedState}`);
 
-        // Send message to VS Code extension (which handles all state management)
+        // VSCode mode: Send message to extension
         if (this.vscodeApi) {
             this.vscodeApi.postMessage({
                 type: 'toggleWatch',
                 path: clickedPath,
-                watched: !isCurrentlyWatched
+                watched: newWatchedState
             });
+            // Note: Local state will be updated when extension sends back state:watchedPaths
         }
-        // Note: Local state will be updated when extension sends back state:watchedPaths
+        // Standalone/HTTP mode: Call HTTP API
+        else if (this.watchApiClient) {
+            try {
+                // Show loading indicator on button
+                const btn = nodeEl.querySelector('.status-btn') as HTMLElement;
+                if (btn) {
+                    btn.style.opacity = '0.5';
+                    btn.style.cursor = 'wait';
+                }
+
+                // Call API
+                const response = await this.watchApiClient.toggleWatch(clickedPath, newWatchedState);
+
+                console.log(`[Worktree] API response:`, response);
+
+                // Update local state immediately with the affected files
+                const updatedPaths = new Set(currentState.watchedPaths);
+                const affectedFiles = newWatchedState ? response.addedFiles : response.removedFiles;
+
+                if (affectedFiles) {
+                    for (const file of affectedFiles) {
+                        if (newWatchedState) {
+                            updatedPaths.add(file);
+                        } else {
+                            updatedPaths.delete(file);
+                        }
+                    }
+                }
+
+                // Update state (this will trigger button color updates)
+                this.state.set({ watchedPaths: updatedPaths });
+
+                // Reset button appearance
+                if (btn) {
+                    btn.style.opacity = '1';
+                    btn.style.cursor = 'pointer';
+                }
+
+                // Note: The server will regenerate the webview and trigger a browser reload
+                // via WebSocket, so we'll see the updated graph soon
+            } catch (error) {
+                console.error(`[Worktree] Failed to toggle watch:`, error);
+
+                // Reset button appearance
+                const btn = nodeEl.querySelector('.status-btn') as HTMLElement;
+                if (btn) {
+                    btn.style.opacity = '1';
+                    btn.style.cursor = 'pointer';
+                }
+
+                // Optionally show error to user
+                alert(`Failed to toggle watch: ${error instanceof Error ? error.message : String(error)}`);
+            }
+        }
     }
 
     /**

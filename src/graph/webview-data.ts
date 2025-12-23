@@ -36,12 +36,17 @@ export interface WebviewGraphData {
 
 /**
  * Prepare webview data from split edge lists (new architecture).
+ *
+ * @param importData - Import edge list data
+ * @param callData - Call edge list data
+ * @param watchedFiles - Optional set of watched file paths. If provided, only include nodes/edges for watched files.
  */
 export function prepareWebviewDataFromSplitEdgeLists(
     importData: EdgeListData,
-    callData: EdgeListData
+    callData: EdgeListData,
+    watchedFiles?: Set<string>
 ): WebviewGraphData {
-    const { importGraph, callGraph } = buildGraphsFromSplitEdgeLists(importData, callData);
+    const { importGraph, callGraph } = buildGraphsFromSplitEdgeLists(importData, callData, watchedFiles);
     return transformGraphsToVisData(importGraph, callGraph);
 }
 

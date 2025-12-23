@@ -1,0 +1,25 @@
+{
+    "extends": "./tsconfig.base.json",
+    "compilerOptions": {
+        "outDir": "dist/claude",
+        "rootDir": "src"
+    },
+    "include": [
+        "src/claude/**/*",
+        "src/mcp/**/*",
+        "src/graph/**/*",
+        "src/parser/**/*",
+        "src/info/**/*",
+        "src/artifact/**/*",
+        "src/webview/**/*",
+        "src/extension/config.ts"
+    ],
+    "exclude": [
+        "node_modules",
+        "dist",
+        "src/extension/extension.ts",
+        "src/extension/panel.ts",
+        "src/extension/hot-reload.ts",
+        "**/*.test.ts"
+    ]
+}

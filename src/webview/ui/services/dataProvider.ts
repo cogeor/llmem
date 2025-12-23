@@ -1,10 +1,10 @@
 
-import { GraphData, WorkTreeNode, VisNode, VisEdge } from '../types';
+import { GraphData, WorkTreeNode, VisNode, VisEdge, DesignDoc } from '../types';
 
 /**
  * DataProvider interface for loading webview data.
  * Used by components to fetch graph, worktree, and design doc data.
- * 
+ *
  * Implementations:
  * - StaticDataProvider: For standalone HTML mode (reads from window.*)
  * - VSCodeDataProvider: For VS Code extension mode (receives via postMessage)
@@ -16,8 +16,8 @@ export interface DataProvider {
     /** Load the worktree (file system hierarchy) */
     loadWorkTree(): Promise<WorkTreeNode>;
 
-    /** Load all design documents (path -> HTML content) */
-    loadDesignDocs(): Promise<Record<string, string>>;
+    /** Load all design documents (path -> DesignDoc with markdown + HTML) */
+    loadDesignDocs(): Promise<Record<string, DesignDoc>>;
 
     /**
      * Subscribe to refresh events.
