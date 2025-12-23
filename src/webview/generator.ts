@@ -27,6 +27,7 @@ export interface GeneratorOptions {
 export async function generateStaticWebview(
     destinationDir: string,
     extensionRoot: string,
+    workspaceRoot: string,
     graphData: any,
     options: GeneratorOptions = {},
     watchedFiles?: string[]
@@ -82,7 +83,7 @@ export async function generateStaticWebview(
     }
 
     // 3. Copy .arch folder to arch (skip in graph-only mode)
-    const archSrc = path.join(extensionRoot, '.arch');
+    const archSrc = path.join(workspaceRoot, '.arch');
     const archDest = path.join(destinationDir, 'arch');
     if (!graphOnly) {
         if (fs.existsSync(archSrc)) {
@@ -101,7 +102,7 @@ export async function generateStaticWebview(
 
     // 4. Generate Folder Tree (skip in graph-only mode)
     if (!graphOnly) {
-        const workTree = await generateWorkTree(extensionRoot, path.join(extensionRoot, 'src'));
+        const workTree = await generateWorkTree(workspaceRoot, path.join(workspaceRoot, 'src'));
         const treePath = path.join(destinationDir, 'work_tree.js');
         const treeContent = `window.WORK_TREE = ${JSON.stringify(workTree, null, 2)};`;
         fs.writeFileSync(treePath, treeContent, 'utf8');
@@ -127,7 +128,7 @@ export async function generateStaticWebview(
 
     // 6. Bundle Design Docs (skip in graph-only mode)
     if (!graphOnly) {
-        const designDocs = await loadDesignDocs(extensionRoot);
+        const designDocs = await loadDesignDocs(workspaceRoot);
         const designDocsPath = path.join(destinationDir, 'design_docs.js');
         const designDocsContent = `window.DESIGN_DOCS = ${JSON.stringify(designDocs, null, 2)};`;
         fs.writeFileSync(designDocsPath, designDocsContent, 'utf8');

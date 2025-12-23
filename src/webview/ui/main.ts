@@ -9,6 +9,7 @@ import { DesignModeToggle } from './components/DesignModeToggle';
 import { DesignTextView } from './components/DesignTextView';
 import { GraphView } from './components/GraphView';
 import { Splitter } from './libs/Splitter';
+import { explorerIcon, designIcon, graphIcon, sun } from './icons';
 import '../live-reload'; // WebSocket live reload for HTTP server mode
 
 // Create data provider for this environment (auto-detects VS Code vs standalone)
@@ -134,9 +135,25 @@ if (!isVsCode && (window as any).WATCHED_FILES) {
     state.set({ watchedPaths: new Set(watchedFiles) });
 }
 
+// Inject header icons
+function initHeaderIcons() {
+    const explorerTitle = document.querySelector('#explorer-title .pane-icon');
+    const designTitle = document.querySelector('#design-title .pane-icon');
+    const graphTitle = document.querySelector('#graph-title .pane-icon');
+    const themeToggle = document.getElementById('theme-toggle');
+
+    if (explorerTitle) explorerTitle.innerHTML = explorerIcon;
+    if (designTitle) designTitle.innerHTML = designIcon;
+    if (graphTitle) graphTitle.innerHTML = graphIcon;
+    if (themeToggle) themeToggle.innerHTML = sun; // Will be updated by ThemeManager
+}
+
 // Bootstrap
 (async () => {
     try {
+        // Init header icons immediately
+        initHeaderIcons();
+
         // Init Router first to handle initial visibility
         router.init();
 
@@ -157,9 +174,8 @@ if (!isVsCode && (window as any).WATCHED_FILES) {
         await Promise.all(mountPromises);
 
         console.log("Webview initialized");
-
-        console.log("Webview initialized");
     } catch (e) {
         console.error("Initialization failed", e);
     }
 })();
+

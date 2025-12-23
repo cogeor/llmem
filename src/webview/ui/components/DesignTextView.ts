@@ -3,6 +3,11 @@ import { DataProvider } from '../services/dataProvider';
 import { AppState, DesignDoc, DesignViewMode } from '../types';
 import { DesignRender } from './DesignRender';
 
+// Helper to normalize path for display and matching
+function normalizePath(path: string): string {
+    return path.replace(/\\/g, '/');
+}
+
 interface DesignTextViewProps {
     el: HTMLElement;
     state: any;
@@ -101,8 +106,36 @@ const DETAIL_STYLES = `
 .detail-empty {
     padding: 24px;
     color: var(--foreground-muted, #888);
-    text-align: center;
-    font-style: italic;
+    text-align: left;
+}
+
+.detail-empty h3 {
+    margin: 0 0 16px 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--foreground, #ccc);
+}
+
+.detail-empty p {
+    margin: 0 0 12px 0;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.detail-empty code {
+    background-color: var(--code-background, #2d2d2d);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 12px;
+}
+
+.detail-empty .hint {
+    margin-top: 16px;
+    padding: 12px;
+    background-color: var(--code-background, #2d2d2d);
+    border-radius: 4px;
+    border-left: 3px solid var(--focus-outline, #007acc);
 }
 
 .detail-loading {
@@ -153,9 +186,9 @@ export class DesignTextView {
         this.unsubscribe = this.state.subscribe((s: AppState) => this.onState(s));
     }
 
-    async onState({ selectedPath, selectedType, designViewMode }: AppState) {
+    async onState({ selectedPath, selectedType, designViewMode, watchedPaths }: AppState) {
         if (!selectedPath) {
-            this.container.innerHTML = `< div class="detail-empty" > Select a file or folder to view its design document.</div>`;
+            this.container.innerHTML = `<div class="detail-empty"><p>Select a file or folder to view its design document.</p></div>`;
             this.currentPath = null;
             this.renderer = null;
             return;
@@ -164,7 +197,31 @@ export class DesignTextView {
         const doc = this.fetchDesignDoc(selectedPath, selectedType);
 
         if (!doc) {
-            this.container.innerHTML = `<div class="detail-empty">There is no design file for this selection.</div>`;
+            // Show informative empty state with MCP command instructions
+            const normalizedPath = normalizePath(selectedPath);
+            const isWatched = watchedPaths?.has(selectedPath) || false;
+            const commandType = selectedType === 'directory' ? 'folder_info' : 'file_info';
+
+            let html = `
+                <div class="detail-empty">
+                    <h3>No design file found</h3>
+                    <p>There is no design documentation for this ${selectedType || 'item'}.</p>
+                    <p>To create one, use the MCP command:</p>
+                    <p><code>${commandType} ${normalizedPath}</code></p>
+            `;
+
+            // If not watched, add hint about toggling watch first
+            if (!isWatched) {
+                html += `
+                    <div class="hint">
+                        <strong>Tip:</strong> Toggle the watch button <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ccc;vertical-align:middle;"></span> in the explorer first to start tracking this ${selectedType || 'item'}.
+                    </div>
+                `;
+            }
+
+            html += `</div>`;
+
+            this.container.innerHTML = html;
             this.currentPath = null;
             this.renderer = null;
             return;
@@ -200,67 +257,58 @@ export class DesignTextView {
 
     /**
      * Fetch design doc content from the loaded docs.
-     * Tries various path patterns to find a match.
-     * For directories, prioritizes README.md files.
+     * Only looks for exact matches - does NOT fall back to parent directories.
+     * For directories, looks for README.md files.
      */
     private fetchDesignDoc(selectedPath: string | null, selectedType: "file" | "directory" | null): DesignDoc | null {
         if (!selectedPath) return null;
 
-        // Normalize path
-        let currentPath: string | null = selectedPath.replace(/\\/g, '/');
+        // Normalize path - keep the full path including extension for files
+        // Design docs are stored as {path}.html, e.g. src/info/cli.ts.html
+        let currentPath: string = normalizePath(selectedPath);
+
+        const candidates: string[] = [];
+
+        // Full path (with extension for files)
+        candidates.push(currentPath);
+
+        // Also try without extension for backward compatibility
         if (selectedType === 'file') {
             const lastDotIndex = currentPath.lastIndexOf('.');
             if (lastDotIndex > 0) {
-                currentPath = currentPath.substring(0, lastDotIndex);
+                candidates.push(currentPath.substring(0, lastDotIndex));
             }
         }
 
-        // Loop to find doc or parent doc
-        while (currentPath !== null) {
-            const candidates: string[] = [];
-
-            // Full path
-            candidates.push(currentPath);
-
-            // Basename
-            const baseName = currentPath.split('/').pop();
-            if (baseName && baseName !== currentPath) {
-                candidates.push(baseName);
-            }
-
-            // Check each candidate
-            for (const key of candidates) {
-                // For directories, check README files (the new .arch/{path}/README.md format)
-                if (selectedType === 'directory') {
-                    // Check for README.html (converted from .md), README.txt, and README.md
-                    const readmeHtml = `${key}/README.html`;
-                    const readmeTxt = `${key}/README.txt`;
-                    const readmeMd = `${key}/README.md`;
-
-                    if (this.designDocs[readmeHtml]) return this.designDocs[readmeHtml];
-                    if (this.designDocs[readmeTxt]) return this.designDocs[readmeTxt];
-                    if (this.designDocs[readmeMd]) return this.designDocs[readmeMd];
-                }
-
-                // Then check legacy formats
-                const htmlKey = `${key}.html`;
-                const txtKey = `${key}.txt`;
-
-                if (this.designDocs[htmlKey]) return this.designDocs[htmlKey];
-                if (this.designDocs[txtKey]) return this.designDocs[txtKey];
-            }
-
-            if (currentPath === "") break;
-
-            // Move to parent
-            const lastSlash = currentPath.lastIndexOf('/');
-            if (lastSlash === -1) {
-                currentPath = "";
-            } else {
-                currentPath = currentPath.substring(0, lastSlash);
-            }
+        // Basename
+        const baseName = currentPath.split('/').pop();
+        if (baseName && baseName !== currentPath) {
+            candidates.push(baseName);
         }
 
+        // Check each candidate
+        for (const key of candidates) {
+            // For directories, check README files (the new .arch/{path}/README.md format)
+            if (selectedType === 'directory') {
+                // Check for README.html (converted from .md), README.txt, and README.md
+                const readmeHtml = `${key}/README.html`;
+                const readmeTxt = `${key}/README.txt`;
+                const readmeMd = `${key}/README.md`;
+
+                if (this.designDocs[readmeHtml]) return this.designDocs[readmeHtml];
+                if (this.designDocs[readmeTxt]) return this.designDocs[readmeTxt];
+                if (this.designDocs[readmeMd]) return this.designDocs[readmeMd];
+            }
+
+            // Check file formats: .html (converted from .md) and .txt
+            const htmlKey = `${key}.html`;
+            const txtKey = `${key}.txt`;
+
+            if (this.designDocs[htmlKey]) return this.designDocs[htmlKey];
+            if (this.designDocs[txtKey]) return this.designDocs[txtKey];
+        }
+
+        // No fallback to parent directories - return null if not found
         return null;
     }
 

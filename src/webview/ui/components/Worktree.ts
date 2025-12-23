@@ -2,6 +2,7 @@
 import { DataProvider } from '../services/dataProvider';
 import { WorkTreeNode, DirectoryNode, AppState, GraphStatus } from '../types';
 import { isSupportedFile } from '../../../parser/config';
+import { folder, file, chevronRight } from '../icons';
 
 // VS Code webview API type declaration
 declare function acquireVsCodeApi(): { postMessage: (message: any) => void };
@@ -119,8 +120,8 @@ export class Worktree {
         let html = `
             <li class="tree-node" data-path="${node.path}" data-type="${node.type}">
                 <div class="tree-item" style="padding-left: ${depth * 12 + 12}px">
-                    ${isDir ? '<span class="tree-arrow"></span>' : ''}
-                    <span class="icon">${isDir ? '📁' : '📄'}</span>
+                    ${isDir ? `<span class="tree-arrow">${chevronRight}</span>` : ''}
+                    <span class="icon">${isDir ? folder : file}</span>
                     <span class="label">${node.name}</span>
                     ${showToggle ? `<button class="status-btn" data-path="${node.path}" title="${statusTitle}" style="
                         width: 12px;

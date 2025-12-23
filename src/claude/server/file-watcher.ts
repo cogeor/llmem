@@ -72,6 +72,17 @@ export class FileWatcherService {
         await watchService.load();
         const watchedFiles = watchService.getWatchedFiles();
 
+        // Ensure .arch directory exists so we can watch it
+        if (!fs.existsSync(this.archDir)) {
+            try {
+                fs.mkdirSync(this.archDir, { recursive: true });
+            } catch (e) {
+                if (this.config.verbose) {
+                    console.error('[FileWatcher] Failed to create .arch directory:', e);
+                }
+            }
+        }
+
         // Setup paths to watch
         this.edgeListFiles = [
             path.join(artifactDir, 'import-edgelist.json'),
@@ -84,13 +95,15 @@ export class FileWatcherService {
         this.watchedSourcePaths = new Set(watchedSourcePaths);
 
         // Combine all paths
-        const allPaths = [...this.edgeListFiles, ...watchedSourcePaths];
-        if (fs.existsSync(this.archDir)) {
-            allPaths.push(this.archDir);
-        }
+        // Use glob pattern for .arch to catch new files in subdirectories
+        const watchPaths = [
+            ...this.edgeListFiles,
+            ...watchedSourcePaths,
+            path.join(this.archDir, '**/*.md')
+        ];
 
-        // Filter to only existing paths
-        const existingPaths = allPaths.filter(p => fs.existsSync(p));
+        // Filter valid paths (globs are always valid for chokidar)
+        const existingPaths = watchPaths.filter(p => p.includes('*') || fs.existsSync(p));
 
         if (existingPaths.length === 0) {
             if (this.config.verbose) {
@@ -101,7 +114,11 @@ export class FileWatcherService {
 
         // Setup chokidar watcher
         this.watcher = chokidar.watch(existingPaths, {
-            ignored: /(^|[\/\\])\../, // ignore dotfiles except .arch
+            ignored: (path, stats) => {
+                // Ignore dotfiles, but ALLOW .arch directory
+                if (path.includes('.arch')) return false;
+                return /(^|[\/\\])\../.test(path);
+            },
             persistent: true,
             ignoreInitial: true,
             awaitWriteFinish: {

@@ -1,4 +1,6 @@
 
+import { sun, moon } from './icons';
+
 export class ThemeManager {
     private static readonly STORAGE_KEY = 'webview-theme';
     private static readonly LIGHT_THEME = 'light';
@@ -38,10 +40,10 @@ export class ThemeManager {
         // Store preference
         localStorage.setItem(ThemeManager.STORAGE_KEY, theme);
 
-        // Update button icon/text if needed (handled by caller or via event if we get complex)
+        // Update button icon - show sun in dark mode (to switch to light), moon in light mode (to switch to dark)
         const btn = document.getElementById('theme-toggle');
         if (btn) {
-            btn.textContent = theme === ThemeManager.LIGHT_THEME ? '🌙' : '☀️';
+            btn.innerHTML = theme === ThemeManager.LIGHT_THEME ? moon : sun;
             btn.title = `Switch to ${theme === ThemeManager.LIGHT_THEME ? 'dark' : 'light'} mode`;
         }
 

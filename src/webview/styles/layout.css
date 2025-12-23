@@ -34,6 +34,19 @@
     font-size: 11px;
     text-transform: uppercase;
     opacity: 0.8;
+    display: flex;
+    align-items: center;
+}
+
+.pane-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pane-icon svg {
+    width: 16px;
+    height: 16px;
 }
 
 /* Pane Content */

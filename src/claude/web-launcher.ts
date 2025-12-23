@@ -116,6 +116,7 @@ export async function generateGraph(
     const indexPath = await generateStaticWebview(
         webviewDir,
         extensionRoot,
+        workspaceRoot,
         graphData,
         { graphOnly: false },  // Always generate full 3-panel UI
         watchService.getWatchedFiles()  // Pass watched files for UI initialization
@@ -210,8 +211,8 @@ export function openInBrowser(url: string): void {
         process.platform === 'win32'
             ? 'start'
             : process.platform === 'darwin'
-            ? 'open'
-            : 'xdg-open';
+                ? 'open'
+                : 'xdg-open';
 
     exec(`${command} "${url}"`, (error: any) => {
         if (error) {

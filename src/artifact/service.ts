@@ -83,13 +83,13 @@ function shouldIgnore(name: string, relativePath: string): boolean {
 export async function initializeArtifactService(root: string) {
     // Already initialized for this workspace - no-op
     if (isInitialized && workspaceRoot === root) {
-        console.log('[ArtifactService] Already initialized for this workspace');
+        console.error('[ArtifactService] Already initialized for this workspace');
         return;
     }
 
     // Switching workspaces - reinitialize
     if (isInitialized && workspaceRoot !== root) {
-        console.log(`[ArtifactService] Switching workspace from ${workspaceRoot} to ${root}`);
+        console.error(`[ArtifactService] Switching workspace from ${workspaceRoot} to ${root}`);
         isInitialized = false;
     }
 
@@ -121,7 +121,7 @@ export async function initializeArtifactService(root: string) {
             for (const ext of lang.extensions) {
                 registry.register(ext, lspExtractor);
             }
-            console.log(`Registered LSP support for ${lang.id} (${lang.extensions.join(', ')})`);
+            console.error(`Registered LSP support for ${lang.id} (${lang.extensions.join(', ')})`);
         }
     }
 
@@ -159,7 +159,7 @@ export function isArtifactServiceInitialized(): boolean {
 
 export async function createArtifact(sourcePath: string, type: string, content: string): Promise<ArtifactMetadata> {
     // DISABLED: Artifact system deprecated, using edge list
-    console.log('[ArtifactService] createArtifact disabled - using edge list instead');
+    console.error('[ArtifactService] createArtifact disabled - using edge list instead');
 
     // Return dummy metadata without writing any files
     return {
@@ -177,7 +177,7 @@ export async function createArtifact(sourcePath: string, type: string, content: 
  */
 export async function ensureSingleFileArtifact(filePath: string): Promise<ArtifactRecord | null> {
     // DISABLED: Legacy artifact system deprecated, using edge list instead
-    console.log('[ArtifactService] ensureSingleFileArtifact disabled - using edge list');
+    console.error('[ArtifactService] ensureSingleFileArtifact disabled - using edge list');
     return null;
 
     /* Legacy code preserved for future lazy loading:
@@ -250,7 +250,7 @@ export async function ensureSingleFileArtifact(filePath: string): Promise<Artifa
  */
 export async function ensureArtifacts(folderPath: string, recursive: boolean = false): Promise<ArtifactRecord[]> {
     // DISABLED: Legacy artifact system deprecated, using edge list instead
-    console.log('[ArtifactService] ensureArtifacts disabled - using edge list');
+    console.error('[ArtifactService] ensureArtifacts disabled - using edge list');
     return [];
 
     /* Legacy code preserved for future lazy loading:
@@ -333,7 +333,7 @@ export async function ensureArtifacts(folderPath: string, recursive: boolean = f
  */
 export async function saveFolderSummary(folderPath: string, summary: string): Promise<ArtifactMetadata> {
     // DISABLED: Legacy artifact system deprecated, using edge list instead
-    console.log('[ArtifactService] saveFolderSummary disabled - using edge list');
+    console.error('[ArtifactService] saveFolderSummary disabled - using edge list');
     return {
         id: '',
         sourcePath: folderPath,
@@ -369,7 +369,7 @@ export async function saveFolderSummary(folderPath: string, summary: string): Pr
  */
 export async function saveModuleSummaries(summaries: Record<string, string>): Promise<ArtifactMetadata[]> {
     // DISABLED: Legacy artifact system deprecated, using edge list instead
-    console.log('[ArtifactService] saveModuleSummaries disabled - using edge list');
+    console.error('[ArtifactService] saveModuleSummaries disabled - using edge list');
     return [];
 
     /* Legacy code preserved for future lazy loading:

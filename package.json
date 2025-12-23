@@ -55,7 +55,7 @@
     "file-info:semantic": "npx ts-node src/info/cli.ts --semantic",
     "module-info": "npx ts-node src/info/cli_module.ts",
     "module-info:semantic": "npx ts-node src/info/cli_module.ts --semantic",
-    "serve": "npm run build:claude && node dist/claude/claude/cli.js serve",
+    "serve": "npm run build:claude && npm run build:webview && node dist/claude/claude/cli.js serve",
     "serve:dev": "npx ts-node src/claude/cli.ts serve",
     "graph": "node dist/claude/claude/cli.js generate",
     "graph:stats": "node dist/claude/claude/cli.js stats",

@@ -6,6 +6,7 @@
  */
 
 import { DesignViewMode } from '../types';
+import { edit, eye } from '../icons';
 
 interface Props {
     el: HTMLElement;
@@ -40,7 +41,8 @@ export class DesignModeToggle {
                 id="design-mode-btn"
                 title="${isEditMode ? 'Switch to view mode' : 'Switch to edit mode'}"
             >
-                ${isEditMode ? '👁️ View' : '✏️ Edit'}
+                <span class="toggle-icon">${isEditMode ? eye : edit}</span>
+                <span class="toggle-text">${isEditMode ? 'View' : 'Edit'}</span>
             </button>
         `;
 
@@ -58,3 +60,4 @@ export class DesignModeToggle {
         this.unsubscribe?.();
     }
 }
+
