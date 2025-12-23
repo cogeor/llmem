@@ -306,10 +306,11 @@ export class LLMemPanel {
             await this._regenerateEdges(targetPath);
             await watchService.save();
 
-            // Send updated watched files to webview
+            // Send updated watched files to webview (include addedFiles for UI state update)
             this._panel.webview.postMessage({
                 type: 'state:watchedPaths',
-                paths: watchService.getWatchedFiles()
+                paths: watchService.getWatchedFiles(),
+                addedFiles: addedFiles
             });
 
             console.log(`[LLMemPanel] Added ${addedFiles.length} files to watch`);
@@ -332,10 +333,11 @@ export class LLMemPanel {
             await this._deleteEdgesForPath(targetPath, artifactRoot);
             await watchService.save();
 
-            // Send updated watched files to webview
+            // Send updated watched files to webview (include removedFiles for UI state update)
             this._panel.webview.postMessage({
                 type: 'state:watchedPaths',
-                paths: watchService.getWatchedFiles()
+                paths: watchService.getWatchedFiles(),
+                removedFiles: removedFiles
             });
 
             // Refresh webview data

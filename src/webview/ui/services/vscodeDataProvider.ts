@@ -1,5 +1,5 @@
 
-import { DataProvider } from './dataProvider';
+import { DataProvider, WatchToggleResult } from './dataProvider';
 import { GraphData, WorkTreeNode, VisNode, VisEdge, DesignDoc } from '../types';
 
 declare const acquireVsCodeApi: () => any;
@@ -28,6 +28,12 @@ export class VSCodeDataProvider implements DataProvider {
         resolve: (data: { nodes: VisNode[]; edges: VisEdge[] } | null) => void;
         reject: (error: Error) => void;
     }> = new Map();
+
+    // Pending watch toggle requests
+    private pendingWatchToggle: {
+        resolve: (result: WatchToggleResult) => void;
+        reject: (error: Error) => void;
+    } | null = null;
 
     constructor() {
         this.vscode = acquireVsCodeApi();
@@ -80,6 +86,16 @@ export class VSCodeDataProvider implements DataProvider {
                 console.log(`[VSCodeDataProvider] Received ${message.paths?.length || 0} watched paths`);
                 this.cachedWatchedPaths = message.paths || [];
                 this.watchedPathsListeners.forEach(cb => cb(message.paths || []));
+
+                // Also resolve any pending watch toggle
+                if (this.pendingWatchToggle) {
+                    this.pendingWatchToggle.resolve({
+                        success: true,
+                        addedFiles: message.addedFiles,
+                        removedFiles: message.removedFiles
+                    });
+                    this.pendingWatchToggle = null;
+                }
                 break;
         }
     }
@@ -133,6 +149,32 @@ export class VSCodeDataProvider implements DataProvider {
                 if (this.pendingFolderNodeRequests.has(folderPath)) {
                     this.pendingFolderNodeRequests.delete(folderPath);
                     reject(new Error(`Timeout loading nodes for ${folderPath}`));
+                }
+            }, 30000);
+        });
+    }
+
+    /**
+     * Toggle watch state for a path (file or folder).
+     * Sends message to extension and waits for state:watchedPaths response.
+     */
+    async toggleWatch(path: string, watched: boolean): Promise<WatchToggleResult> {
+        return new Promise((resolve, reject) => {
+            // Store pending request
+            this.pendingWatchToggle = { resolve, reject };
+
+            // Send toggle message to extension
+            this.vscode.postMessage({
+                type: 'toggleWatch',
+                path,
+                watched
+            });
+
+            // Timeout after 30 seconds
+            setTimeout(() => {
+                if (this.pendingWatchToggle) {
+                    this.pendingWatchToggle = null;
+                    reject(new Error(`Timeout toggling watch for ${path}`));
                 }
             }, 30000);
         });

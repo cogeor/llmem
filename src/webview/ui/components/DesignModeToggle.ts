@@ -30,6 +30,8 @@ export class DesignModeToggle {
     }
 
     render(mode: DesignViewMode) {
+        if (!this.el) return; // Guard against null element
+
         const isEditMode = mode === 'edit';
 
         this.el.innerHTML = `

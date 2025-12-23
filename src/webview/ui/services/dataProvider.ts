@@ -2,6 +2,16 @@
 import { GraphData, WorkTreeNode, VisNode, VisEdge, DesignDoc } from '../types';
 
 /**
+ * Result of a watch toggle operation
+ */
+export interface WatchToggleResult {
+    success: boolean;
+    addedFiles?: string[];
+    removedFiles?: string[];
+    message?: string;
+}
+
+/**
  * DataProvider interface for loading webview data.
  * Used by components to fetch graph, worktree, and design doc data.
  *
@@ -41,8 +51,18 @@ export interface DataProvider {
     onWatchedPathsRestored?(callback: (paths: string[]) => void): () => void;
 
     /**
+     * Toggle watch state for a path (file or folder).
+     * Abstracts the mode-specific implementation (VS Code postMessage vs HTTP API).
+     * @param path Relative path to toggle
+     * @param watched New watch state (true = add to watch, false = remove)
+     * @returns Result of the toggle operation
+     */
+    toggleWatch(path: string, watched: boolean): Promise<WatchToggleResult>;
+
+    /**
      * Get the VS Code API for sending messages (VS Code mode only).
      * Returns null in standalone mode.
+     * @deprecated Use toggleWatch() and other abstracted methods instead of direct API access.
      */
     getVscodeApi(): any;
 }
