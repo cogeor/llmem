@@ -157,4 +157,41 @@ button.primary {
 .icon-btn {
     background: none;
     padding: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    outline: none;
+}
+
+.icon-btn:focus,
+.icon-btn:active {
+    outline: none;
+    border: none;
+    box-shadow: none;
+}
+
+.icon-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* Toggle button styling */
+.toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: none;
+    padding: 4px 8px;
+    font-size: 12px;
+}
+
+.toggle-btn .toggle-icon {
+    display: inline-flex;
+    align-items: center;
+}
+
+.toggle-btn .toggle-icon svg {
+    width: 14px;
+    height: 14px;
 }

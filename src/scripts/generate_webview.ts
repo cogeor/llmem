@@ -48,7 +48,7 @@ async function run() {
         const extensionRoot = root;
 
         console.log("Generating webview...");
-        const indexPath = await generateStaticWebview(webviewDir, extensionRoot, graphData, options);
+        const indexPath = await generateStaticWebview(webviewDir, extensionRoot, root, graphData, options);
 
         console.log("SUCCESS");
         console.log(`URL: file://${indexPath.replace(/\\/g, '/')}`);

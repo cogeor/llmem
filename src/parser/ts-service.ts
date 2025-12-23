@@ -38,13 +38,13 @@ export class TypeScriptService {
             const files = this.getTypeScriptFiles(this.workspaceRoot);
 
             if (files.length === 0) {
-                console.log('[TypeScriptService] No TypeScript/JavaScript files found');
+                console.error('[TypeScriptService] No TypeScript/JavaScript files found');
                 this.program = undefined;
                 return;
             }
 
             this.program = ts.createProgram(files, compilerOptions);
-            console.log(`[TypeScriptService] Initialized with ${files.length} files`);
+            console.error(`[TypeScriptService] Initialized with ${files.length} files`);
         } catch (e) {
             console.warn('[TypeScriptService] Failed to initialize program:', e);
             this.program = undefined;
@@ -69,7 +69,7 @@ export class TypeScriptService {
 
         try {
             if (!fs.existsSync(tsconfigPath)) {
-                console.log('[TypeScriptService] No tsconfig.json found, using defaults');
+                console.error('[TypeScriptService] No tsconfig.json found, using defaults');
                 return defaultOptions;
             }
 

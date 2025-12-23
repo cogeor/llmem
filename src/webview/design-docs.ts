@@ -105,6 +105,7 @@ export class DesignDocManager {
             if (entry.isDirectory()) {
                 this.walk(fullPath, callback);
             } else {
+                // console.log('[DesignDocManager] Found file:', fullPath);
                 callback(fullPath);
             }
         }

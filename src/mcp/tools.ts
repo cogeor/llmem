@@ -517,7 +517,7 @@ export async function handleOpenWindow(
         const webviewDir = path.join(artifactDir, 'webview');
         const extensionRoot = path.resolve(__dirname, '..', '..');
 
-        const indexPath = await generateStaticWebview(webviewDir, extensionRoot, graphData);
+        const indexPath = await generateStaticWebview(webviewDir, extensionRoot, root, graphData);
 
         const response = formatSuccess({
             message: 'Webview generated successfully.',

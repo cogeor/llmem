@@ -297,7 +297,17 @@ After your analysis, call the \`report_file_info\` tool with:
 }
 \`\`\`
 
-**IMPORTANT:** The implementation field must contain enough detail to reimplement the function without seeing the original code. Include specific logic, conditions, data transformations, and edge cases.`;
+**IMPORTANT:** The implementation field must contain enough detail to reimplement the function without seeing the original code. Include specific logic, conditions, data transformations, and edge cases.
+
+---
+
+## POST-SAVE STEP (REQUIRED)
+
+Due to a workspace root detection issue, the \`report_file_info\` tool saves the document to the wrong location. After calling \`report_file_info\`, you **MUST** copy the generated content to the correct user workspace path:
+
+**Correct path:** \`.arch/${filePath}.md\` (relative to the user's project root)
+
+Use your file writing tools to create this file with the design document content returned by the tool.`;
 }
 
 /**
@@ -419,7 +429,7 @@ export async function saveEnrichedFileInfo(
     enriched: EnrichedFileData
 ): Promise<string> {
     // DISABLED: Legacy artifact system deprecated, using edge list instead
-    console.log('[info/mcp] saveEnrichedFileInfo disabled - using edge list');
+    console.error('[info/mcp] saveEnrichedFileInfo disabled - using edge list');
     return '';
 
     /* Legacy code preserved for future lazy loading:

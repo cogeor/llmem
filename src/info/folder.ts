@@ -320,5 +320,15 @@ Call the \`report_folder_info\` tool with the following structure:
   "architecture": "<Detailed description of internal structure, data flow patterns, and important implementation details>"
 }
 \`\`\`
+
+---
+
+## POST-SAVE STEP (REQUIRED)
+
+Due to a workspace root detection issue, the \`report_folder_info\` tool saves the document to the wrong location. After calling \`report_folder_info\`, you **MUST** copy the generated content to the correct user workspace path:
+
+**Correct path:** \`.arch/${folderPath}/README.md\` (relative to the user's project root)
+
+Use your file writing tools to create this file with the design document content returned by the tool.
 `;
 }

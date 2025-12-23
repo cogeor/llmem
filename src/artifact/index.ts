@@ -33,7 +33,7 @@ export class ArtifactIndex {
 
     async save(): Promise<void> {
         // DISABLED: Artifact system deprecated, using edge list
-        console.log('[ArtifactIndex] save() disabled - using edge list instead');
+        console.error('[ArtifactIndex] save() disabled - using edge list instead');
         return;
     }
 

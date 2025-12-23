@@ -31,8 +31,10 @@
     flex-shrink: 0;
 }
 
-.tree-element {
-    /* Container for the actual DOM element of the item */
+.tree-item .icon svg {
+    width: 16px;
+    height: 16px;
+    vertical-align: middle;
 }
 
 /* Indentation handling via padding-left usually calculated in JS or nested lists */
@@ -49,20 +51,20 @@
 }
 
 .tree-arrow {
-    display: inline-block;
+    display: inline-flex;
     width: 16px;
     height: 16px;
-    display: flex;
     align-items: center;
     justify-content: center;
     transform: rotate(0deg);
     transition: transform 0.1s ease;
     flex-shrink: 0;
+    color: var(--foreground-muted, #888);
 }
 
-.tree-arrow::before {
-    content: '▶';
-    font-size: 8px;
+.tree-arrow svg {
+    width: 12px;
+    height: 12px;
 }
 
 .is-expanded>.tree-content>.tree-arrow,
