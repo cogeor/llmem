@@ -12,32 +12,48 @@ interface DesignTextViewProps {
 // Inline styles for the Shadow DOM (works in both VS Code and standalone)
 const DETAIL_STYLES = `
 <style>
-/* View Mode */
+/* ===== Shadow DOM Host ===== */
+:host {
+    display: block;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    white-space: normal !important;  /* Override parent pre-wrap from .detail-view */
+}
+
+/* ===== View Mode: Rendered HTML ===== */
 .design-view-content {
     width: 100%;
-    padding: 0 16px;
+    padding: 16px;
+    margin: 0;
     font-size: 14px;
     line-height: 1.5;
     color: var(--foreground, #333);
     box-sizing: border-box;
 }
 
-.design-view-content h1, .design-view-content h2, .design-view-content h3,
-.design-view-content h4, .design-view-content h5, .design-view-content h6 {
+/* Headings */
+.design-view-content h1,
+.design-view-content h2,
+.design-view-content h3,
+.design-view-content h4,
+.design-view-content h5,
+.design-view-content h6 {
     color: var(--foreground, #333);
-    margin-top: 1.5em;
     margin-bottom: 0.5em;
 }
 
+/* Links */
 .design-view-content a {
     color: var(--focus-outline, #007acc);
     text-decoration: none;
 }
-
 .design-view-content a:hover {
     text-decoration: underline;
 }
 
+/* Code blocks (fenced with backticks) */
 .design-view-content pre {
     background-color: var(--code-background, #f5f5f5);
     padding: 8px;
@@ -47,6 +63,7 @@ const DETAIL_STYLES = `
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
 }
 
+/* Inline code (single backticks) */
 .design-view-content code {
     background-color: var(--code-background, #f5f5f5);
     padding: 2px 4px;
@@ -55,29 +72,32 @@ const DETAIL_STYLES = `
     font-size: 0.9em;
 }
 
+/* Code inside pre blocks - reset inline code styling */
 .design-view-content pre code {
     background-color: transparent;
     padding: 0;
     border: none;
 }
 
-/* Edit Mode - Full height textarea */
+/* ===== Edit Mode: Markdown Textarea ===== */
 .design-markdown-editor {
     width: 100%;
-    height: 100%;
-    padding: 0 16px;
+    min-height: 100%;
+    padding: 16px;
+    margin: 0;
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
     font-size: 13px;
     line-height: 1.5;
     border: none;
     outline: none;
     resize: none;
+    overflow: hidden;
     box-sizing: border-box;
     background-color: var(--background, #fff);
     color: var(--foreground, #333);
 }
 
-/* Empty/Loading States */
+/* ===== Empty/Loading States ===== */
 .detail-empty {
     padding: 24px;
     color: var(--foreground-muted, #888);
@@ -117,7 +137,11 @@ export class DesignTextView {
         this.shadow.innerHTML = DETAIL_STYLES;
         this.container = document.createElement('div');
         this.container.style.width = '100%';
-        this.container.style.minHeight = '100%';
+        this.container.style.height = '100%';
+        this.container.style.overflow = 'auto';  // This container handles scrolling
+        this.container.style.boxSizing = 'border-box';
+        this.container.style.padding = '0';
+        this.container.style.margin = '0';
         this.shadow.appendChild(this.container);
     }
 
@@ -131,7 +155,7 @@ export class DesignTextView {
 
     async onState({ selectedPath, selectedType, designViewMode }: AppState) {
         if (!selectedPath) {
-            this.container.innerHTML = `<div class="detail-empty">Select a file or folder to view its design document.</div>`;
+            this.container.innerHTML = `< div class="detail-empty" > Select a file or folder to view its design document.</div>`;
             this.currentPath = null;
             this.renderer = null;
             return;

@@ -77,6 +77,13 @@
     /* Override .pane-content overflow: auto */
 }
 
+.design-pane-content {
+    overflow: hidden !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    /* Scroll handled by Shadow DOM inside */
+}
+
 /* Graph container needs to fill space */
 .graph-container {
     position: absolute;

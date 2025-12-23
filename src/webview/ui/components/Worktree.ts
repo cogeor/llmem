@@ -2,7 +2,6 @@
 import { DataProvider } from '../services/dataProvider';
 import { WorkTreeNode, DirectoryNode, AppState, GraphStatus } from '../types';
 import { isSupportedFile } from '../../../parser/config';
-import { WatchApiClient } from '../services/watchApiClient';
 
 // VS Code webview API type declaration
 declare function acquireVsCodeApi(): { postMessage: (message: any) => void };
@@ -45,21 +44,11 @@ export class Worktree {
     private dataProvider: DataProvider;
     private tree: WorkTreeNode | null = null;
     private unsubscribe?: () => void;
-    private vscodeApi: any = null;
-    private watchApiClient: WatchApiClient | null = null;
 
     constructor({ el, state, dataProvider }: Props) {
         this.el = el;
         this.state = state;
         this.dataProvider = dataProvider;
-
-        // Get VS Code API from the shared data provider
-        this.vscodeApi = dataProvider.getVscodeApi();
-
-        // If not in VSCode, create HTTP API client for standalone mode
-        if (!this.vscodeApi) {
-            this.watchApiClient = new WatchApiClient();
-        }
     }
 
     private clickHandlerBound: boolean = false;
@@ -206,8 +195,8 @@ export class Worktree {
      * Save current tree expansion state to localStorage (HTTP mode only).
      */
     private saveExpansionState(): void {
-        // Only save in HTTP mode (not VSCode)
-        if (this.vscodeApi) return;
+        // Only save in HTTP mode (not VSCode) - VS Code handles state differently
+        if (this.dataProvider.getVscodeApi()) return;
 
         const expandedPaths: string[] = [];
         const expandedElements = this.el.querySelectorAll('.tree-children.is-expanded');
@@ -227,8 +216,8 @@ export class Worktree {
      * Restore tree expansion state from localStorage (HTTP mode only).
      */
     private restoreExpansionState(): void {
-        // Only restore in HTTP mode (not VSCode)
-        if (this.vscodeApi) return;
+        // Only restore in HTTP mode (not VSCode) - VS Code handles state differently
+        if (this.dataProvider.getVscodeApi()) return;
 
         try {
             const saved = localStorage.getItem('llmem:expandedPaths');
@@ -253,8 +242,7 @@ export class Worktree {
 
     /**
      * Handle status button click - toggle watch state for the path.
-     * For folders: toggles all files underneath.
-     * For files: toggles the single file.
+     * Uses DataProvider abstraction for mode-agnostic toggle.
      */
     async handleStatusButtonClick(clickedPath: string) {
         const currentState = this.state.get();
@@ -274,67 +262,43 @@ export class Worktree {
         const newWatchedState = !isCurrentlyWatched;
         console.log(`[Worktree] Toggle ${isDir ? 'folder' : 'file'}: ${clickedPath} -> ${newWatchedState}`);
 
-        // VSCode mode: Send message to extension
-        if (this.vscodeApi) {
-            this.vscodeApi.postMessage({
-                type: 'toggleWatch',
-                path: clickedPath,
-                watched: newWatchedState
-            });
-            // Note: Local state will be updated when extension sends back state:watchedPaths
+        // Show loading indicator on button
+        const btn = nodeEl?.querySelector('.status-btn') as HTMLElement;
+        if (btn) {
+            btn.style.opacity = '0.5';
+            btn.style.cursor = 'wait';
         }
-        // Standalone/HTTP mode: Call HTTP API
-        else if (this.watchApiClient) {
-            try {
-                // Show loading indicator on button
-                const btn = nodeEl.querySelector('.status-btn') as HTMLElement;
-                if (btn) {
-                    btn.style.opacity = '0.5';
-                    btn.style.cursor = 'wait';
-                }
 
-                // Call API
-                const response = await this.watchApiClient.toggleWatch(clickedPath, newWatchedState);
+        try {
+            // Use abstracted toggleWatch - works in both VS Code and standalone mode
+            const response = await this.dataProvider.toggleWatch(clickedPath, newWatchedState);
 
-                console.log(`[Worktree] API response:`, response);
+            console.log(`[Worktree] Toggle response:`, response);
 
-                // Update local state immediately with the affected files
-                const updatedPaths = new Set(currentState.watchedPaths);
-                const affectedFiles = newWatchedState ? response.addedFiles : response.removedFiles;
+            // Update local state with the affected files
+            const updatedPaths = new Set(currentState.watchedPaths);
+            const affectedFiles = newWatchedState ? response.addedFiles : response.removedFiles;
 
-                if (affectedFiles) {
-                    for (const file of affectedFiles) {
-                        if (newWatchedState) {
-                            updatedPaths.add(file);
-                        } else {
-                            updatedPaths.delete(file);
-                        }
+            if (affectedFiles) {
+                for (const file of affectedFiles) {
+                    if (newWatchedState) {
+                        updatedPaths.add(file);
+                    } else {
+                        updatedPaths.delete(file);
                     }
                 }
+            }
 
-                // Update state (this will trigger button color updates)
-                this.state.set({ watchedPaths: updatedPaths });
-
-                // Reset button appearance
-                if (btn) {
-                    btn.style.opacity = '1';
-                    btn.style.cursor = 'pointer';
-                }
-
-                // Note: The server will regenerate the webview and trigger a browser reload
-                // via WebSocket, so we'll see the updated graph soon
-            } catch (error) {
-                console.error(`[Worktree] Failed to toggle watch:`, error);
-
-                // Reset button appearance
-                const btn = nodeEl.querySelector('.status-btn') as HTMLElement;
-                if (btn) {
-                    btn.style.opacity = '1';
-                    btn.style.cursor = 'pointer';
-                }
-
-                // Optionally show error to user
-                alert(`Failed to toggle watch: ${error instanceof Error ? error.message : String(error)}`);
+            // Update state (this will trigger button color updates)
+            this.state.set({ watchedPaths: updatedPaths });
+        } catch (error) {
+            console.error(`[Worktree] Failed to toggle watch:`, error);
+            alert(`Failed to toggle watch: ${error instanceof Error ? error.message : String(error)}`);
+        } finally {
+            // Reset button appearance
+            if (btn) {
+                btn.style.opacity = '1';
+                btn.style.cursor = 'pointer';
             }
         }
     }
