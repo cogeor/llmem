@@ -1,9 +1,34 @@
 /**
- * WebSocket Live Reload Client
+ * WebSocket Client for Live Updates
  *
- * Connects to the HTTP server's WebSocket endpoint and reloads
- * the page when the graph is updated.
+ * Connects to the HTTP server's WebSocket endpoint and handles:
+ * - 'reload': Full page reload (legacy)
+ * - 'arch:created': New design doc created
+ * - 'arch:updated': Design doc content changed
+ * - 'arch:deleted': Design doc removed
+ * - 'graph:updated': Graph data changed
  */
+
+export type WebSocketEventType =
+    | 'reload'
+    | 'arch:created'
+    | 'arch:updated'
+    | 'arch:deleted'
+    | 'graph:updated';
+
+export interface ArchEventData {
+    path: string;
+    markdown?: string;
+    html?: string;
+}
+
+export interface WebSocketEventData {
+    type: WebSocketEventType;
+    data?: ArchEventData | any;
+    message?: string;
+}
+
+type EventCallback = (data: WebSocketEventData) => void;
 
 export class LiveReloadClient {
     private ws: WebSocket | null = null;
@@ -11,6 +36,7 @@ export class LiveReloadClient {
     private maxReconnectAttempts = 10;
     private reconnectDelay = 1000;
     private isConnecting = false;
+    private eventListeners: Map<WebSocketEventType | 'all', Set<EventCallback>> = new Map();
 
     constructor(private verbose = false) {}
 
@@ -86,19 +112,77 @@ export class LiveReloadClient {
             console.log('[LiveReload] Message:', message);
         }
 
+        const eventData: WebSocketEventData = {
+            type: message.type,
+            data: message.data,
+            message: message.message
+        };
+
+        // Emit to specific listeners
+        this.emit(message.type, eventData);
+
+        // Emit to 'all' listeners
+        this.emit('all', eventData);
+
+        // Handle default behaviors
         switch (message.type) {
             case 'reload':
-                console.log('[LiveReload] Graph updated, reloading page...');
+                console.log('[LiveReload] Full reload requested...');
                 // Give a brief moment for the message to be logged
                 setTimeout(() => {
                     window.location.reload();
                 }, 100);
                 break;
 
+            case 'arch:created':
+            case 'arch:updated':
+            case 'arch:deleted':
+                console.log(`[LiveReload] Arch ${message.type.split(':')[1]}: ${message.data?.path}`);
+                // Handled by event listeners - no default action
+                break;
+
+            case 'graph:updated':
+                console.log('[LiveReload] Graph updated');
+                // Handled by event listeners - no default action
+                break;
+
             default:
                 if (this.verbose) {
                     console.log('[LiveReload] Unknown message type:', message.type);
                 }
+        }
+    }
+
+    /**
+     * Subscribe to a specific event type
+     * @param type Event type or 'all' for all events
+     * @param callback Callback function
+     * @returns Unsubscribe function
+     */
+    on(type: WebSocketEventType | 'all', callback: EventCallback): () => void {
+        if (!this.eventListeners.has(type)) {
+            this.eventListeners.set(type, new Set());
+        }
+        this.eventListeners.get(type)!.add(callback);
+
+        return () => {
+            this.eventListeners.get(type)?.delete(callback);
+        };
+    }
+
+    /**
+     * Emit event to listeners
+     */
+    private emit(type: WebSocketEventType | 'all', data: WebSocketEventData): void {
+        const listeners = this.eventListeners.get(type);
+        if (listeners) {
+            for (const callback of listeners) {
+                try {
+                    callback(data);
+                } catch (e) {
+                    console.error(`[LiveReload] Error in event listener:`, e);
+                }
+            }
         }
     }
 
@@ -134,6 +218,6 @@ export class LiveReloadClient {
     }
 }
 
-// Auto-connect on page load
-const liveReload = new LiveReloadClient();
-liveReload.connect();
+// Singleton instance - auto-connects on page load
+export const liveReloadClient = new LiveReloadClient();
+liveReloadClient.connect();

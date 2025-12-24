@@ -60,7 +60,8 @@
     "graph": "node dist/claude/claude/cli.js generate",
     "graph:stats": "node dist/claude/claude/cli.js stats",
     "package": "vsce package",
-    "package:claude": "echo 'Claude package - copy dist/claude/* to deployment location'"
+    "package:claude": "echo 'Claude package - copy dist/claude/* to deployment location'",
+    "test:arch": "npx ts-node src/scripts/test-arch-watcher.ts"
   },
   "devDependencies": {
     "@types/fs-extra": "^11.0.4",

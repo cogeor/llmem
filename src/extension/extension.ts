@@ -120,11 +120,21 @@ function showStatus(): void {
 
 /**
  * Start the MCP server
- * 
- * Placeholder - will be implemented in Part 2 (MCP Server)
+ *
+ * Requires a valid workspace to be open. Fails if no workspace is available.
+ * This ensures the MCP server always has a valid workspace context.
  */
 async function startMcpServer(config: Config): Promise<void> {
-    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
+    // Get workspace root from VS Code
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+
+    if (!workspaceRoot) {
+        throw new Error(
+            'Cannot start MCP server: No workspace folder is open. ' +
+            'Please open a folder or workspace to use LLMem.'
+        );
+    }
+
     await startServer(config, workspaceRoot);
 }
 

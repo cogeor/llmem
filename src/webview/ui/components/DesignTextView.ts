@@ -148,6 +148,7 @@ const DETAIL_STYLES = `
 /**
  * DesignTextView Component
  * Displays design documentation for the selected file/folder with view/edit toggle.
+ * Supports saving edited markdown back to .arch files via the data provider.
  */
 export class DesignTextView {
     public el: HTMLElement;
@@ -156,9 +157,11 @@ export class DesignTextView {
     private shadow: ShadowRoot;
     private container: HTMLElement;
     private unsubscribe?: () => void;
+    private unsubscribeDesignDoc?: () => void;
     private designDocs: Record<string, DesignDoc> = {};
     private renderer: DesignRender | null = null;
     private currentPath: string | null = null;
+    private isSaving = false;
 
     constructor({ el, state, dataProvider }: DesignTextViewProps) {
         this.el = el;
@@ -184,6 +187,104 @@ export class DesignTextView {
 
         // Subscribe to state changes (will call callback immediately with current state)
         this.unsubscribe = this.state.subscribe((s: AppState) => this.onState(s));
+
+        // Subscribe to design doc changes (for real-time updates)
+        if (this.dataProvider.onDesignDocChange) {
+            this.unsubscribeDesignDoc = this.dataProvider.onDesignDocChange((path, doc) => {
+                this.handleDesignDocChange(path, doc);
+            });
+        }
+    }
+
+    /**
+     * Handle design doc changes from WebSocket
+     */
+    private handleDesignDocChange(path: string, doc: DesignDoc | null): void {
+        if (doc) {
+            // Update or add doc to cache
+            this.designDocs[path] = doc;
+            console.log(`[DesignTextView] Doc updated: ${path}`);
+        } else {
+            // Delete doc from cache
+            delete this.designDocs[path];
+            console.log(`[DesignTextView] Doc deleted: ${path}`);
+        }
+
+        // If we're currently viewing this doc, refresh the display
+        if (this.currentPath) {
+            const currentState = this.state.get();
+            // Re-trigger state handler to refresh display
+            this.onState(currentState);
+        }
+    }
+
+    /**
+     * Trigger save from external button (public API)
+     */
+    public triggerSave(): void {
+        console.log('[DesignTextView] triggerSave called');
+        console.log('[DesignTextView] renderer exists:', !!this.renderer);
+        console.log('[DesignTextView] currentPath:', this.currentPath);
+
+        if (this.renderer && this.currentPath) {
+            // Get current markdown from textarea
+            const container = this.container;
+            const textarea = container.querySelector('.design-markdown-editor') as HTMLTextAreaElement;
+
+            console.log('[DesignTextView] textarea found:', !!textarea);
+            if (textarea) {
+                console.log('[DesignTextView] textarea value length:', textarea.value.length);
+                console.log('[DesignTextView] textarea value preview:', textarea.value.substring(0, 100));
+                this.handleSave(textarea.value);
+            } else {
+                console.error('[DesignTextView] Textarea not found in container');
+            }
+        } else {
+            console.error('[DesignTextView] Cannot save - no renderer or currentPath');
+        }
+    }
+
+    /**
+     * Save the current design doc
+     */
+    private async handleSave(markdown: string): Promise<void> {
+        console.log('[DesignTextView] handleSave called');
+        console.log('[DesignTextView] markdown length:', markdown?.length);
+        console.log('[DesignTextView] markdown preview:', markdown?.substring(0, 100));
+
+        if (!this.currentPath || this.isSaving) {
+            console.error('[DesignTextView] Cannot save - no currentPath or already saving');
+            return;
+        }
+
+        // Determine the .arch path for saving
+        // The currentPath is the source file path (e.g., "src/parser.ts")
+        // We save to .arch/{full-path-with-extension}.md
+        // This preserves the full source path including extension
+        let archPath = `${this.currentPath}.md`;
+
+        console.log(`[DesignTextView] Saving to: ${archPath}`);
+        console.log(`[DesignTextView] Content to save:`, markdown);
+        this.isSaving = true;
+
+        try {
+            if (this.dataProvider.saveDesignDoc) {
+                const success = await this.dataProvider.saveDesignDoc(archPath, markdown);
+                if (success) {
+                    console.log(`[DesignTextView] Saved successfully: ${archPath}`);
+                    // Note: The WebSocket will broadcast the update and cache will be updated
+                } else {
+                    console.error(`[DesignTextView] Save failed: ${archPath}`);
+                    // Could show error UI here
+                }
+            } else {
+                console.warn('[DesignTextView] saveDesignDoc not supported by data provider');
+            }
+        } catch (e) {
+            console.error(`[DesignTextView] Save error:`, e);
+        } finally {
+            this.isSaving = false;
+        }
     }
 
     async onState({ selectedPath, selectedType, designViewMode, watchedPaths }: AppState) {
@@ -194,7 +295,30 @@ export class DesignTextView {
             return;
         }
 
-        const doc = this.fetchDesignDoc(selectedPath, selectedType);
+        // Fetch doc from cache (may be stale from embedded data)
+        let doc = this.fetchDesignDoc(selectedPath, selectedType);
+
+        // If doc not found in cache AND we're in standalone mode, try fetching from API
+        // This ensures we get fresh data even if embedded data is stale
+        if (!doc && this.dataProvider.getDesignDoc) {
+            const archPath = this.getArchPath(selectedPath, selectedType);
+            if (archPath && this.dataProvider.saveDesignDoc) {
+                // Try to fetch from server
+                try {
+                    const fetched = await (this.dataProvider as any).designDocCache?.fetch(archPath);
+                    if (fetched) {
+                        doc = fetched;
+                        // Update local cache
+                        const cacheKey = this.getCacheKey(selectedPath, selectedType);
+                        if (cacheKey && doc) {
+                            this.designDocs[cacheKey] = doc;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[DesignTextView] Failed to fetch doc from API:', e);
+                }
+            }
+        }
 
         if (!doc) {
             // Show informative empty state with MCP command instructions
@@ -239,7 +363,9 @@ export class DesignTextView {
                 onModeChange: (mode: DesignViewMode) => {
                     this.state.set({ designViewMode: mode });
                 },
-                // onSave will be implemented in Phase 2
+                onSave: (markdown: string) => {
+                    this.handleSave(markdown);
+                },
             });
 
             // Mount renderer
@@ -252,6 +378,36 @@ export class DesignTextView {
                 html: doc.html,
             });
             this.renderer.mount(this.container);
+        }
+    }
+
+    /**
+     * Get the .arch path for a given source path
+     */
+    private getArchPath(selectedPath: string, selectedType: "file" | "directory" | null): string {
+        let archPath = normalizePath(selectedPath);
+        if (selectedType === 'file') {
+            // Remove extension
+            const lastDotIndex = archPath.lastIndexOf('.');
+            if (lastDotIndex > 0) {
+                archPath = archPath.substring(0, lastDotIndex);
+            }
+        }
+        return archPath;
+    }
+
+    /**
+     * Get cache key for a path
+     */
+    private getCacheKey(selectedPath: string, selectedType: "file" | "directory" | null): string | null {
+        const normalizedPath = normalizePath(selectedPath);
+
+        if (selectedType === 'directory') {
+            return `${normalizedPath}/README.html`;
+        } else {
+            // Try with and without extension
+            const basePath = normalizedPath.replace(/\.[^/.]+$/, '');
+            return `${basePath}.html`;
         }
     }
 
@@ -314,5 +470,6 @@ export class DesignTextView {
 
     unmount() {
         this.unsubscribe?.();
+        this.unsubscribeDesignDoc?.();
     }
 }

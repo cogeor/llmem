@@ -13,6 +13,7 @@ import { WebSocketService } from './websocket';
 import { FileWatcherService } from './file-watcher';
 import { HttpRequestHandler } from './http-handler';
 import { WatchManager } from './watch-manager';
+import { ArchWatcherService, ArchFileEvent } from './arch-watcher';
 
 /**
  * Server configuration
@@ -39,6 +40,7 @@ export class GraphServer {
     private fileWatcher: FileWatcherService;
     private httpHandler: HttpRequestHandler;
     private watchManager: WatchManager;
+    private archWatcher: ArchWatcherService;
 
     private config: Required<ServerConfig>;
     private webviewDir: string;
@@ -75,6 +77,10 @@ export class GraphServer {
             artifactRoot: this.config.artifactRoot,
             verbose: this.config.verbose,
         });
+        this.archWatcher = new ArchWatcherService({
+            workspaceRoot: this.config.workspaceRoot,
+            verbose: this.config.verbose,
+        });
     }
 
     /**
@@ -101,12 +107,18 @@ export class GraphServer {
         // Setup API endpoints
         this.setupApiEndpoints();
 
-        // Setup file watching
+        // Setup file watching for source files and edge lists only
+        // (.arch watching is handled by ArchWatcherService with incremental updates)
         await this.fileWatcher.setup({
             onSourceChange: async (files) => await this.handleSourceChange(files),
             onEdgeListChange: async () => await this.handleEdgeListChange(),
-            onArchChange: async () => await this.handleArchChange(),
+            // Remove onArchChange - now handled incrementally by ArchWatcherService
         });
+
+        // Setup .arch directory watching with incremental WebSocket updates
+        console.log('[GraphServer] Setting up ArchWatcher...');
+        await this.archWatcher.setup((event) => this.handleArchFileEvent(event));
+        console.log('[GraphServer] ArchWatcher setup complete');
 
         // Start listening
         await new Promise<void>((resolve, reject) => {
@@ -137,6 +149,7 @@ export class GraphServer {
      */
     async stop(): Promise<void> {
         await this.fileWatcher.close();
+        await this.archWatcher.close();
         await this.webSocket.close();
 
         if (this.httpServer) {
@@ -239,6 +252,89 @@ export class GraphServer {
                 });
             }
         });
+
+        // /api/arch - Fetch or save design documents (GET/POST)
+        this.httpHandler.registerApiHandler('/api/arch', async (req, res) => {
+            if (req.method === 'GET') {
+                // GET /api/arch?path=src/parser
+                const url = new URL(req.url || '', `http://${req.headers.host}`);
+                const docPath = url.searchParams.get('path');
+
+                if (!docPath) {
+                    this.httpHandler.sendJson(res, 400, {
+                        success: false,
+                        message: 'Missing "path" query parameter'
+                    });
+                    return;
+                }
+
+                const doc = await this.archWatcher.readDoc(docPath);
+                if (doc) {
+                    this.httpHandler.sendJson(res, 200, {
+                        success: true,
+                        path: docPath,
+                        markdown: doc.markdown,
+                        html: doc.html
+                    });
+                } else {
+                    this.httpHandler.sendJson(res, 404, {
+                        success: false,
+                        message: `Design doc not found: ${docPath}`
+                    });
+                }
+            } else if (req.method === 'POST') {
+                // POST /api/arch - Save design document
+                const body = await this.readRequestBody(req);
+                let parsed;
+                try {
+                    parsed = JSON.parse(body);
+                } catch (e) {
+                    this.httpHandler.sendJson(res, 400, {
+                        success: false,
+                        message: 'Invalid JSON body'
+                    });
+                    return;
+                }
+
+                const { path: docPath, markdown } = parsed;
+
+                if (!docPath) {
+                    this.httpHandler.sendJson(res, 400, {
+                        success: false,
+                        message: 'Missing "path" in request body'
+                    });
+                    return;
+                }
+
+                if (typeof markdown !== 'string') {
+                    this.httpHandler.sendJson(res, 400, {
+                        success: false,
+                        message: 'Missing or invalid "markdown" in request body'
+                    });
+                    return;
+                }
+
+                const success = await this.archWatcher.writeDoc(docPath, markdown);
+                if (success) {
+                    // The file watcher will detect the change and broadcast update
+                    this.httpHandler.sendJson(res, 200, {
+                        success: true,
+                        message: 'Design doc saved',
+                        path: docPath
+                    });
+                } else {
+                    this.httpHandler.sendJson(res, 500, {
+                        success: false,
+                        message: 'Failed to save design doc'
+                    });
+                }
+            } else {
+                this.httpHandler.sendJson(res, 405, {
+                    success: false,
+                    message: `Method ${req.method} not allowed`
+                });
+            }
+        });
     }
 
     /**
@@ -284,19 +380,25 @@ export class GraphServer {
     }
 
     /**
-     * Handle .arch directory changes
+     * Handle .arch file events - send incremental updates via WebSocket
+     * No full page reload needed for design doc changes
      */
-    private async handleArchChange(): Promise<void> {
-        if (this.isRegenerating) return;
+    private handleArchFileEvent(event: ArchFileEvent): void {
+        // Always log for debugging
+        console.log(`[GraphServer] Arch event: ${event.type} ${event.relativePath}`);
 
-        this.isRegenerating = true;
-        try {
-            await this.regenerateWebview();
-        } catch (error) {
-            console.error('Error regenerating webview:', error);
-        } finally {
-            this.isRegenerating = false;
-        }
+        // Map event type to WebSocket message type
+        const wsType = `arch:${event.type}` as 'arch:created' | 'arch:updated' | 'arch:deleted';
+
+        console.log(`[GraphServer] Broadcasting ${wsType} to ${this.webSocket.getClientCount()} clients`);
+
+        // Send incremental update via WebSocket
+        this.webSocket.broadcastArchEvent(
+            wsType,
+            event.relativePath,
+            event.markdown,
+            event.html
+        );
     }
 
     /**

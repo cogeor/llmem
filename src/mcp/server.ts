@@ -223,11 +223,15 @@ export function getServerConfig(): Config | null {
 
 /**
  * Main entry point for standalone execution (when run via `node dist/mcp/server.js`)
- * 
- * Uses default configuration when not started from the extension.
- * Workspace root is determined from:
- * 1. LLMEM_WORKSPACE environment variable (set by host)
- * 2. Current working directory
+ *
+ * IMPORTANT: Requires LLMEM_WORKSPACE environment variable to be set.
+ * This ensures the MCP server always has an explicit workspace context.
+ *
+ * Usage:
+ *   LLMEM_WORKSPACE=/path/to/workspace node dist/mcp/server.js
+ *
+ * The workspace root is NEVER inferred from cwd to prevent accidentally
+ * operating on the wrong directory (e.g., extension installation path).
  */
 async function main(): Promise<void> {
     // Default config for standalone mode
@@ -237,14 +241,22 @@ async function main(): Promise<void> {
         maxFileSizeKB: 512,
     };
 
-    // Get workspace root from env var or cwd
-    const workspaceRoot = process.env.LLMEM_WORKSPACE || process.cwd();
+    // REQUIRE workspace root from environment variable
+    const workspaceRoot = process.env.LLMEM_WORKSPACE;
+
+    if (!workspaceRoot) {
+        console.error('[MCP] ERROR: LLMEM_WORKSPACE environment variable is required.');
+        console.error('[MCP] Usage: LLMEM_WORKSPACE=/path/to/workspace node dist/mcp/server.js');
+        console.error('[MCP] The workspace root must be explicitly provided - never inferred.');
+        process.exit(1);
+    }
+
     console.error(`[MCP] Standalone mode - workspace root: ${workspaceRoot}`);
 
     try {
         await startServer(defaultConfig, workspaceRoot);
     } catch (error) {
-        console.error('Failed to start MCP server:', error);
+        console.error('[MCP] Failed to start MCP server:', error);
         process.exit(1);
     }
 }

@@ -1,8 +1,8 @@
 /**
- * File Watcher for Live Reload
+ * File Watcher for Source Files and Edge Lists
  *
- * Watches source files, edge lists, and design docs for changes.
- * Regenerates edges and notifies when files are modified.
+ * Watches source files (for edge regeneration) and edge lists (for graph updates).
+ * Design docs (.arch) are now handled by ArchWatcherService for incremental updates.
  */
 
 import * as path from 'path';
@@ -17,7 +17,7 @@ export interface FileWatcherConfig {
 }
 
 export interface FileChangeEvent {
-    type: 'source' | 'edgelist' | 'arch';
+    type: 'source' | 'edgelist';
     action: 'added' | 'changed' | 'removed';
     path: string;
     relativePath: string;
@@ -31,16 +31,13 @@ export class FileWatcherService {
     private config: Required<FileWatcherConfig>;
     private watchedSourcePaths: Set<string> = new Set();
     private edgeListFiles: string[] = [];
-    private archDir: string;
 
     private onSourceChange?: (files: string[]) => Promise<void>;
     private onEdgeListChange?: () => Promise<void>;
-    private onArchChange?: () => Promise<void>;
 
     // Debounce state
     private sourceTimeout: NodeJS.Timeout | null = null;
     private edgeListTimeout: NodeJS.Timeout | null = null;
-    private archTimeout: NodeJS.Timeout | null = null;
     private changedSourceFiles: Set<string> = new Set();
 
     constructor(config: FileWatcherConfig) {
@@ -49,21 +46,18 @@ export class FileWatcherService {
             artifactRoot: config.artifactRoot,
             verbose: config.verbose || false,
         };
-
-        this.archDir = path.join(this.config.workspaceRoot, '.arch');
     }
 
     /**
-     * Setup file watching
+     * Setup file watching for source files and edge lists
+     * Note: .arch directory watching is handled by ArchWatcherService
      */
     async setup(handlers: {
         onSourceChange?: (files: string[]) => Promise<void>;
         onEdgeListChange?: () => Promise<void>;
-        onArchChange?: () => Promise<void>;
     }): Promise<void> {
         this.onSourceChange = handlers.onSourceChange;
         this.onEdgeListChange = handlers.onEdgeListChange;
-        this.onArchChange = handlers.onArchChange;
 
         const artifactDir = path.join(this.config.workspaceRoot, this.config.artifactRoot);
 
@@ -71,17 +65,6 @@ export class FileWatcherService {
         const watchService = new WatchService(artifactDir, this.config.workspaceRoot);
         await watchService.load();
         const watchedFiles = watchService.getWatchedFiles();
-
-        // Ensure .arch directory exists so we can watch it
-        if (!fs.existsSync(this.archDir)) {
-            try {
-                fs.mkdirSync(this.archDir, { recursive: true });
-            } catch (e) {
-                if (this.config.verbose) {
-                    console.error('[FileWatcher] Failed to create .arch directory:', e);
-                }
-            }
-        }
 
         // Setup paths to watch
         this.edgeListFiles = [
@@ -94,16 +77,14 @@ export class FileWatcherService {
         );
         this.watchedSourcePaths = new Set(watchedSourcePaths);
 
-        // Combine all paths
-        // Use glob pattern for .arch to catch new files in subdirectories
+        // Combine source files and edge lists (no .arch - handled separately)
         const watchPaths = [
             ...this.edgeListFiles,
             ...watchedSourcePaths,
-            path.join(this.archDir, '**/*.md')
         ];
 
-        // Filter valid paths (globs are always valid for chokidar)
-        const existingPaths = watchPaths.filter(p => p.includes('*') || fs.existsSync(p));
+        // Filter valid paths
+        const existingPaths = watchPaths.filter(p => fs.existsSync(p));
 
         if (existingPaths.length === 0) {
             if (this.config.verbose) {
@@ -114,11 +95,7 @@ export class FileWatcherService {
 
         // Setup chokidar watcher
         this.watcher = chokidar.watch(existingPaths, {
-            ignored: (path, stats) => {
-                // Ignore dotfiles, but ALLOW .arch directory
-                if (path.includes('.arch')) return false;
-                return /(^|[\/\\])\../.test(path);
-            },
+            ignored: /(^|[\/\\])\../, // Ignore dotfiles
             persistent: true,
             ignoreInitial: true,
             awaitWriteFinish: {
@@ -133,7 +110,7 @@ export class FileWatcherService {
         this.watcher.on('unlink', (filePath) => this.handleFileEvent('removed', filePath));
 
         if (this.config.verbose) {
-            console.log(`[FileWatcher] Watching ${watchedFiles.length} source files, ${this.edgeListFiles.length} edge lists, and .arch directory`);
+            console.log(`[FileWatcher] Watching ${watchedFiles.length} source files and ${this.edgeListFiles.length} edge lists`);
         }
     }
 
@@ -146,9 +123,8 @@ export class FileWatcherService {
             this.handleEdgeListEvent(action, filePath);
         } else if (this.watchedSourcePaths.has(filePath)) {
             this.handleSourceEvent(action, filePath);
-        } else if (filePath.startsWith(this.archDir)) {
-            this.handleArchEvent(action, filePath);
         }
+        // Note: .arch files are handled by ArchWatcherService
     }
 
     /**
@@ -200,26 +176,6 @@ export class FileWatcherService {
     }
 
     /**
-     * Handle .arch directory change
-     */
-    private handleArchEvent(action: string, filePath: string): void {
-        if (this.config.verbose) {
-            console.log(`[FileWatcher] .arch ${action}: ${path.relative(this.archDir, filePath)}`);
-        }
-
-        // Debounce
-        if (this.archTimeout) {
-            clearTimeout(this.archTimeout);
-        }
-
-        this.archTimeout = setTimeout(async () => {
-            if (this.onArchChange) {
-                await this.onArchChange();
-            }
-        }, 500);
-    }
-
-    /**
      * Close file watcher
      */
     async close(): Promise<void> {
@@ -231,7 +187,6 @@ export class FileWatcherService {
         // Clear timers
         if (this.sourceTimeout) clearTimeout(this.sourceTimeout);
         if (this.edgeListTimeout) clearTimeout(this.edgeListTimeout);
-        if (this.archTimeout) clearTimeout(this.archTimeout);
     }
 
     /**

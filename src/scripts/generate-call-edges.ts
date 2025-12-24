@@ -60,7 +60,10 @@ export async function generateCallEdgesForFolder(
 
     const program = tsService.getProgram();
     if (!program) {
-        throw new Error('Failed to create TypeScript program');
+        console.warn('[GenerateEdges] No TypeScript program available - this is expected for projects using other languages');
+        console.warn('[GenerateEdges] Edge generation currently only supports TypeScript/JavaScript files');
+        console.warn('[GenerateEdges] For other languages (Python, C++, R, Dart, Rust), LSP-based edge generation is not yet implemented');
+        return { newEdges: 0, totalEdges: callStore.getStats().edges };
     }
 
     // Get source files in this folder
@@ -164,13 +167,24 @@ export async function generateCallEdgesForFile(
     console.log(`[GenerateEdges] Processing file: ${filePath}`);
     console.log(`[GenerateEdges] Existing edges - call: ${existingCallEdgeCount}, import: ${existingImportEdgeCount}`);
 
+    // Check if this is even a TypeScript/JavaScript file
+    const fileExt = path.extname(filePath).toLowerCase();
+    const isTSFile = ['.ts', '.tsx', '.js', '.jsx'].includes(fileExt);
+
+    if (!isTSFile) {
+        console.warn(`[GenerateEdges] File type ${fileExt} is not supported for edge generation`);
+        console.warn(`[GenerateEdges] Edge generation currently only supports TypeScript/JavaScript files`);
+        console.warn(`[GenerateEdges] For other languages (Python, C++, R, Dart, Rust), LSP-based edge generation is not yet implemented`);
+        return { newEdges: 0, totalEdges: callStore.getStats().edges };
+    }
+
     // Initialize TypeScript service
     const tsService = new TypeScriptService(projectRoot);
     const tsExtractor = new TypeScriptExtractor(() => tsService.getProgram(), projectRoot);
 
     const program = tsService.getProgram();
     if (!program) {
-        throw new Error('Failed to create TypeScript program');
+        throw new Error('No TypeScript program available. This usually means there are no TypeScript/JavaScript files in the project.');
     }
 
     try {

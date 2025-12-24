@@ -60,6 +60,28 @@ export interface DataProvider {
     toggleWatch(path: string, watched: boolean): Promise<WatchToggleResult>;
 
     /**
+     * Get a specific design doc by key.
+     * Optional - may not be implemented by all providers.
+     */
+    getDesignDoc?(key: string): DesignDoc | undefined;
+
+    /**
+     * Save a design doc to the .arch directory.
+     * @param path Path relative to .arch (e.g., "src/parser" or "src/parser.md")
+     * @param markdown Markdown content to save
+     * @returns Success status
+     */
+    saveDesignDoc?(path: string, markdown: string): Promise<boolean>;
+
+    /**
+     * Subscribe to design doc changes (created, updated, deleted).
+     * Called when a design doc is modified externally or via WebSocket.
+     * @param callback Function called with (path, doc | null)
+     * @returns Unsubscribe function
+     */
+    onDesignDocChange?(callback: (path: string, doc: DesignDoc | null) => void): () => void;
+
+    /**
      * Get the VS Code API for sending messages (VS Code mode only).
      * Returns null in standalone mode.
      * @deprecated Use toggleWatch() and other abstracted methods instead of direct API access.

@@ -83,15 +83,21 @@ if (!isGraphOnlyMode) {
         dataProvider
     });
 
-    designModeToggle = new DesignModeToggle({
-        el: elDesignModeToggle,
-        state
-    });
-
     designTextView = new DesignTextView({
         el: elDesignView,
         state,
         dataProvider
+    });
+
+    designModeToggle = new DesignModeToggle({
+        el: elDesignModeToggle,
+        state,
+        onSave: () => {
+            // Trigger save in DesignTextView
+            if (designTextView) {
+                (designTextView as any).triggerSave();
+            }
+        }
     });
 }
 
