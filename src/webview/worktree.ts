@@ -71,8 +71,22 @@ function shouldIgnore(name: string, relativePath: string, patterns: Set<string>)
     // Check always ignored
     if (ALWAYS_IGNORED.has(name)) return true;
 
-    // Skip problematic file extensions that can cause issues (like Electron .asar archives)
-    const SKIP_EXTENSIONS = ['.asar', '.exe', '.dll', '.so', '.dylib', '.bin', '.wasm'];
+    // Skip problematic file extensions that can cause issues (like Electron .asar archives, large CSVs)
+    const SKIP_EXTENSIONS = [
+        // Binary executables and libraries
+        '.asar', '.exe', '.dll', '.so', '.dylib', '.bin', '.wasm',
+        // Large data files (can cause performance issues)
+        '.csv', '.json', '.xml', '.yaml', '.yml',
+        // Database files
+        '.db', '.sqlite', '.sqlite3',
+        // Media files
+        '.jpg', '.jpeg', '.png', '.gif', '.svg', '.ico', '.webp',
+        '.mp4', '.avi', '.mov', '.mp3', '.wav',
+        // Archives
+        '.zip', '.tar', '.gz', '.7z', '.rar',
+        // Documents  
+        '.pdf', '.doc', '.docx', '.xls', '.xlsx'
+    ];
     const ext = path.extname(name).toLowerCase();
     if (SKIP_EXTENSIONS.includes(ext)) return true;
 

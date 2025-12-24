@@ -161,7 +161,8 @@ export class WebviewDataService {
 
         const program = tsService.getProgram();
         if (!program) {
-            console.error('[WebviewDataService] Failed to create TypeScript program');
+            console.warn('[WebviewDataService] No TypeScript program created - this is expected for projects using other languages (Python, C++, R, Dart, Rust, etc.)');
+            console.warn('[WebviewDataService] TypeScript files will not be processed. Use LSP-based tools for other languages.');
             return;
         }
 

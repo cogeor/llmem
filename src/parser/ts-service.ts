@@ -17,8 +17,23 @@ const SKIP_DIRECTORIES = new Set([
     '.artifacts'
 ]);
 
-// File extensions to always skip (binary/problematic files)
-const SKIP_EXTENSIONS = new Set(['.asar', '.exe', '.dll', '.so', '.dylib', '.bin', '.wasm', '.node']);
+// File extensions to always skip (binary/problematic files, data files, media files)
+const SKIP_EXTENSIONS = new Set([
+    // Binary executables and libraries
+    '.asar', '.exe', '.dll', '.so', '.dylib', '.bin', '.wasm', '.node',
+    // Data files (can be very large and slow down file scanning)
+    '.csv', '.json', '.xml', '.yaml', '.yml', '.toml',
+    // Database files
+    '.db', '.sqlite', '.sqlite3',
+    // Media files
+    '.jpg', '.jpeg', '.png', '.gif', '.svg', '.ico', '.webp',
+    '.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm',
+    '.mp3', '.wav', '.ogg', '.flac',
+    // Archives
+    '.zip', '.tar', '.gz', '.bz2', '.7z', '.rar',
+    // Documents
+    '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx'
+]);
 
 export class TypeScriptService {
     private program: ts.Program | undefined;
@@ -38,7 +53,7 @@ export class TypeScriptService {
             const files = this.getTypeScriptFiles(this.workspaceRoot);
 
             if (files.length === 0) {
-                console.error('[TypeScriptService] No TypeScript/JavaScript files found');
+                console.warn('[TypeScriptService] No TypeScript/JavaScript files found - this is normal for projects using other languages (Python, C++, R, Dart, Rust, etc.)');
                 this.program = undefined;
                 return;
             }
@@ -69,7 +84,7 @@ export class TypeScriptService {
 
         try {
             if (!fs.existsSync(tsconfigPath)) {
-                console.error('[TypeScriptService] No tsconfig.json found, using defaults');
+                console.error('[TypeScriptService] No tsconfig.json found, using defaults (this is normal for non-TypeScript projects)');
                 return defaultOptions;
             }
 

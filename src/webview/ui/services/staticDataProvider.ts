@@ -2,16 +2,33 @@
 import { DataProvider, WatchToggleResult } from './dataProvider';
 import { GraphData, WorkTreeNode, DesignDoc } from '../types';
 import { WatchApiClient } from './watchApiClient';
+import { designDocCache } from './designDocCache';
+import { liveReloadClient } from '../../live-reload';
 
 /**
  * DataProvider for standalone HTML mode.
  * Reads data from window.* globals that are injected by the generator.
+ * Uses DesignDocCache for real-time design doc updates.
  */
 export class StaticDataProvider implements DataProvider {
     private watchApiClient: WatchApiClient;
+    private refreshCallbacks: Set<() => void> = new Set();
+    private designDocCallbacks: Set<(path: string, doc: DesignDoc | null) => void> = new Set();
 
     constructor() {
         this.watchApiClient = new WatchApiClient();
+
+        // Subscribe to graph updates from WebSocket
+        liveReloadClient.on('graph:updated', () => {
+            console.log('[StaticDataProvider] Graph updated, triggering refresh');
+            this.triggerRefresh();
+        });
+
+        // Subscribe to design doc changes
+        designDocCache.onChange((path, doc, type) => {
+            console.log(`[StaticDataProvider] Design doc ${type}: ${path}`);
+            this.notifyDesignDocChange(path, doc);
+        });
     }
 
     async loadGraphData(): Promise<GraphData> {
@@ -26,12 +43,64 @@ export class StaticDataProvider implements DataProvider {
     }
 
     async loadDesignDocs(): Promise<Record<string, DesignDoc>> {
-        return window.DESIGN_DOCS || {};
+        // Use cached docs instead of window.DESIGN_DOCS directly
+        return designDocCache.getAll();
     }
 
-    onRefresh(_callback: () => void): () => void {
-        // Static mode - no refresh events (data is baked in, WebSocket handles full page reload)
-        return () => { };
+    /**
+     * Get a specific design doc
+     */
+    getDesignDoc(key: string): DesignDoc | undefined {
+        return designDocCache.get(key);
+    }
+
+    /**
+     * Save a design doc
+     */
+    async saveDesignDoc(path: string, markdown: string): Promise<boolean> {
+        return designDocCache.save(path, markdown);
+    }
+
+    /**
+     * Subscribe to refresh events
+     */
+    onRefresh(callback: () => void): () => void {
+        this.refreshCallbacks.add(callback);
+        return () => this.refreshCallbacks.delete(callback);
+    }
+
+    /**
+     * Subscribe to design doc changes
+     */
+    onDesignDocChange(callback: (path: string, doc: DesignDoc | null) => void): () => void {
+        this.designDocCallbacks.add(callback);
+        return () => this.designDocCallbacks.delete(callback);
+    }
+
+    /**
+     * Trigger refresh callbacks
+     */
+    private triggerRefresh(): void {
+        for (const callback of this.refreshCallbacks) {
+            try {
+                callback();
+            } catch (e) {
+                console.error('[StaticDataProvider] Refresh callback error:', e);
+            }
+        }
+    }
+
+    /**
+     * Notify design doc change listeners
+     */
+    private notifyDesignDocChange(path: string, doc: DesignDoc | null): void {
+        for (const callback of this.designDocCallbacks) {
+            try {
+                callback(path, doc);
+            } catch (e) {
+                console.error('[StaticDataProvider] Design doc callback error:', e);
+            }
+        }
     }
 
     /**
