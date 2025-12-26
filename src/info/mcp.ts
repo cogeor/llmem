@@ -51,10 +51,10 @@ export interface FileInfoMcpData {
 
 /**
  * Get file info data for MCP tool
- * 
- * Extracts file info using TypeScript service and converts to edge list format.
+ *
+ * Extracts file info using appropriate language parser (parser-agnostic).
  * Returns all data needed for LLM enrichment prompt.
- * 
+ *
  * @param rootDir Workspace root directory
  * @param filePath Relative path to the file
  * @returns Data needed for MCP prompt
@@ -73,16 +73,21 @@ export async function getFileInfoForMcp(
     // Read source code
     const sourceCode = fs.readFileSync(absolutePath, 'utf-8');
 
-    // Initialize TypeScript service and extract artifact
-    const { TypeScriptService } = await import('../parser/ts-service');
-    const { TypeScriptExtractor } = await import('../parser/ts-extractor');
+    // Get parser from registry (language-agnostic)
+    const { ParserRegistry } = await import('../parser/registry');
     const { artifactToEdgeList } = await import('../graph/artifact-converter');
     const { getImportEdges, getCallEdges, filterImportEdges } = await import('./filter');
 
-    const tsService = new TypeScriptService(rootDir);
-    const tsExtractor = new TypeScriptExtractor(() => tsService.getProgram(), rootDir);
+    const registry = ParserRegistry.getInstance();
+    const parser = registry.getParser(filePath, rootDir);
 
-    const artifact = await tsExtractor.extract(absolutePath);
+    if (!parser) {
+        const ext = path.extname(filePath);
+        throw new Error(`Unsupported file type: ${ext}. Supported extensions: ${registry.getSupportedExtensions().join(', ')}`);
+    }
+
+    // Extract artifact (works for any language)
+    const artifact = await parser.extract(absolutePath);
     if (!artifact) {
         throw new Error(`Failed to extract artifact from ${filePath}`);
     }

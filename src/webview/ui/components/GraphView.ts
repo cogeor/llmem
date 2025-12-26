@@ -45,11 +45,19 @@ export class GraphView {
         this.data = await this.dataProvider.loadGraphData();
         this.worktree = await this.dataProvider.loadWorkTree();
 
+        // Determine if call graph is available (has nodes)
+        // Backend filters to TS/JS only, so if there are nodes, call graph is available
+        const callGraphAvailable = (this.data?.callGraph?.nodes?.length ?? 0) > 0;
+
         console.log('[GraphView] Data loaded:', {
             importNodes: this.data?.importGraph?.nodes?.length,
             callNodes: this.data?.callGraph?.nodes?.length,
+            callGraphAvailable,
             worktree: this.worktree?.name
         });
+
+        // Update state with callGraphAvailable (backend determined)
+        this.state.set({ callGraphAvailable });
 
         // Subscribe to state changes
         this.unsubscribe = this.state.subscribe((s: AppState) => this.onState(s));

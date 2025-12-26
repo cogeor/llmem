@@ -13,25 +13,27 @@ By pre-computing dependency graphs and structural summaries, LLMem allows the MC
 - **MCP-Native**: Operates as a Model Context Protocol server, compatible with any VS Code-like IDE.
 - **Shadow Filesystem**: Maintains a parallel `.arch/` directory. For every source file or folder, LLMem creates corresponding documentation files.
 - **Strategic Summarization**: Generates high-level summaries for folders and files, allowing the LLM to understand the codebase structure without requiring full file contents in context.
-- **Code Intelligence**: Detailed structural analysis (imports, exports, function signatures) using the language server protocol.
+- **Code Intelligence**: Detailed structural analysis (imports, exports, function signatures) using Tree-sitter parsers.
 - **Graph Visualization**: Interactive visualization of import dependencies and function calls across your codebase.
+
+> [!IMPORTANT]
+> **Call graphs are TypeScript/JavaScript only.** Other languages (Python, C++, Rust, R) support import graphs only.
 
 ## 🌐 Supported Languages
 
-LLMem supports the following languages. TypeScript/JavaScript works out of the box; other languages require an LSP server to be installed and available in your PATH.
+LLMem uses tree-sitter for fast, reliable parsing. TypeScript/JavaScript also uses the compiler API for full call graph support.
 
-| Language | Extensions | LSP Server | Installation |
-|----------|------------|------------|--------------|
-| TypeScript | `.ts`, `.tsx` | Built-in | — |
-| JavaScript | `.js`, `.jsx` | Built-in | — |
-| Python | `.py` | `pylsp` | `pip install python-lsp-server` |
-| C/C++ | `.c`, `.h`, `.cpp`, `.hpp`, `.cc` | `clangd` | [clangd.llvm.org](https://clangd.llvm.org/installation) |
-| Rust | `.rs` | `rust-analyzer` | `rustup component add rust-analyzer` |
-| Dart | `.dart` | `dart language-server` | Included with Dart SDK |
-| R | `.R`, `.r` | `languageserver` | `install.packages("languageserver")` in R |
+| Language | Extensions | Parser | Import Graph | Call Graph |
+|----------|------------|--------|:------------:|:----------:|
+| TypeScript | `.ts`, `.tsx` | TS Compiler API | ✅ | ✅ |
+| JavaScript | `.js`, `.jsx` | TS Compiler API | ✅ | ✅ |
+| Python | `.py` | tree-sitter | ✅ | ❌ |
+| C/C++ | `.c`, `.h`, `.cpp`, `.hpp`, `.cc`, `.cxx`, `.hxx` | tree-sitter | ✅ | ❌ |
+| Rust | `.rs` | tree-sitter | ✅ | ❌ |
+| R | `.R`, `.r` | tree-sitter | ✅ | ❌ |
 
 > [!TIP]
-> LLMem automatically detects which LSP servers are available. If a language's LSP is not found, files of that type will still appear in the graph but without call-edge analysis.
+> Install tree-sitter grammar packages via npm for additional language support. If a package is missing, LLMem will skip that language.
 
 ## 📦 Installation
 
@@ -107,8 +109,8 @@ For large codebases, graph edges are computed **lazily** to save resources:
 ### Step 3: Explore the Graph
 
 The graph (shown in the preview image above) displays:
-- **Import edges**: File-to-file import dependencies
-- **Call edges**: Function-to-function call relationships
+- **Import edges**: File-to-file import dependencies (all languages)
+- **Call edges**: Function-to-function call relationships (**TypeScript/JavaScript only**)
 - **Node selection**: Click a node to highlight its connections
 
 **Navigation:**

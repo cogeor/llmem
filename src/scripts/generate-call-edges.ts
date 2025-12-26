@@ -13,8 +13,6 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import { CallEdgeListStore, ImportEdgeListStore } from '../graph/edgelist';
-import { TypeScriptService } from '../parser/ts-service';
-import { TypeScriptExtractor } from '../parser/ts-extractor';
 import { artifactToEdgeList } from '../graph/artifact-converter';
 import { countFolderLines } from '../parser/line-counter';
 import { IGNORED_FOLDERS } from '../parser/config';
@@ -54,45 +52,43 @@ export async function generateCallEdgesForFolder(
     const lineCount = countFolderLines(projectRoot, absoluteFolder);
     console.log(`[GenerateEdges] Folder stats: ${lineCount.fileCount} files, ${lineCount.totalLines} lines`);
 
-    // Initialize TypeScript service
-    const tsService = new TypeScriptService(projectRoot);
-    const tsExtractor = new TypeScriptExtractor(() => tsService.getProgram(), projectRoot);
+    // Get parser registry (language-agnostic)
+    const { ParserRegistry } = await import('../parser/registry');
+    const registry = ParserRegistry.getInstance();
 
-    const program = tsService.getProgram();
-    if (!program) {
-        console.warn('[GenerateEdges] No TypeScript program available - this is expected for projects using other languages');
-        console.warn('[GenerateEdges] Edge generation currently only supports TypeScript/JavaScript files');
-        console.warn('[GenerateEdges] For other languages (Python, C++, R, Dart, Rust), LSP-based edge generation is not yet implemented');
-        return { newEdges: 0, totalEdges: callStore.getStats().edges };
+    // Find all supported files in the folder (not recursive, only direct children)
+    const entries = fs.readdirSync(absoluteFolder);
+    const sourceFiles: string[] = [];
+
+    for (const entry of entries) {
+        const entryPath = path.join(absoluteFolder, entry);
+        const stat = fs.statSync(entryPath);
+
+        if (stat.isFile() && registry.isSupported(entry)) {
+            sourceFiles.push(entryPath);
+        }
     }
 
-    // Get source files in this folder
-    const normalizedRoot = projectRoot.replace(/\\/g, '/');
-    const normalizedFolder = path.join(normalizedRoot, folderPath).replace(/\\/g, '/');
-
-    const sourceFiles = program.getSourceFiles().filter(sf => {
-        const filePath = sf.fileName.replace(/\\/g, '/');
-        return !filePath.includes('node_modules') &&
-            !filePath.endsWith('.d.ts') &&
-            filePath.startsWith(normalizedFolder + '/') || filePath === normalizedFolder;
-    });
-
-    console.log(`[GenerateEdges] Found ${sourceFiles.length} TypeScript files in folder`);
+    console.log(`[GenerateEdges] Found ${sourceFiles.length} supported files in folder`);
 
     let processedCount = 0;
     let newCallEdgeCount = 0;
     let newImportEdgeCount = 0;
 
-    for (const sf of sourceFiles) {
-        const filePath = sf.fileName;
-        const relativePath = path.relative(projectRoot, filePath).replace(/\\/g, '/');
+    for (const absoluteFilePath of sourceFiles) {
+        const relativePath = path.relative(projectRoot, absoluteFilePath).replace(/\\/g, '/');
+        const parser = registry.getParser(absoluteFilePath, projectRoot);
 
-        // Skip if not directly in the target folder (only process direct children)
-        const fileFolder = path.dirname(relativePath);
-        if (fileFolder !== folderPath) continue;
+        if (!parser) {
+            console.warn(`[GenerateEdges] No parser for ${relativePath}`);
+            continue;
+        }
+
+        const langId = registry.getLanguageId(absoluteFilePath);
+        console.log(`[GenerateEdges] Processing ${langId} file: ${relativePath}`);
 
         try {
-            const artifact = await tsExtractor.extract(filePath);
+            const artifact = await parser.extract(absoluteFilePath);
             if (!artifact) continue;
 
             const { nodes, callEdges, importEdges } = artifactToEdgeList(artifact, relativePath);
@@ -167,28 +163,23 @@ export async function generateCallEdgesForFile(
     console.log(`[GenerateEdges] Processing file: ${filePath}`);
     console.log(`[GenerateEdges] Existing edges - call: ${existingCallEdgeCount}, import: ${existingImportEdgeCount}`);
 
-    // Check if this is even a TypeScript/JavaScript file
-    const fileExt = path.extname(filePath).toLowerCase();
-    const isTSFile = ['.ts', '.tsx', '.js', '.jsx'].includes(fileExt);
+    // Get parser from registry (language-agnostic)
+    const { ParserRegistry } = await import('../parser/registry');
+    const registry = ParserRegistry.getInstance();
+    const parser = registry.getParser(filePath, projectRoot);
 
-    if (!isTSFile) {
-        console.warn(`[GenerateEdges] File type ${fileExt} is not supported for edge generation`);
-        console.warn(`[GenerateEdges] Edge generation currently only supports TypeScript/JavaScript files`);
-        console.warn(`[GenerateEdges] For other languages (Python, C++, R, Dart, Rust), LSP-based edge generation is not yet implemented`);
+    if (!parser) {
+        const fileExt = path.extname(filePath).toLowerCase();
+        console.warn(`[GenerateEdges] Unsupported file type: ${fileExt}`);
+        console.warn(`[GenerateEdges] Supported extensions: ${registry.getSupportedExtensions().join(', ')}`);
         return { newEdges: 0, totalEdges: callStore.getStats().edges };
     }
 
-    // Initialize TypeScript service
-    const tsService = new TypeScriptService(projectRoot);
-    const tsExtractor = new TypeScriptExtractor(() => tsService.getProgram(), projectRoot);
-
-    const program = tsService.getProgram();
-    if (!program) {
-        throw new Error('No TypeScript program available. This usually means there are no TypeScript/JavaScript files in the project.');
-    }
+    const langId = registry.getLanguageId(filePath);
+    console.log(`[GenerateEdges] Processing ${langId} file: ${filePath}`);
 
     try {
-        const artifact = await tsExtractor.extract(absoluteFile);
+        const artifact = await parser.extract(absoluteFile);
         if (!artifact) {
             throw new Error('No artifact extracted');
         }

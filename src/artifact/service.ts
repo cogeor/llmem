@@ -8,17 +8,13 @@ import { ArtifactTreeManager } from './tree';
 import { artifactFilePath, sourceToArtifactDir, summaryFilePath } from './path-mapper';
 import { readFile, writeFile, deleteFile, exists } from './storage';
 
-import { TypeScriptService, TypeScriptExtractor, ExtractorRegistry } from '../parser';
-import { detectAvailableLanguages } from '../parser/languages';
-import { LspExtractor } from '../parser/lsp/extractor';
+// Legacy imports - artifact system is deprecated, using edge lists instead
+// import { TypeScriptService, TypeScriptExtractor } from '../parser';
 
 let index: ArtifactIndex;
 let tree: ArtifactTreeManager;
 let workspaceRoot: string;
 let isInitialized = false;
-let registry: ExtractorRegistry;
-let tsService: TypeScriptService;
-let tsExtractor: TypeScriptExtractor;
 let gitignorePatterns: Set<string>;
 
 // Always ignored folders
@@ -100,30 +96,9 @@ export async function initializeArtifactService(root: string) {
     // Parse .gitignore
     gitignorePatterns = parseGitignore(root);
 
-    // Initialize TS Service
-    tsService = new TypeScriptService(workspaceRoot);
-    tsExtractor = new TypeScriptExtractor(() => tsService.getProgram(), workspaceRoot);
-
-    // Initialize Registry
-    registry = new ExtractorRegistry();
-    registry.register('.ts', tsExtractor);
-    registry.register('.tsx', tsExtractor);
-
-    // Dynamic Language Detection & Registration
-    const availableLangs = await detectAvailableLanguages();
-    for (const lang of availableLangs) {
-        if (lang.id === 'python' || lang.id === 'cpp' || lang.id === 'r' || lang.id === 'dart' || lang.id === 'rust') {
-            const lspExtractor = new LspExtractor(lang.lspCommand, lang.lspArgs, lang.id);
-            // We should start the LSP? Or start on demand?
-            // Starting process for every language might be heavy. Let's start it lazily in extractor.extract()
-            // The LspExtractor implementation already does start() lazily or we can rely on it.
-            // But we need to register extensions.
-            for (const ext of lang.extensions) {
-                registry.register(ext, lspExtractor);
-            }
-            console.error(`Registered LSP support for ${lang.id} (${lang.extensions.join(', ')})`);
-        }
-    }
+    // NOTE: Artifact system is deprecated, using edge lists
+    // Parser registry is now global singleton in src/parser/registry.ts
+    // Language detection happens automatically when registry is initialized
 
     await index.load();
     tree.build(index.getAll());
@@ -136,11 +111,14 @@ export function getWorkspaceRoot(): string {
 }
 
 export function getSupportedExtensions(): string[] {
-    // Return default extensions if not initialized (for hot reload before full init)
-    if (!isInitialized) {
-        return ['.ts', '.tsx', '.js', '.jsx'];
+    // Use ParserRegistry to get supported extensions
+    try {
+        const { ParserRegistry } = require('./parser/registry');
+        return ParserRegistry.getInstance().getSupportedExtensions();
+    } catch {
+        // Fallback if registry not available
+        return ['.ts', '.tsx', '.js', '.jsx', '.py'];
     }
-    return registry.getSupportedExtensions();
 }
 
 function checkInitialized() {

@@ -74,6 +74,12 @@ export interface AppState {
     expandedFolders: Set<string>;
     watchedPaths: Set<string>;  // Paths with active file watching
     designViewMode: DesignViewMode;  // View or edit mode for design docs
+    /**
+     * Whether call graph data is available.
+     * Determined by backend based on graph data (not languages).
+     * UI should hide call graph button if false.
+     */
+    callGraphAvailable: boolean;
 }
 
 declare global {

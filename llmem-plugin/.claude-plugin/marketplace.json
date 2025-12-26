@@ -1,0 +1,14 @@
+{
+  "name": "llmem-plugins",
+  "owner": {
+    "name": "LLMem"
+  },
+  "plugins": [
+    {
+      "name": "llmem",
+      "source": "./",
+      "description": "Interactive graph visualization and documentation for codebases",
+      "version": "0.1.0"
+    }
+  ]
+}

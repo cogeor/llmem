@@ -236,7 +236,9 @@ export class LLMemPanel {
         const isFile = fs.existsSync(absolutePath) && fs.statSync(absolutePath).isFile();
 
         console.log(`[LLMemPanel] Regenerating edges for: ${targetPath} (isFile: ${isFile})`);
-        vscode.window.withProgress({
+
+        // IMPORTANT: Must return the promise to allow caller to await edge generation
+        return vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
             title: `Generating edges for ${targetPath}...`,
             cancellable: false

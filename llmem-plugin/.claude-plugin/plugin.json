@@ -1,0 +1,19 @@
+{
+  "name": "llmem",
+  "version": "0.1.0",
+  "description": "Interactive graph visualization and documentation for codebases. Analyze imports, call graphs, and generate design documentation.",
+  "author": {
+    "name": "LLMem"
+  },
+  "repository": "https://github.com/llmem/llmem",
+  "license": "MIT",
+  "keywords": [
+    "documentation",
+    "analysis",
+    "codebase",
+    "graph",
+    "visualization",
+    "call-graph",
+    "imports"
+  ]
+}

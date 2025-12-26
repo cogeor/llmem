@@ -9,6 +9,7 @@ export const initialState: AppState = {
     expandedFolders: new Set(["src"]), // Expand src by default
     watchedPaths: new Set(),  // No paths watched initially (lazy mode)
     designViewMode: "view",  // Start in view mode (rendered HTML)
+    callGraphAvailable: true,  // Will be updated when graph data loads
 };
 
 class State {

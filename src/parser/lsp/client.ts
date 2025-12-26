@@ -1,3 +1,12 @@
+/**
+ * @deprecated DEAD CODE - LSP implementation is currently unused.
+ * 
+ * This file is kept for potential future re-integration. The LSP approach
+ * was found to be too slow for real-time call graph extraction.
+ * 
+ * See tree-sitter.md for current architecture.
+ */
+
 import { ChildProcess, spawn } from 'child_process';
 import { createMessageConnection, MessageConnection, StreamMessageReader, StreamMessageWriter } from 'vscode-jsonrpc/node';
 
@@ -31,7 +40,9 @@ export class LspClient {
             capabilities: {
                 textDocument: {
                     documentSymbol: { hierarchicalDocumentSymbolSupport: true },
-                    references: {}
+                    references: {},
+                    callHierarchy: {},  // Request call hierarchy support
+                    definition: {}       // Request definition support
                 }
             }
         });
@@ -62,6 +73,12 @@ export class LspClient {
                 text
             }
         });
+
+        // Pyright needs time to analyze files before call hierarchy works
+        // TODO: Replace with proper LSP progress notification or diagnostics wait
+        if (languageId === 'python') {
+            await new Promise(resolve => setTimeout(resolve, 1500));
+        }
     }
 
     public async getDocumentSymbols(uri: string): Promise<any[]> {
@@ -77,6 +94,29 @@ export class LspClient {
             textDocument: { uri },
             position: { line, character },
             context: { includeDeclaration: true }
+        });
+    }
+
+    public async prepareCallHierarchy(uri: string, line: number, character: number): Promise<any[]> {
+        if (!this.connection) throw new Error('Client not started');
+        return await this.connection.sendRequest('textDocument/prepareCallHierarchy', {
+            textDocument: { uri },
+            position: { line, character }
+        });
+    }
+
+    public async getOutgoingCalls(item: any): Promise<any[]> {
+        if (!this.connection) throw new Error('Client not started');
+        return await this.connection.sendRequest('callHierarchy/outgoingCalls', {
+            item
+        });
+    }
+
+    public async getDefinition(uri: string, line: number, character: number): Promise<any[]> {
+        if (!this.connection) throw new Error('Client not started');
+        return await this.connection.sendRequest('textDocument/definition', {
+            textDocument: { uri },
+            position: { line, character }
         });
     }
 }
