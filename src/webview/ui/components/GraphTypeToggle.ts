@@ -27,14 +27,20 @@ export class GraphTypeToggle {
         this.unsubscribe = this.state.subscribe((s: AppState) => this.render(s));
     }
 
-    render({ currentView, graphType }: AppState) {
+    render({ currentView, graphType, callGraphAvailable }: AppState) {
         // In 3-column layout, graph is always visible, so toggle should be too
-
         this.el.style.display = 'block';
+
+        // Only show call graph button if call graph data is available
+        // (Backend determines availability based on graph data, not languages)
+        const callButton = callGraphAvailable
+            ? `<button data-graph-type="call" class="${graphType === "call" ? "is-active" : ""}">Call graph</button>`
+            : '';
+
         this.el.innerHTML = `
         <div class="segmented" role="group" aria-label="Graph type">
             <button data-graph-type="import" class="${graphType === "import" ? "is-active" : ""}">Import graph</button>
-            <button data-graph-type="call" class="${graphType === "call" ? "is-active" : ""}">Call graph</button>
+            ${callButton}
         </div>
         `;
     }

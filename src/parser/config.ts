@@ -33,22 +33,21 @@ export const TYPESCRIPT_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx'];
 
 /**
  * All extensions supported for parsing and graph generation.
- * Combines built-in TypeScript + LSP-supported languages.
+ * TypeScript/JavaScript uses compiler API (with call graph support).
+ * Other languages use tree-sitter (import graph only, no calls).
  */
 export const ALL_SUPPORTED_EXTENSIONS = [
-    // TypeScript/JavaScript (built-in)
+    // TypeScript/JavaScript (TS compiler API - supports imports + calls)
     '.ts', '.tsx', '.js', '.jsx',
-    // Python (LSP)
+    // Python (tree-sitter - imports only)
     '.py',
-    // C/C++ (LSP)
-    '.cpp', '.hpp', '.c', '.h', '.cc',
-    // R (LSP)
-    '.R', '.r',
-    // Dart (LSP)
-    '.dart',
-    // Rust (LSP)
+    // C/C++ (tree-sitter - imports via #include only)
+    '.cpp', '.hpp', '.c', '.h', '.cc', '.cxx', '.hxx',
+    // Rust (tree-sitter - imports via use only)
     '.rs',
-    // Java/Go (future LSP support)
+    // R (tree-sitter - imports via library/require/source only)
+    '.R', '.r',
+    // Future support (Java, Go)
     '.java', '.go'
 ];
 

@@ -1,0 +1,9 @@
+{
+  "llmem": {
+    "command": "node",
+    "args": ["${CLAUDE_PLUGIN_ROOT}/../dist/claude/claude/cli.js", "mcp"],
+    "env": {
+      "LLMEM_WORKSPACE": "${workspaceFolder}"
+    }
+  }
+}

@@ -1,0 +1,35 @@
+#!/usr/bin/env node
+
+/**
+ * LLMem CLI Entry Point
+ *
+ * Routes to the appropriate command:
+ *   llmem serve   - Start HTTP webview server
+ *   llmem mcp     - Start MCP server for Claude Code
+ *   llmem stats   - Show graph statistics
+ */
+
+const path = require('path');
+
+// Determine the dist directory relative to this script
+// The Claude CLI is compiled to dist/claude/claude/ (per tsconfig.claude.json)
+const distDir = path.join(__dirname, '..', 'dist', 'claude', 'claude');
+
+// Get command from args
+const command = process.argv[2];
+
+if (command === 'mcp') {
+    // Run MCP server (stdio mode for Claude Code)
+    const { main } = require(path.join(distDir, 'index.js'));
+    main().catch(err => {
+        console.error('MCP server error:', err);
+        process.exit(1);
+    });
+} else {
+    // Run CLI (serve, generate, stats, etc.)
+    const { main } = require(path.join(distDir, 'cli.js'));
+    main().catch(err => {
+        console.error('CLI error:', err);
+        process.exit(1);
+    });
+}

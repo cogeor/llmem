@@ -3,11 +3,30 @@
  * 
  * Supports both split stores (ImportEdgeListStore + CallEdgeListStore)
  * and legacy single-file EdgeListStore.
+ * 
+ * IMPORTANT: Call graph is TypeScript/JavaScript only.
+ * Other languages (Python, C++, Rust, R) only produce import graphs.
  */
 
 import { ImportGraph, CallGraph, FileNode, EntityNode, ImportEdge, CallEdge } from './types';
 import { EdgeListData } from './edgelist';
+import { ALL_SUPPORTED_EXTENSIONS } from '../parser/config';
 export { savePlot } from './plot/generator';
+
+/** TypeScript/JavaScript file extensions (only these support call graphs) */
+const TS_JS_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx']);
+
+/**
+ * Check if a file is TypeScript/JavaScript (supports call graph).
+ * @param filePath - File path or ID to check
+ */
+export function isTypeScriptFile(filePath: string): boolean {
+    const lower = filePath.toLowerCase();
+    for (const ext of TS_JS_EXTENSIONS) {
+        if (lower.endsWith(ext)) return true;
+    }
+    return false;
+}
 
 /**
  * Build graphs from separate import and call edge list data.
@@ -49,13 +68,17 @@ export function buildGraphsFromSplitEdgeLists(
         });
     }
 
-    // Add import edges (only where both source and target are in watched files)
+    // Add import edges (include edges to external modules)
     for (const edge of importData.edges) {
         const sourceWatched = !watchedFiles || watchedFiles.has(edge.source);
-        const targetWatched = !watchedFiles || watchedFiles.has(edge.target);
 
-        // Only include edge if BOTH source and target are watched (or no filter)
-        if (sourceWatched && targetWatched && fileIds.has(edge.source) && fileIds.has(edge.target)) {
+        // Check if target is an external module (no path separators, no file extension)
+        const isTargetExternal = !edge.target.includes('/') &&
+            !ALL_SUPPORTED_EXTENSIONS.some(ext => edge.target.endsWith(ext));
+        const targetWatched = !watchedFiles || watchedFiles.has(edge.target) || isTargetExternal;
+
+        // Include edge if source is watched AND (target is watched OR target is external)
+        if (sourceWatched && targetWatched) {
             if (!importNodes.has(edge.source)) {
                 importNodes.set(edge.source, {
                     id: edge.source,
@@ -90,14 +113,22 @@ export function buildGraphsFromSplitEdgeLists(
     };
 
     // Build Call Graph (entity-level nodes and call edges)
+    // IMPORTANT: Call graph is TypeScript/JavaScript only
     const callNodes = new Map<string, EntityNode>();
     const callEdgesOut: CallEdge[] = [];
 
-    // Create entity nodes from call data (filter by watched files)
+    // Create entity nodes from call data (filter by watched files AND TS/JS only)
     for (const node of callData.nodes) {
         if (node.kind !== 'file') {
-            // Only include node if its file is watched (or no filter)
-            if (!watchedFiles || watchedFiles.has(node.fileId)) {
+            // Check if this is an external module node (fileId == id for external modules like 'pathlib')
+            const isExternal = node.fileId === node.id ||
+                (!node.fileId.includes('/') && !ALL_SUPPORTED_EXTENSIONS.some(ext => node.fileId.endsWith(ext)));
+
+            // Only include nodes from TypeScript/JavaScript files (call graph is TS-only)
+            const isTypeScript = isTypeScriptFile(node.fileId);
+
+            // Include node if: (1) it's from a TS/JS file, AND (2) its file is watched or no filter, OR (3) it's external
+            if (isTypeScript && (!watchedFiles || watchedFiles.has(node.fileId) || isExternal)) {
                 callNodes.set(node.id, {
                     id: node.id,
                     kind: node.kind as 'function' | 'class' | 'method',
@@ -201,12 +232,13 @@ export function buildGraphsFromEdgeList(data: EdgeListData): {
     };
 
     // Build Call Graph (entity-level nodes and call edges)
+    // IMPORTANT: Call graph is TypeScript/JavaScript only
     const callNodes = new Map<string, EntityNode>();
     const callEdges: CallEdge[] = [];
 
-    // Create entity nodes
+    // Create entity nodes (TS/JS files only for call graph)
     for (const node of data.nodes) {
-        if (node.kind !== 'file') {
+        if (node.kind !== 'file' && isTypeScriptFile(node.fileId)) {
             callNodes.set(node.id, {
                 id: node.id,
                 kind: node.kind as 'function' | 'class' | 'method',

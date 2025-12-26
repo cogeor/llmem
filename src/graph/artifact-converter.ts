@@ -26,6 +26,7 @@ export function artifactToEdgeList(artifact: FileArtifact, fileId: string): Conv
     const nodes: NodeEntry[] = [];
     const importEdges: EdgeEntry[] = [];
     const callEdges: EdgeEntry[] = [];
+    const externalModules = new Set<string>();
 
     // 0. Always create a file node (ensures import edges work for files with only types/interfaces)
     nodes.push({
@@ -56,7 +57,7 @@ export function artifactToEdgeList(artifact: FileArtifact, fileId: string): Conv
         // 2. Create call edges from this entity
         if (entity.calls) {
             for (const call of entity.calls) {
-                const callEdge = resolveCallToEdge(fileId, nodeId, call, artifact.imports);
+                const callEdge = resolveCallToEdge(fileId, nodeId, call, artifact.imports, externalModules);
                 if (callEdge) {
                     callEdges.push(callEdge);
                 }
@@ -64,15 +65,61 @@ export function artifactToEdgeList(artifact: FileArtifact, fileId: string): Conv
         }
     }
 
-    // 3. Create import edges (skip external/node_modules imports)
+    // 3. Create import edges
     for (const imp of artifact.imports) {
         const targetFileId = resolveImportTarget(fileId, imp);
-        if (targetFileId && !targetFileId.includes('node_modules')) {
-            importEdges.push({
-                source: fileId,
-                target: targetFileId,
-                kind: 'import'
-            });
+
+        if (targetFileId) {
+            // Check if this is an external module (no file extension)
+            const isExternal = !ALL_SUPPORTED_EXTENSIONS.some(ext => targetFileId.endsWith(ext))
+                && !targetFileId.includes('/');
+
+            if (isExternal) {
+                // External module import (e.g., pathlib, os, json)
+                externalModules.add(targetFileId);
+
+                // Create module node if not exists
+                const moduleNodeExists = nodes.some(n => n.id === targetFileId);
+                if (!moduleNodeExists) {
+                    nodes.push({
+                        id: targetFileId,
+                        name: targetFileId,
+                        kind: 'file', // External modules shown as file nodes
+                        fileId: targetFileId
+                    });
+                }
+
+                // Create import edge to module
+                importEdges.push({
+                    source: fileId,
+                    target: targetFileId,
+                    kind: 'import'
+                });
+
+                // Create nodes for imported classes/functions from external modules
+                for (const spec of imp.specifiers) {
+                    if (spec.name !== '*') {
+                        const entityNodeId = `${targetFileId}::${spec.name}`;
+                        const entityNodeExists = nodes.some(n => n.id === entityNodeId);
+
+                        if (!entityNodeExists) {
+                            nodes.push({
+                                id: entityNodeId,
+                                name: spec.name,
+                                kind: 'function', // Could be class, function, etc.
+                                fileId: targetFileId
+                            });
+                        }
+                    }
+                }
+            } else if (!targetFileId.includes('node_modules')) {
+                // Internal import (workspace file)
+                importEdges.push({
+                    source: fileId,
+                    target: targetFileId,
+                    kind: 'import'
+                });
+            }
         }
     }
 
@@ -81,6 +128,7 @@ export function artifactToEdgeList(artifact: FileArtifact, fileId: string): Conv
 
 /**
  * Resolve an import to a target file ID.
+ * Returns either a file path (for workspace files) or module name (for external modules).
  */
 function resolveImportTarget(sourceFileId: string, imp: ImportSpec): string | null {
     // If the import has a resolved path (from extractor), use it
@@ -92,21 +140,71 @@ function resolveImportTarget(sourceFileId: string, imp: ImportSpec): string | nu
     if (imp.source.startsWith('.')) {
         const path = require('path');
         const sourceDir = path.dirname(sourceFileId);
-        let resolved = path.join(sourceDir, imp.source);
+
+        // Count leading dots to determine directory level
+        // .a → current dir, ..a → parent, ...a → grandparent
+        const dotMatch = imp.source.match(/^\.+/);
+        const dotCount = dotMatch ? dotMatch[0].length : 1;
+
+        // Remove leading dots to get module name
+        const modulePart = imp.source.replace(/^\.+/, '');
+
+        // Navigate up directories (1 dot = current dir, 2 dots = parent, etc.)
+        const dotsUp = dotCount - 1;
+        let targetDir = sourceDir;
+        for (let i = 0; i < dotsUp; i++) {
+            targetDir = path.dirname(targetDir);
+        }
+
+        // Join with module part (convert dots to path separators)
+        let resolved: string;
+        if (modulePart) {
+            // from .a import b → ./a.py
+            // from ..foo.bar import b → ../foo/bar.py
+            const modulePath = modulePart.split('.').join('/');
+            resolved = path.join(targetDir, modulePath);
+        } else {
+            // from . import b → ./__init__.py
+            resolved = targetDir;
+        }
         resolved = normalizePath(resolved);
 
-        // Try common extensions (uses central config)
-        const extensions = ['', ...ALL_SUPPORTED_EXTENSIONS];
+        // Infer extension from source file (e.g., .py file imports .py, .ts imports .ts)
+        const sourceExt = path.extname(sourceFileId);
+        const defaultExt = sourceExt || '.ts';
+
+        // Try with same extension as source file first, then common extensions
+        const extensions = [defaultExt, ...ALL_SUPPORTED_EXTENSIONS.filter(e => e !== defaultExt)];
         for (const ext of extensions) {
             const candidate = resolved + ext;
             // We can't check if file exists here (no FS access in pure conversion)
-            // Just return the most likely path
-            if (ext) return candidate;
+            // Return first candidate with matching extension
+            return candidate;
         }
-        return resolved + '.ts'; // Default assumption
+        return resolved + defaultExt;
     }
 
-    // External/node_modules imports - skip for now
+    // External/node_modules imports - return module name as-is
+    // This allows us to create module nodes and track dependencies
+    // Filter out node_modules paths (keep only package names)
+    if (!imp.source.includes('node_modules')) {
+        // Check if this looks like a workspace import with dot notation (e.g., src.db.models.ticker)
+        // Multi-part names (2+ segments) suggest workspace structure, not external packages
+        const parts = imp.source.split('.');
+
+        if (parts.length >= 2 && !imp.source.startsWith('.')) {
+            // Convert dot notation to file path for workspace imports
+            // e.g., src.db.models.ticker → src/db/models/ticker.py
+            const path = require('path');
+            const sourceExt = path.extname(sourceFileId);
+            const defaultExt = sourceExt || '.ts';
+            const filePath = parts.join('/') + defaultExt;
+            return filePath;
+        }
+
+        return imp.source; // Return module name (e.g., 'pathlib', 'os', 'json')
+    }
+
     return null;
 }
 
@@ -117,11 +215,26 @@ function resolveCallToEdge(
     fileId: string,
     callerNodeId: string,
     call: CallSite,
-    imports: ImportSpec[]
+    imports: ImportSpec[],
+    externalModules: Set<string>
 ): EdgeEntry | null {
     // If the call has a resolved definition, use it
     if (call.resolvedDefinition) {
-        const targetFileId = normalizePath(call.resolvedDefinition.file);
+        let targetFileId = call.resolvedDefinition.file;
+
+        // Check if this is a builtin (skip creating edges for builtins)
+        if (targetFileId === '<builtin>') {
+            return null;
+        }
+
+        // Don't normalize module names (they don't have paths)
+        const isExternal = !ALL_SUPPORTED_EXTENSIONS.some(ext => targetFileId.endsWith(ext))
+            && !targetFileId.includes('/');
+
+        if (!isExternal) {
+            targetFileId = normalizePath(targetFileId);
+        }
+
         const targetNodeId = `${targetFileId}::${call.resolvedDefinition.name}`;
         return {
             source: callerNodeId,

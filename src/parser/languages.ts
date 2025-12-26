@@ -1,3 +1,13 @@
+/**
+ * @deprecated DEAD CODE - LSP language configuration is currently unused.
+ * 
+ * This file configured LSP servers for various languages but the LSP approach
+ * was found to be too slow. Kept for potential future re-integration.
+ * 
+ * Current implementation uses tree-sitter for all non-TS/JS parsing.
+ * See tree-sitter.md for current architecture.
+ */
+
 export interface LanguageConfig {
     id: string;
     extensions: string[];
@@ -11,8 +21,8 @@ export const SUPPORTED_LANGUAGES: LanguageConfig[] = [
     {
         id: 'python',
         extensions: ['.py'],
-        lspCommand: 'pylsp', // or 'pyright-langserver', need to make this configurable/detectable
-        lspArgs: []
+        lspCommand: 'pyright-langserver',
+        lspArgs: ['--stdio']
     },
     {
         id: 'cpp',
@@ -70,8 +80,7 @@ export async function detectAvailableLanguages(): Promise<LanguageConfig[]> {
         } catch (e) {
             console.error(`[LSP Detection] ✗ ${lang.id.toUpperCase()}: '${lang.lspCommand}' not found in PATH`);
             if (lang.id === 'python') {
-                console.error(`[LSP Detection]   → Install: pip install python-lsp-server`);
-                console.error(`[LSP Detection]   → For .venv: Activate venv before starting, or add .venv/Scripts to PATH`);
+                console.error(`[LSP Detection]   → Install: pip install pyright`);
             } else if (lang.id === 'cpp') {
                 console.error(`[LSP Detection]   → Install clangd from LLVM or your system package manager`);
             } else if (lang.id === 'rust') {

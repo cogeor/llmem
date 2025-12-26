@@ -14,6 +14,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { GraphServer } from './server';
 import { hasEdgeLists, generateGraph, getGraphStats } from './web-launcher';
+import { main as startMcpServer } from './index';
 
 /**
  * Parse command line arguments
@@ -24,7 +25,7 @@ function parseArgs(): {
     regenerate: boolean;
     open: boolean;
     verbose: boolean;
-    command: 'serve' | 'generate' | 'stats';
+    command: 'serve' | 'generate' | 'stats' | 'mcp';
 } {
     const args = process.argv.slice(2);
     const result = {
@@ -33,7 +34,7 @@ function parseArgs(): {
         regenerate: false,
         open: false,
         verbose: false,
-        command: 'serve' as 'serve' | 'generate' | 'stats',
+        command: 'serve' as 'serve' | 'generate' | 'stats' | 'mcp',
     };
 
     for (let i = 0; i < args.length; i++) {
@@ -72,6 +73,7 @@ function parseArgs(): {
             case 'serve':
             case 'generate':
             case 'stats':
+            case 'mcp':
                 result.command = arg;
                 break;
 
@@ -129,13 +131,15 @@ function detectWorkspace(explicit?: string): string {
  */
 function printHelp(): void {
     console.log(`
-LLMem CLI - Graph Visualization Server
+LLMem CLI - Graph Visualization and MCP Server
 
 USAGE:
+  llmem <command> [OPTIONS]
   npm run serve [OPTIONS]
 
 COMMANDS:
-  serve              Start HTTP server for graph (default)
+  serve              Start HTTP server for webview (default)
+  mcp                Start MCP server for Claude Code (stdio)
   generate           Generate graph without starting server
   stats              Show graph statistics
 
@@ -286,6 +290,10 @@ async function main(): Promise<void> {
         switch (args.command) {
             case 'serve':
                 await commandServe(args);
+                break;
+            case 'mcp':
+                // Start MCP server (delegates to index.ts)
+                await startMcpServer();
                 break;
             case 'generate':
                 await commandGenerate(args);

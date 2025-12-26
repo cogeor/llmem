@@ -1,36 +1,33 @@
-# Language Server Requirements
+# Language Server Protocol (DEPRECATED)
 
-To enable visualization for languages other than TypeScript/JavaScript, you must have the corresponding Language Server executable installed and available in your system `PATH`.
+> [!CAUTION]
+> **This LSP infrastructure is currently unused/deprecated.**
+> 
+> LLMem now uses tree-sitter for all non-TypeScript/JavaScript parsing.
+> This file is kept for potential future re-integration.
 
-LLMem connects to these servers via standard IO (stdio) to extract symbol and reference information.
+## Historical Context
 
-## Supported Languages
+The LSP approach was explored to provide call graph support for multiple languages but was found to be too slow for real-time editor integration due to:
 
-### Python
-*   **Required Command**: `pylsp`
-*   **Installation**:
-    ```bash
-    pip install python-lsp-server
-    ```
-    *Note: `pyright-langserver` support is planned but currently defaults to `pylsp`.*
+1. **Startup latency**: LSP servers need time to analyze the codebase before responding
+2. **Per-request overhead**: Each call hierarchy request required significant processing
+3. **Memory usage**: Running multiple LSP servers simultaneously consumed significant resources
 
-### C / C++
-*   **Required Command**: `clangd`
-*   **Installation**:
-    *   **macOS**: `brew install typescript-language-server` (No, wait, for C++ it's llvm) -> `brew install llvm`
-    *   **Windows**: Install [LLVM](https://llvm.org/builds/) or use `winget install LLVM.LLVM`.
-    *   **Linux**: `sudo apt install clangd`
+## Current Architecture
 
-### R
-*   **Required Command**: `R`
-*   **Installation**:
-    1.  Ensure R is installed.
-    2.  Install the language server package in R:
-        ```R
-        install.packages("languageserver")
-        ```
+LLMem now uses:
 
-## Troubleshooting
-If a supported language file is not appearing in the graph:
-1.  Verify the command (`pylsp`, `clangd`, or `R`) runs from your terminal.
-2.  Restart the extension (Reload Window) after installing the tool.
+- **TypeScript/JavaScript**: TypeScript Compiler API (full imports + calls)
+- **Python, C++, Rust, R**: Tree-sitter parsers (imports only)
+
+See [tree-sitter.md](tree-sitter.md) for the current architecture.
+
+## Legacy LSP Files (Dead Code)
+
+The following files are marked as dead code and are not currently used:
+
+- `src/parser/lsp/extractor.ts` - LSP-based artifact extraction
+- `src/parser/lsp/client.ts` - LSP client communication
+- `src/parser/lsp/lsp-call-extractor.ts` - Call hierarchy extraction
+- `src/parser/languages.ts` - LSP server configurations

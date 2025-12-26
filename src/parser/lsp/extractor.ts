@@ -1,16 +1,33 @@
+/**
+ * @deprecated DEAD CODE - LSP implementation is currently unused.
+ * 
+ * This file is kept for potential future re-integration. The LSP approach
+ * was found to be too slow for real-time call graph extraction.
+ * 
+ * Current implementation uses:
+ * - TypeScript Compiler API for TS/JS (full imports + calls)
+ * - Tree-sitter for Python, C++, Rust, R (imports only)
+ * 
+ * See tree-sitter.md for current architecture.
+ */
+
 import * as path from 'path';
 import { ArtifactExtractor } from '../interfaces';
 import { FileArtifact, Entity, Loc } from '../types';
 import { LspClient } from './client';
+import { LspCallExtractor } from './lsp-call-extractor';
 import { URI } from 'vscode-uri';
 
 export class LspExtractor implements ArtifactExtractor {
     private client: LspClient;
     private languageId: string;
+    private callExtractor: LspCallExtractor | null = null;
+    private workspaceRoot: string;
 
-    constructor(command: string, args: string[], languageId: string) {
+    constructor(command: string, args: string[], languageId: string, workspaceRoot?: string) {
         this.client = new LspClient(command, args);
         this.languageId = languageId;
+        this.workspaceRoot = workspaceRoot || process.cwd();
     }
 
     public async start() {
@@ -51,16 +68,39 @@ export class LspExtractor implements ArtifactExtractor {
         const artifact: FileArtifact = {
             schemaVersion: "lsp-graph-v1",
             file: {
-                id: filePath, // Should be relative usually, but extractor receives absolute
+                id: filePath,
                 path: filePath,
                 language: this.languageId
             },
-            imports: [], // LSP doesn't genericall give imports easily without exploring AST usually
-            exports: [], // Can deduce from symbols if they are "exported" (some LSPs provide tags)
+            imports: [],
+            exports: [],
             entities: []
         };
 
-        const processSymbol = (sym: any) => {
+        // Initialize call extractor if not done
+        if (!this.callExtractor) {
+            this.callExtractor = new LspCallExtractor(
+                this.client,
+                this.languageId,
+                this.workspaceRoot
+            );
+
+            // Check capabilities
+            const caps = await this.callExtractor.checkCapabilities();
+            if (!caps.hasCallHierarchy) {
+                console.warn(`[LspExtractor] LSP for ${this.languageId} does not support call hierarchy`);
+                console.warn(`[LspExtractor] Missing capabilities: ${caps.missingCapabilities.join(', ')}`);
+                console.warn(`[LspExtractor] Call graphs will not be available for ${this.languageId} files`);
+                this.callExtractor = null;
+            }
+        }
+
+        // Extract imports
+        if (this.callExtractor) {
+            artifact.imports = await this.callExtractor.extractImports(filePath, fileContent);
+        }
+
+        const processSymbol = async (sym: any) => {
             // SymbolKind: Function = 12, Class = 5, Method = 6
             // We map generic LSP kinds to our EntityKind
             let kind: any = 'function';
@@ -100,21 +140,35 @@ export class LspExtractor implements ArtifactExtractor {
                 id: `${sym.name}-${range.start.line}`,
                 kind,
                 name: sym.name,
-                isExported: false, // Hard to tell from generic LSP
+                isExported: false,
                 loc,
                 signature,
-                calls: [] // Generic LSP doesn't give call graph inside a function easily without "outgoing calls" support
+                calls: []  // Will be populated below if call extractor available
             };
+
+            // Extract calls for this entity if call extractor is available
+            if (this.callExtractor) {
+                try {
+                    entity.calls = await this.callExtractor.extractCalls(uri, sym, fileContent);
+                } catch (e) {
+                    console.warn(`[LspExtractor] Failed to extract calls for ${sym.name}:`, e);
+                    entity.calls = [];
+                }
+            }
 
             artifact.entities.push(entity);
 
             if (sym.children) {
-                sym.children.forEach(processSymbol);
+                for (const child of sym.children) {
+                    await processSymbol(child);
+                }
             }
         };
 
         if (Array.isArray(symbols)) {
-            symbols.forEach(processSymbol);
+            for (const sym of symbols) {
+                await processSymbol(sym);
+            }
         }
 
         return artifact;

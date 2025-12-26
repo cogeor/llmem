@@ -98,16 +98,29 @@ export async function generateGraph(
     // Prepare graph data for visualization (filtered by watched files)
     const graphData = prepareWebviewDataFromSplitEdgeLists(importData, callData, watchedFiles);
 
-    // Determine extension root (where src/webview files are located)
+    // Determine extension root (where webview files are located)
+    // Priority: 1) dist/webview (portable), 2) src/webview (development)
     // When running from dist/claude/claude/index.js, extension root is ../../../
     const extensionRoot = path.resolve(__dirname, '..', '..', '..');
 
-    // Verify extension root has src/webview
-    const webviewSrc = path.join(extensionRoot, 'src', 'webview');
-    if (!fs.existsSync(webviewSrc)) {
+    // Check for webview in dist/ first (portable CLI), then src/ (development)
+    const distWebview = path.join(extensionRoot, 'dist', 'webview');
+    const srcWebview = path.join(extensionRoot, 'src', 'webview');
+
+    let webviewRoot: string;
+    if (fs.existsSync(distWebview) && fs.existsSync(path.join(distWebview, 'index.html'))) {
+        // Use dist/webview for portable CLI
+        webviewRoot = distWebview;
+    } else if (fs.existsSync(srcWebview)) {
+        // Fall back to src/webview for development
+        webviewRoot = srcWebview;
+    } else {
         throw new Error(
-            `Extension root not found. Expected src/webview at: ${webviewSrc}\n` +
-            `Current __dirname: ${__dirname}`
+            `Webview files not found. Checked:\n` +
+            `  - dist/webview at: ${distWebview}\n` +
+            `  - src/webview at: ${srcWebview}\n` +
+            `Current __dirname: ${__dirname}\n` +
+            `Run 'npm run build:webview' to generate dist/webview files.`
         );
     }
 
