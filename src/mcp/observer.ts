@@ -8,7 +8,13 @@
  * - Request start (with redacted parameters)
  * - Request end (with result summary and duration)
  * - Request errors (with error type and message)
+ *
+ * Supports two output modes:
+ * - JSON (default): Structured JSON to stderr for external processing
+ * - Pretty: Human-readable colored output via the logger module
  */
+
+import { createLogger } from '../common/logger';
 
 // ============================================================================
 // Types
@@ -175,6 +181,51 @@ export const jsonConsoleObserver: Observer = {
         }));
     },
 };
+
+/**
+ * Pretty console observer
+ * Logs human-readable colored output for development
+ */
+const mcpLogger = createLogger('mcp');
+
+export const prettyConsoleObserver: Observer = {
+    onStart: (ctx, params) => {
+        const redacted = redact(params) as Record<string, unknown>;
+        mcpLogger.debug(`→ ${ctx.toolName || ctx.method}`, {
+            requestId: ctx.requestId,
+            ...redacted,
+        });
+    },
+
+    onEnd: (ctx, result) => {
+        const durationMs = Date.now() - ctx.startMs;
+        const summary = summarize(result) as Record<string, unknown>;
+        mcpLogger.info(`✓ ${ctx.toolName || ctx.method}`, {
+            requestId: ctx.requestId,
+            durationMs,
+            result: summary.type || 'unknown',
+        });
+    },
+
+    onError: (ctx, err) => {
+        const error = err as Error | undefined;
+        const durationMs = Date.now() - ctx.startMs;
+        mcpLogger.error(`✗ ${ctx.toolName || ctx.method}`, {
+            requestId: ctx.requestId,
+            durationMs,
+            error: error?.message ?? String(err),
+        });
+    },
+};
+
+/**
+ * Get the default observer based on environment
+ * Uses pretty output in development, JSON in production
+ */
+export function getDefaultObserver(): Observer {
+    const format = process.env.LOG_FORMAT || 'pretty';
+    return format === 'json' ? jsonConsoleObserver : prettyConsoleObserver;
+}
 
 // ============================================================================
 // Handler Wrapper
