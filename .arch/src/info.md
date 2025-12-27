@@ -1,73 +1,77 @@
-# File Info Module
+# Info Module
 
-## Overview
+The info module generates documentation for files and folders, providing data for MCP tools.
 
-The `file_info` module generates human-readable markdown documentation for source files with function signatures and call graph relationships.
-
-## Current Implementation
-
-### File Structure
+## File Structure
 
 ```
 src/info/
-├── index.ts          # Public API, generateAllFileInfo(), generateAndSaveAllFileInfo()
-├── extractor.ts      # extractFileInfo() - extracts from artifacts + graph
-├── renderer.ts       # renderFileInfoMarkdown() - converts to markdown
-├── types.ts          # FileInfo, FunctionInfo, ClassInfo, CallerInfo
-└── reverse-index.ts  # buildReverseCallIndex() - caller lookup
+├── extractor.ts      # Extract file structure (imports, exports, functions)
+├── folder.ts         # Folder-level analysis using edge list data
+├── mcp.ts            # MCP integration (prompts, data preparation)
+├── renderer.ts       # Format as markdown
+├── filter.ts         # File filtering utilities
+├── types.ts          # FileInfo, FunctionInfo, etc.
+├── reverse-index.ts  # Caller lookup from edge lists
+├── index.ts          # Module exports
+├── cli.ts            # CLI for file info
+└── cli_folder.ts     # CLI for folder info
 ```
 
-### Public API
+## MCP Integration (`mcp.ts`)
+
+Provides data for the `file_info` and `folder_info` MCP tools.
 
 ```typescript
-// Generate markdown for all files
-generateAllFileInfo(rootDir, artifactsDir?): Promise<Map<string, string>>
+// Get file info for MCP tool
+getFileInfoForMcp(workspaceRoot, relativePath): Promise<{
+    filePath: string;
+    markdown: string;
+    sourceCode: string;
+}>
 
-// Generate and save to .artifacts/
-generateAndSaveAllFileInfo(rootDir): Promise<string[]>
-
-// Single file
-generateSingleFileInfo(fileId, artifact, reverseIndex): string
+// Build prompt for LLM enrichment
+buildEnrichmentPrompt(filePath, markdown, sourceCode): string
 ```
 
-### Output Format
+## File Analysis (`extractor.ts`)
 
-```markdown
-# src/graph/utils.ts
+Extracts structural information from source files.
 
-## Functions
+```typescript
+interface FileInfo {
+    path: string;
+    imports: ImportInfo[];
+    exports: ExportInfo[];
+    functions: FunctionInfo[];
+    classes: ClassInfo[];
+}
 
-### `normalizePath(p: string): string` *(exported)*
-
-**Called by:**
-- `buildImportBindings` in `src/graph/callGraph/resolution.ts`
-
-## Classes
-
-### `ColorGenerator` *(exported)*
-
-#### Methods
-
-##### `getColor(id: string): string`
+extractFileInfo(filePath, workspaceRoot): Promise<FileInfo>
 ```
 
-> Note: "Called by:" section omitted when no callers exist.
+## Folder Analysis (`folder.ts`)
 
-## Data Flow
+Summarizes folder contents using edge list data.
 
-```mermaid
-graph LR
-    A[.artifacts/*.artifact] --> B[readArtifacts]
-    B --> C[buildCallGraph]
-    C --> D[buildReverseCallIndex]
-    D --> E[extractFileInfo]
-    E --> F[renderFileInfoMarkdown]
-    F --> G[.artifacts/src/path/file.md]
+```typescript
+getFolderInfoForMcp(workspaceRoot, folderPath): Promise<FolderData>
+buildFolderEnrichmentPrompt(folderPath, data): string
 ```
 
-## MCP Integration (Planned)
+## Reverse Index (`reverse-index.ts`)
 
-New file `src/info/mcp.ts` will add:
-- `buildEnrichmentPrompt()` - LLM prompt for semantic summaries
-- `getFileInfoForMcp()` - Prepares data for MCP tool
-- `saveEnrichedFileInfo()` - Saves LLM-enriched markdown
+Builds caller lookup from call edge list.
+
+```typescript
+buildReverseCallIndex(callData): Map<string, CallerInfo[]>
+```
+
+## CLI Tools
+
+```bash
+npm run file-info          # Basic file info
+npm run file-info:sig      # With signatures
+npm run file-info:semantic # Semantic analysis
+npm run module-info        # Folder info
+```

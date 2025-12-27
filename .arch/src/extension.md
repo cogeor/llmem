@@ -1,262 +1,135 @@
-# Extension Core Implementation Plan
-# Component: src/extension/
+# Extension Module
 
-================================================================================
-## PURPOSE
-================================================================================
-Entry point for the MCP server extension. Handles lifecycle management,
-configuration loading, and MCP server initialization.
+The extension module provides VS Code/Antigravity IDE integration for LLMem.
 
-================================================================================
-## FILES & RESPONSIBILITIES
-================================================================================
+## File Structure
 
-### extension.ts
-- Register extension activation event
-- Initialize configuration on startup
-- Start MCP server process
-- Handle extension deactivation/cleanup
+```
+src/extension/
+├── extension.ts    # Extension entry point and lifecycle
+├── config.ts       # Configuration management
+├── panel.ts        # Webview panel for graph visualization
+└── hot-reload.ts   # Watch .artifacts/ for live updates
+```
 
-### config.ts
-- Load settings from environment variables
-- Provide typed configuration interface to other modules
-- Handle missing/invalid configuration gracefully
+## Extension Lifecycle (`extension.ts`)
 
-================================================================================
-## MODULE INTERACTIONS
-================================================================================
-
-INTERNAL (within extension/):
-┌─────────────────┐      ┌─────────────────┐
-│  extension.ts   │─────>│    config.ts    │
-│                 │      │                 │
-│ - activate()    │      │ - loadConfig()  │
-│ - deactivate()  │      │ - getConfig()   │
-└────────┬────────┘      └─────────────────┘
-         │
-         │ starts
-         ▼
-┌─────────────────┐
-│   MCP Server    │
-│  (src/mcp/)     │
-└─────────────────┘
-
-EXTERNAL DEPENDENCIES:
-- config.ts → Provides Config to mcp/server.ts
-- extension.ts → Starts mcp/server.ts
-
-================================================================================
-## INTERFACES
-================================================================================
+Entry point for the VS Code extension.
 
 ```typescript
-// config.ts exports
+export function activate(context: vscode.ExtensionContext): void
+export function deactivate(): void
+```
+
+**Activation:**
+1. Load configuration from `config.ts`
+2. Store workspace root in extension context
+3. Register commands (`llmem.showStatus`, `llmem.openPanel`)
+4. Start MCP server (stdio transport)
+
+**Commands:**
+- `LLMem: Show Status` — Display extension status
+- `LLMem: Open Panel` — Open the graph visualization webview
+
+## Configuration (`config.ts`)
+
+Manages extension settings.
+
+```typescript
 interface Config {
-  artifactRoot: string;
-  maxFilesPerFolder: number;
-  maxFileSizeKB: number;
+    artifactRoot: string;       // Default: '.artifacts'
+    maxFilesPerFolder: number;  // Default: 20
+    maxFileSizeKB: number;      // Default: 512
 }
 
-function loadConfig(): Config;
-function getConfig(): Config;
+function loadConfig(): Config
+function getConfig(): Config
 ```
 
-================================================================================
-## IMPLEMENTATION ORDER
-================================================================================
+Configuration sources (priority order):
+1. VS Code settings
+2. Environment variables
+3. Default values
 
-1. config.ts
-   - Environment variable loading
-   - Default values
-   - Validation logic
+## Webview Panel (`panel.ts`)
 
-2. extension.ts
-   - Activation handler
-   - Config initialization
-   - MCP server startup call
+Interactive graph visualization panel.
 
-================================================================================
-## DEPENDENCIES
-================================================================================
+```typescript
+class LLMemPanel {
+    static createOrShow(
+        extensionUri: vscode.Uri,
+        workspaceRoot: string
+    ): void
 
-External packages:
-- None (uses standard Node.js process.env)
-
-Internal dependencies:
-- Depends on: (none - this is the root)
-- Depended on by: mcp/server.ts
-
-================================================================================
-## TESTING
-================================================================================
-
-### Unit Tests (extension/)
-
-config.ts:
-- loadConfig() returns defaults when env vars missing
-- loadConfig() reads GEMINI_API_KEY from process.env
-- loadConfig() validates required fields
-- getConfig() throws if called before loadConfig()
-- getConfig() returns cached config after load
-
-extension.ts:
-- activate() calls loadConfig()
-- activate() starts MCP server with config
-- deactivate() shuts down MCP server cleanly
-
-### Integration Tests (extension/ ↔ mcp/)
-
-Extension → MCP Server:
-- Test: activate() successfully starts MCP server
-- Test: Config is correctly passed to server
-- Test: deactivate() stops server without hanging
-- Test: Server restart after config change
-
-### Module Compatibility Tests
-
-Config ↔ All Modules:
-- Test: All modules can import and use Config interface
-- Test: Config changes propagate to dependent modules
-- Test: Missing API key is handled gracefully across system
-
-================================================================================
-## ENGINEER - MANUAL TESTING WORKFLOW
-================================================================================
-
-### Prerequisites
-
-1. Node.js 18+ installed
-2. Antigravity IDE installed
-
-### Setup Steps
-
-```bash
-# 1. Navigate to project
-cd llmem
-
-# 2. Install dependencies
-npm install
-
-# 3. Compile TypeScript
-npm run compile
-
-# 4. (Optional) Copy and edit .env
-cp .env.example .env
+    dispose(): void
+}
 ```
 
-### Extension Installation (Antigravity IDE)
+Features:
+- Three-panel layout: file tree, graph, design docs
+- WebSocket connection for live updates
+- Handles toggle messages from UI
+- Manages panel lifecycle (create, reveal, dispose)
 
-Option A: Development Mode (F5)
-```bash
-# Open project in Antigravity
-antigravity .
+**Message Handling:**
+```typescript
+// Messages from webview
+{ type: 'toggle', path: string }      // Toggle file/folder watch state
+{ type: 'ready' }                     // Webview ready for data
 
-# Press F5 to launch Extension Development Host
-# This opens a new Antigravity window with the extension loaded
+// Messages to webview
+{ type: 'data', payload: GraphData }  // Initial graph data
+{ type: 'reload' }                    // Trigger refresh
 ```
 
-Option B: Package and Install via CLI
-```bash
-# Package the extension
-npm run package
+## Hot Reload (`hot-reload.ts`)
 
-# Install the .vsix file
-antigravity --install-extension llmem-0.1.0.vsix
+Watches `.artifacts/` directory for changes and triggers webview updates.
+
+```typescript
+class HotReloadService {
+    constructor(
+        workspaceRoot: string,
+        artifactRoot: string,
+        onReload: () => void
+    )
+
+    start(): void
+    stop(): void
+}
 ```
 
-Option C: Install from Extension ID (after publishing)
-```bash
-antigravity --install-extension llmem.llmem
-```
+Watched files:
+- `import-edgelist.json` — Triggers graph rebuild
+- `call-edgelist.json` — Triggers graph rebuild
+- `worktree-state.json` — Triggers UI update
 
-### MCP Server Registration (Part 2)
+Uses debouncing to avoid rapid consecutive reloads.
 
-After implementing the MCP server, register it with Antigravity:
-```bash
-# Add MCP server definition
-antigravity --add-mcp '{"name":"llmem","command":"node","args":["dist/mcp/server.js"]}'
-```
-
-This allows Antigravity's AI agent to call the LLMem MCP tools directly.
-
-### Startup Verification Checklist
-
-After extension activates, verify:
-
-□ 1. Output channel "LLMem" appears in Output panel
-     View → Output → Select "LLMem" from dropdown
-
-□ 2. Activation message shown
-     "LLMem: Extension activated" notification appears
-
-□ 3. Configuration loaded (check Output)
-     "[timestamp] Configuration loaded successfully"
-     "[timestamp]   Artifact root: .artifacts"
-
-□ 4. MCP server started (placeholder message)
-     "[timestamp] MCP server started successfully"
-
-□ 5. Status command works
-     Ctrl+Shift+P → "LLMem: Show Status"
-     Shows status message with MCP Server, Model, Artifact Root
-
-### Error Scenario Testing
-
-Test 1: Invalid maxFilesPerFolder
-- Set MAX_FILES_PER_FOLDER=invalid
-- Reload extension
-- Expected: Falls back to default (20)
-
-Test 2: Extension Deactivation
-- Close Antigravity
-- Check output for clean shutdown message
-- Expected: "LLMem extension deactivated"
-
-### Troubleshooting
-
-Issue: Extension doesn't activate
-- Check: View → Output → LLMem for error messages
-- Check: Help → Toggle Developer Tools → Console for errors
-
-Issue: Compilation errors
-- Run: npm run compile
-- Fix any TypeScript errors shown
-- Check: @types/vscode is installed
-
-Issue: MCP not recognized
-- Run: antigravity --add-mcp '{"name":"llmem",...}'
-- Verify command path points to compiled dist/mcp/server.js
-
-### Antigravity CLI Quick Reference
-
-```bash
-# List installed extensions
-antigravity --list-extensions
-
-# Install extension from .vsix
-antigravity --install-extension <path-to-vsix>
-
-# Uninstall extension
-antigravity --uninstall-extension llmem.llmem
-
-# Add MCP server
-antigravity --add-mcp '{"name":"server-name","command":"..."}'
-
-# Open with verbose logging
-antigravity --log debug .
-```
-
-### File Locations After Implementation
+## Data Flow
 
 ```
-llmem/
-├── package.json           ← Extension manifest
-├── tsconfig.json          ← TypeScript config
-├── .env.example           ← Environment template
-├── .env                   ← Your local config (gitignored)
-├── src/
-│   └── extension/
-│       ├── config.ts      ← Configuration loading
-│       └── extension.ts   ← Activation/deactivation
-└── dist/                  ← Compiled output (after npm run compile)
+1. User opens LLMem panel
+   → panel.ts creates webview
+   → Loads graph data from edge lists
+   → Renders in webview
+
+2. User toggles file in UI
+   → Webview sends toggle message
+   → panel.ts updates worktree state
+   → Triggers edge computation
+   → hot-reload.ts detects change
+   → Webview refreshes
+
+3. External file change
+   → hot-reload.ts detects
+   → Sends reload message to webview
+   → Webview refreshes graph
 ```
+
+## Development
+
+Press `F5` in VS Code to launch Extension Development Host.
+
+The extension activates on startup (`onStartupFinished` activation event).

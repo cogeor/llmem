@@ -1,54 +1,35 @@
-# Artifact Service Implementation Plan (Architectural Helper)
-# Component: src/artifact/
-================================================================================
-## PURPOSE
-================================================================================
-Manages "Mirror Artifacts" and "Folder Summaries".
+# Artifact Module (Deprecated)
 
-Naming Convention:
-- Source: `src/path/file.ts`
-- Artifact: `.artifacts/src/path/file.ts.artifact`
-- Summary: `.artifacts/src/path/path.summary`
+> **Status**: This module is largely deprecated. The edge list system (`graph/edgelist.ts`) is now the primary storage mechanism.
 
-================================================================================
-## FILES & RESPONSIBILITIES
-================================================================================
+The artifact module provides legacy support for the `.arch/` shadow filesystem.
 
-### service.ts
-- `ensureArtifacts(folderPath: string)`: 
-  - Iterates files in folder.
-  - Checks if corresponding `.artifact` exists and is fresh.
-  - If not, calls Parser -> writes `.artifact`.
-  - Returns list of ArtifactData for all files in folder.
-- `saveFolderSummary(folderPath: string, content: string)`:
-  - Writes `.summary` file for the folder.
+## Current Usage
 
-### path-mapper.ts
-- `sourceToArtifactPath(srcPath)`: `src/a.ts` -> `.artifacts/src/a.ts.artifact`
-- `folderToSummaryPath(folderPath)`: `src/utils` -> `.artifacts/src/utils/utils.summary`
+The module is still used for:
+- Path mapping between source files and `.arch/` documentation
+- File I/O utilities for saving design documents
 
-### types.ts
-- `FileArtifact`: Just the signatures and path.
-- `FolderSummary`: Markdown content + metadata.
+## File Structure
 
-================================================================================
-## MODULE INTERACTIONS
-================================================================================
+```
+src/artifact/
+├── service.ts      # Storage backend (deprecated)
+├── storage.ts      # File I/O operations
+├── path-mapper.ts  # Path utilities
+├── tree.ts         # Directory tree (deprecated)
+├── types.ts        # Type definitions
+└── index.ts        # Module exports
+```
 
-┌─────────────────────┐      ┌───────────────────────────┐
-│ src/mcp/tools.ts    │      │ src/parser/               │
-│ (get_artifacts)     │      │                           │
-└──────────┬──────────┘      │ - parseFile(srcPath)      │
-           │                 └─────────────▲─────────────┘
-           ▼                               │
-┌──────────────────────────────────────────┴───────────────┐
-│ src/artifact/service.ts                                  │
-│                                                          │
-│ - ensureArtifacts(folder) ───────────────────────────────┘
-│   Loop:                                                  │
-│     Call Parser -> Write .artifact                       │
-│   Return [ArtifactData...]                               │
-│                                                          │
-│ - saveFolderSummary(folder, text)                        │
-│   Write .summary                                         │
-└──────────────────────────────────────────────────────────┘
+## Migration
+
+The old artifact system stored per-file `.artifact` JSON files. This has been replaced by:
+
+| Old System | New System |
+|------------|------------|
+| `.artifacts/src/file.ts.artifact` | Edge lists in `.artifacts/*.json` |
+| Folder `.summary` files | `report_folder_info` saves to `.arch/` |
+| Per-file metadata | Edge list nodes/edges |
+
+Documentation is now saved directly to `.arch/` via MCP tools (`report_file_info`, `report_folder_info`).

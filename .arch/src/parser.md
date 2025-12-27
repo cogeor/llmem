@@ -1,131 +1,171 @@
-# Part 4: Text Processing Implementation Plan
-# Component: src/parser/
+# Parser Module
 
-================================================================================
-## PURPOSE
-================================================================================
-Robust code structure extraction using TypeScript Compiler API (primary) and Tree-sitter (fallback).
-Parses source files into AST, extracts semantic information (resolved imports, full signatures, cross-file references),
-and stores as structured JSON in `.artifact` files.
+The parser module provides multi-language code analysis using the adapter pattern. TypeScript/JavaScript uses the TS Compiler API (with full call graph support), while other languages use Tree-sitter (import graphs only).
 
-DESIGN GOAL: For each source file, generate a corresponding .artifact file containing
-rich structural data (entities + callsites) and semantic edges (resolved paths) to enable validation and graph construction.
+## File Structure
 
-Example:
-  src/extension/config.ts → .artifacts/src/extension/config.ts.artifact
-
-================================================================================
-## FILES & RESPONSIBILITIES
-================================================================================
-
-### interfaces.ts
-- `ArtifactExtractor`: Common interface for all language extractors.
-
-### ts-extractor.ts (Primary for TS/JS)
-- Implements `ArtifactExtractor`.
-- Uses `ts.Program` and `ts.TypeChecker`.
-- Extracts:
-    - **Imports**: Resolves module specifiers to absolute paths.
-    - **Exports**: Analyzes symbol exports and re-exports.
-    - **Entities**: Extracts functions, classes, methods with signatures.
-    - **Call Sites**: Finds references (calls/new) within entities.
-
-### ts-service.ts
-- Manages `ts.Program` lifecycle.
-- Provides singleton access to the Program for the workspace.
-- Handles creation of temporary programs for files not in the main project config.
-
-### extractor.ts (Fallback / Non-TS)
-- Uses Tree-sitter and S-expression queries.
-- Legacy extraction logic for generic file support.
-
-### parser.ts
-- Tree-sitter initialization and language detection.
-
-### types.ts
-- `FileArtifact`, `Entity`, `ImportSpec`, `CallSite` interfaces.
-
-================================================================================
-## DATA MODEL (Artifact JSON Structure)
-================================================================================
-
-```typescript
-type Loc = {
-  startByte: number; endByte: number;
-  startLine: number; endLine: number;
-  startColumn: number; endColumn: number;
-};
-
-type FileArtifact = {
-  schemaVersion: "ts-graph-v1";
-  file: { id: string; path: string; language: string };
-  imports: ImportSpec[];
-  exports: ExportSpec[];
-  entities: Entity[];
-};
-
-type ImportSpec = {
-  kind: "es";
-  source: string;             // raw module specifier
-  resolvedPath: string | null; // Resolved absolute path (populated by TS extractor)
-  specifiers: { name: string; alias?: string }[];
-  loc: Loc;
-};
-
-type ExportSpec = {
-  type: "named" | "default" | "reexport" | "all";
-  name: string;      // exported name
-  localName?: string; // local entity name if different
-  source?: string;   // for re-exports
-  loc: Loc;
-};
-
-type EntityKind = "class" | "function" | "method" | "arrow" | "const";
-
-type Entity = {
-  id: string; // generated stable ID (e.g. file#name@byte)
-  kind: EntityKind;
-  name: string;
-  isExported: boolean;
-  loc: Loc;
-  signature?: string; // full signature text
-  calls?: CallSite[]; // outgoing calls
-};
-
-type CallSite = {
-  callSiteId: string;
-  kind: "function" | "method" | "new";
-  calleeName: string; // best effort name extraction
-  loc: Loc;
-};
+```
+src/parser/
+├── registry.ts         # ParserRegistry singleton - routes files to adapters
+├── adapter.ts          # LanguageAdapter interface and TreeSitterAdapter base
+├── config.ts           # Language configuration and extension mappings
+├── interfaces.ts       # ArtifactExtractor interface
+├── types.ts            # Data types (Entity, ImportSpec, etc.)
+├── ts-service.ts       # TypeScript Program lifecycle management
+├── ts-extractor.ts     # TypeScript/JavaScript extractor (full call graph)
+├── line-counter.ts     # Line counting utilities
+├── index.ts            # Module exports
+│
+├── typescript/         # TypeScript adapter
+│   └── adapter.ts
+├── python/             # Python adapter (tree-sitter)
+│   ├── adapter.ts
+│   └── extractor.ts
+├── cpp/                # C/C++ adapter (tree-sitter)
+│   ├── adapter.ts
+│   └── extractor.ts
+├── rust/               # Rust adapter (tree-sitter)
+│   ├── adapter.ts
+│   └── extractor.ts
+├── r/                  # R adapter (tree-sitter)
+│   ├── adapter.ts
+│   └── extractor.ts
+└── lsp/                # Legacy LSP support (deprecated)
 ```
 
-================================================================================
-## IMPLEMENTATION STRATEGY
-================================================================================
+## Language Support
 
-1.  **TypeScript Service**:
-    -   Initialize with workspace root.
-    -   Load `tsconfig.json` or create default configuration.
-    -   Expose `getProgram()` method.
+| Language | Parser | Import Graph | Call Graph |
+|----------|--------|:------------:|:----------:|
+| TypeScript/JavaScript | TS Compiler API | Yes | Yes |
+| Python | tree-sitter-python | Yes | No |
+| C/C++ | tree-sitter-cpp | Yes | No |
+| Rust | tree-sitter-rust | Yes | No |
+| R | tree-sitter-r | Yes | No |
 
-2.  **TypeScript Extractor**:
-    -   Uses `program.getSourceFile(path)`.
-    -   Uses `program.getTypeChecker()` to resolve symbols and paths.
-    -   Traverses AST (forEachChild) to find nodes.
-    -   Populates `resolvedPath` in `ImportSpec`.
+## Architecture
 
-3.  **Fallback Strategy**:
-    -   If file is not TS/JS/TSX, or if TS extractor fails (fails to parse), use `OutlineGenerator` (Tree-sitter).
-    -   Ensures continued support for other languages or loose files.
+### ParserRegistry (`registry.ts`)
 
-4.  **Service Integration**:
-    -   `src/artifact/service.ts` initializes `TypeScriptService` and `TypeScriptExtractor`.
-    -   `ensureArtifacts` checks extension and selects extractor.
+Singleton that maps file extensions to language adapters.
 
-================================================================================
-## VERIFICATION
-================================================================================
+```typescript
+class ParserRegistry {
+    static getInstance(): ParserRegistry
+    registerAdapter(adapter: LanguageAdapter): void
+    getParser(filePath: string, workspaceRoot: string): ArtifactExtractor | null
+    getLanguageId(filePath: string): string | null
+    isSupported(filePath: string): boolean
+    getSupportedExtensions(): string[]
+}
+```
 
--   **Unit Tests**: `src/test/artifact/service.test.ts` verifies artifacts are generated from source.
--   **Semantic Check**: Verify `imports` contain valid `resolvedPath`.
+On initialization, the registry:
+1. Registers TypeScript adapter (always available)
+2. Attempts to load optional tree-sitter grammars
+3. Logs which languages are available
+
+### LanguageAdapter (`adapter.ts`)
+
+Interface for adding new language support.
+
+```typescript
+interface LanguageAdapter {
+    readonly id: string;           // 'python', 'rust', 'cpp'
+    readonly displayName: string;  // 'Python', 'Rust', 'C++'
+    readonly extensions: readonly string[];  // ['.py'], ['.rs']
+    readonly npmPackage?: string;  // 'tree-sitter-python'
+
+    createExtractor(workspaceRoot: string): ArtifactExtractor
+}
+```
+
+**TreeSitterAdapter** — Base class for tree-sitter based languages.
+
+### ArtifactExtractor (`interfaces.ts`)
+
+Common interface for all language extractors.
+
+```typescript
+interface ArtifactExtractor {
+    extractImports(filePath: string): ImportInfo[]
+    extractFunctions(filePath: string): FunctionInfo[]
+}
+```
+
+## TypeScript Support
+
+### TypeScriptService (`ts-service.ts`)
+
+Manages TypeScript Program lifecycle for the workspace.
+
+```typescript
+class TypeScriptService {
+    constructor(workspaceRoot: string)
+    getProgram(): ts.Program
+    getTypeChecker(): ts.TypeChecker
+    getSourceFile(filePath: string): ts.SourceFile | undefined
+}
+```
+
+Features:
+- Loads `tsconfig.json` or creates default config
+- Provides singleton Program for workspace
+- Handles incremental updates
+
+### TypeScriptExtractor (`ts-extractor.ts`)
+
+Full-featured extractor using TS Compiler API.
+
+Extracts:
+- **Imports**: Resolved module paths (not just specifiers)
+- **Exports**: Named, default, re-exports
+- **Functions**: With full signatures
+- **Call sites**: Function-to-function calls (enables call graph)
+
+## Tree-sitter Languages
+
+Each tree-sitter language follows the same pattern:
+
+```typescript
+// python/adapter.ts
+export class PythonAdapter extends TreeSitterAdapter {
+    readonly id = 'python';
+    readonly displayName = 'Python';
+    readonly extensions = ['.py'] as const;
+    readonly npmPackage = 'tree-sitter-python';
+
+    protected createExtractorInstance(workspaceRoot: string) {
+        return new PythonExtractor(workspaceRoot);
+    }
+}
+
+// python/extractor.ts
+export class PythonExtractor implements ArtifactExtractor {
+    extractImports(filePath: string): ImportInfo[] { ... }
+    extractFunctions(filePath: string): FunctionInfo[] { ... }
+}
+```
+
+Tree-sitter extractors only produce import graphs (no call graph resolution).
+
+## Adding a New Language
+
+1. Install tree-sitter grammar: `npm install tree-sitter-<language>`
+2. Create `parser/<language>/adapter.ts` extending `TreeSitterAdapter`
+3. Create `parser/<language>/extractor.ts` implementing `ArtifactExtractor`
+4. Register in `registry.ts` constructor
+
+## Configuration (`config.ts`)
+
+Maps file extensions to language IDs and tree-sitter grammars.
+
+```typescript
+const ALL_SUPPORTED_EXTENSIONS = [
+    '.ts', '.tsx', '.js', '.jsx',  // TypeScript/JavaScript
+    '.py',                          // Python
+    '.c', '.h', '.cpp', '.hpp',    // C/C++
+    '.rs',                          // Rust
+    '.R', '.r',                     // R
+];
+```

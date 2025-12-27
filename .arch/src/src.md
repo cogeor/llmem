@@ -1,46 +1,91 @@
 # LLMem Codebase Overview
 
-LLMem is an MCP (Model Context Protocol) server designed to enhance LLM interactions by providing a "shadow filesystem" of summarized code artifacts. It integrates with the Antigravity IDE to allow agents to efficiently navigate and understand large codebases.
+LLMem is an MCP (Model Context Protocol) server that provides interactive graph visualization and AI-assisted documentation for codebases. It works with both **Claude Code** (as a CLI plugin) and **VS Code/Antigravity** (as an extension).
 
-## Core Functionality
+## Core Architecture
 
-1.  **Shadow Filesystem**: Maintains a parallel `.artifacts/` directory containing high-level summaries (`.artifact`, `.html`) for every source file.
-2.  **Strategic Analysis**: Uses Tree-sitter to parse code and generate structural summaries (imports, exports, signatures) without reading the full file content.
-3.  **MCP Server**: Exposes tools (`analyze_codebase`, `inspect_source`) that agents use to discover and read these summaries.
-4.  **Visualization**: Provides a webview to visualize the project structure and dependency graphs (Import/Call graphs).
+1. **Edge List Storage**: Import and call relationships stored as JSON edge lists in `.artifacts/`
+2. **Multi-Language Parsing**: Tree-sitter for Python/C++/Rust/R, TypeScript Compiler API for TS/JS
+3. **MCP Server**: Exposes tools (`file_info`, `folder_info`, `inspect_source`) for AI agents
+4. **Two-Phase Documentation**: Extract structure → LLM enrichment → save to `.arch/`
+5. **Graph Visualization**: Interactive webview with import and call graphs
 
-## Codebase Layout (`src/`)
+## Source Layout (`src/`)
 
-The source code is organized into distinct modules separating the extension lifecycle from the core logic.
+### `claude/` — Claude Code Integration
+- `index.ts` — MCP server entry point for Claude Code
+- `cli.ts` — CLI commands: `serve`, `generate`, `stats`, `mcp`
+- `server.ts` — Graph server with HTTP + WebSocket
+- `server/` — File watching, hot reload, WebSocket handlers
 
-### 1. `extension/` (VS Code Integration)
--   **Entry Point**: `extension.ts` handles activation, configuration loading (`config.ts`), and the `LLMemPanel` webview lifecycle.
--   **Responsibility**: Bridges the VS Code API and the MCP server.
+### `extension/` — VS Code/Antigravity Integration
+- `extension.ts` — Extension activation and lifecycle
+- `config.ts` — Configuration management
+- `panel.ts` — Webview panel for graph visualization
+- `hot-reload.ts` — Watch `.artifacts/` for live updates
 
-### 2. `mcp/` (Model Context Protocol Server)
--   **Entry Point**: `server.ts` initializes the SDK server and connects via stdio transport.
--   **Tools**: `tools.ts` defines the registry of tools available to the Agent (e.g., `analyze_codebase`).
--   **Responsibility**: Handles JSON-RPC requests from the agent and delegates to the Artifact Service.
+### `mcp/` — Model Context Protocol Server
+- `server.ts` — MCP SDK initialization with stdio transport
+- `tools.ts` — Tool definitions: `file_info`, `folder_info`, `report_file_info`, `report_folder_info`, `inspect_source`, `open_window`
+- `handlers.ts` — Request validation and response formatting
+- `path-utils.ts` — Workspace path validation
 
-### 3. `artifact/` (Core Logic)
--   **Service**: `service.ts` is the central coordinator for analyzing files and managing the artifact store.
--   **Path Mapping**: `path-mapper.ts` resolves relationships between source files (`src/foo.ts`) and artifacts (`.artifacts/src/foo.ts.artifact`).
--   **Tree Generation**: `tree.ts` builds the directory structure representation.
+### `graph/` — Edge List Storage
+- `edgelist.ts` — `ImportEdgeListStore` and `CallEdgeListStore` classes
+- `webview-data.ts` — Transform edge lists for visualization
+- `worktree-state.ts` — Track watched files for lazy computation
 
-### 4. `parser/` (Static Analysis)
--   **Tree-sitter**: Wraps language parsers to extract "skeleton" representations of code (signatures, classes, methods) for efficient summarization.
+### `parser/` — Code Analysis
+- `registry.ts` — Language adapter registration
+- `adapter.ts` — Base adapter interface
+- `ts-service.ts` / `ts-extractor.ts` — TypeScript/JavaScript (full call graph)
+- `python/`, `cpp/`, `rust/`, `r/` — Tree-sitter adapters (imports only)
 
-### 5. `graph/` (Dependency Modeling)
--   **Builders**: `importGraph/builder.ts` and `callGraph/builder.ts` construct the dependency and call graphs used in the webview.
--   **Data Models**: Defines `VisNode` and `VisEdge` structures for `vis.js`.
+### `info/` — Documentation Generation
+- `extractor.ts` — Extract file structure (imports, exports, functions)
+- `folder.ts` — Folder-level analysis
+- `mcp.ts` — Build enrichment prompts for LLM
+- `renderer.ts` — Format as markdown
 
-### 6. `webview/` (Visualization UI)
--   **Frontend**: `js/main.js`, `Router.js`, and components (`GraphView`, `DesignTextView`) build the interactive UI.
--   **Generator**: `generator.ts` statically compiles the webview assets into `.artifacts/webview`.
+### `webview/` — Graph Visualization UI
+- `generator.ts` — Static HTML generation
+- `ui/main.ts` — UI entry point
+- `ui/components/` — Worktree, DesignTextView, ViewToggle
+- `ui/graph/` — GraphRenderer, EdgeRenderer, NodeRenderer
+- `ui/services/` — Data providers, caching, watch API
+
+### `artifact/` — Legacy Storage (Deprecated)
+- Shadow filesystem for `.arch/` documentation
+- Being replaced by edge list system
+
+### `scripts/` — Build Utilities
+- `generate_edgelist.ts` — Scan codebase for edges
+- `generate_webview.ts` — Build static webview
+- `build_webview.ts` — Bundle webview assets
 
 ## Data Flow
 
-1.  **Agent Request**: Agent calls `llmem_analyze_codebase`.
-2.  **MCP Layer**: `server.ts` receives request -> `tools.ts` executes handler.
-3.  **Artifact Layer**: `service.ts` checks `parser/` for code structure and `artifact/` storage for existing summaries.
-4.  **Response**: Structural summary returned to Agent.
+### Graph Building
+```
+Toggle file in UI → Parse with Tree-sitter/TS Compiler
+  → Extract imports/calls → Add to edge list (in-memory)
+  → Periodic save to JSON → Update webview
+```
+
+### Documentation Generation
+```
+Agent calls file_info → Extract structure + source
+  → Return enrichment prompt → LLM processes
+  → Agent calls report_file_info → Save to .arch/
+```
+
+## Key Files
+
+| Purpose | File |
+|---------|------|
+| Edge list storage | `graph/edgelist.ts` |
+| MCP tool definitions | `mcp/tools.ts` |
+| Language registry | `parser/registry.ts` |
+| Webview generation | `webview/generator.ts` |
+| Claude CLI | `claude/cli.ts` |
+| VS Code extension | `extension/extension.ts` |

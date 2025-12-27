@@ -20,7 +20,7 @@ import {
     formatPromptResponse,
     generateCorrelationId,
 } from './handlers';
-import { jsonConsoleObserver, withObservation } from './observer';
+import { getDefaultObserver, withObservation } from './observer';
 import {
     validateWorkspaceRoot,
     validateWorkspacePath,
@@ -134,7 +134,7 @@ async function handleFileInfoImpl(
 }
 
 export const handleFileInfo = withObservation(
-    jsonConsoleObserver,
+    getDefaultObserver(),
     {
         requestId: generateCorrelationId(),
         method: 'tools/call',
@@ -221,7 +221,7 @@ async function handleReportFileInfoImpl(
 }
 
 export const handleReportFileInfo = withObservation(
-    jsonConsoleObserver,
+    getDefaultObserver(),
     {
         requestId: generateCorrelationId(),
         method: 'tools/call',
@@ -269,7 +269,7 @@ async function handleFolderInfoImpl(
 }
 
 export const handleFolderInfo = withObservation(
-    jsonConsoleObserver,
+    getDefaultObserver(),
     {
         requestId: generateCorrelationId(),
         method: 'tools/call',
@@ -335,7 +335,7 @@ async function handleReportFolderInfoImpl(
 }
 
 export const handleReportFolderInfo = withObservation(
-    jsonConsoleObserver,
+    getDefaultObserver(),
     {
         requestId: generateCorrelationId(),
         method: 'tools/call',
@@ -386,7 +386,7 @@ async function handleInspectSourceImpl(
 }
 
 export const handleInspectSource = withObservation(
-    jsonConsoleObserver,
+    getDefaultObserver(),
     {
         requestId: generateCorrelationId(),
         method: 'tools/call',
@@ -438,7 +438,7 @@ async function handleOpenWindowImpl(
 }
 
 export const handleOpenWindow = withObservation(
-    jsonConsoleObserver,
+    getDefaultObserver(),
     {
         requestId: generateCorrelationId(),
         method: 'tools/call',

@@ -1,163 +1,174 @@
-# MCP Refactor Design
+# MCP Module
 
-## Overview
+The MCP (Model Context Protocol) module exposes tools for AI agents to analyze and document codebases.
 
-Refactor the MCP to provide a single, focused tool: `file_info()`. This tool generates semantic documentation for source files by combining structural extraction with LLM-powered summarization.
+## File Structure
 
-## Goals
-
-1. **Single Entry Point**: One tool (`file_info`) instead of 5 scattered tools
-2. **LLM-Powered Enrichment**: LLM reads source, summarizes each function
-3. **Semantic Understanding**: Output should be detailed enough to reimplement the function
-4. **Connection Awareness**: Document file's relationships (imports, callers)
-
-## MCP Flow
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant MCP as file_info()
-    participant Info as InfoExtractor
-    participant LLM as Host LLM
-    participant Store as Storage
-
-    User->>MCP: file_info(path)
-    MCP->>Info: generateFileInfo(path)
-    Info-->>MCP: {functions, classes, callers}
-    MCP->>LLM: prompt_ready (enrichment prompt)
-    LLM->>LLM: Read source, analyze each function
-    LLM->>MCP: report_file_info(enriched data)
-    MCP->>Store: Save enriched markdown
-    Store-->>User: Enriched file documentation
+```
+src/mcp/
+├── server.ts       # MCP server initialization with stdio transport
+├── tools.ts        # Tool definitions and handlers
+├── handlers.ts     # Request validation, response formatting
+├── path-utils.ts   # Workspace path validation utilities
+└── observer.ts     # Request/response logging
 ```
 
-## Output Format (Enriched)
-
-```markdown
-# src/graph/builder.ts
-
-## Overview
-
-This file handles graph construction from parsed artifacts.
-It reads import/export data and builds node/edge structures.
-
-**Inputs**: Artifact bundles from `.artifacts/` directory
-**Outputs**: ImportGraph, CallGraph data structures
-**Connections**: Called by `src/graph/index.ts::buildGraphs`
-
----
-
-## Functions
-
-### `buildCallGraph(artifacts: ArtifactBundle[]): CallGraph`
-
-**Purpose**: Constructs a call graph from parsed file artifacts.
-
-**Implementation Summary**:
-1. Creates nodes for each function/method entity
-2. Builds auxiliary indices for lookup
-3. Resolves call edges using import bindings
-4. Returns graph with resolved and unresolved calls
-
-**Called by:**
-- `buildGraphs` in `src/graph/index.ts`
-
----
-
-## Classes
-
-### `ResolutionCache`
-
-**Purpose**: Caches resolved symbol lookups to avoid redundant computation.
-
-#### Methods
-
-##### `get(key: string): string | undefined`
-Retrieves cached resolution result.
-
-##### `set(key: string, value: string): void`
-Stores resolution result for future lookups.
-```
-
-## New Tool Schema
+## Tools
 
 ### `file_info`
 
+Extract file structure and return enrichment prompt for LLM documentation.
+
 ```typescript
 FileInfoSchema = z.object({
-    path: z.string().describe('Path to file (relative to workspace root)')
+    workspaceRoot: z.string(),  // Absolute path to workspace
+    path: z.string(),           // Relative path to file
 });
 ```
 
-**Response**: `prompt_ready` with enrichment prompt
+**Response**: `prompt_ready` with enrichment prompt for the host LLM.
 
-### `report_file_info` (callback)
+### `report_file_info`
+
+Callback to save LLM-generated file documentation.
 
 ```typescript
 ReportFileInfoSchema = z.object({
-    path: z.string().describe('File path'),
-    overview: z.string().describe('File overview summary'),
-    inputs: z.string().optional().describe('What the file takes as input'),
-    outputs: z.string().optional().describe('What the file produces'),
+    workspaceRoot: z.string(),
+    path: z.string(),
+    overview: z.string(),
+    inputs: z.string().optional(),
+    outputs: z.string().optional(),
     functions: z.array(z.object({
         name: z.string(),
         purpose: z.string(),
-        implementation: z.string()
-    }))
+        implementation: z.string(),
+    })),
 });
 ```
 
-**Response**: Saves enriched markdown to `.artifacts/src/<path>/file_name.md`
+**Output**: Saves to `.arch/<path>.md`
 
-## Prompt Template
+### `folder_info`
 
-```
-You are a Code Documentation Assistant.
+Extract folder structure and return enrichment prompt.
 
-I have extracted the following structure for file: "{filePath}"
-
-## Structural Info:
-{fileInfoMarkdown}
-
-## Source Code:
-{sourceCode}
-
-## Task:
-1. Write a brief **Overview** of this file (2-3 sentences):
-   - What is its purpose?
-   - What are its main inputs/outputs?
-   - What files depend on it or does it depend on?
-
-2. For EACH function/method listed:
-   - Write a **Purpose** (1 sentence describing what it does)
-   - Write an **Implementation Summary** (3-5 bullet points, enough detail that someone could reimplement it)
-
-3. Call `report_file_info` with your enriched documentation.
+```typescript
+FolderInfoSchema = z.object({
+    workspaceRoot: z.string(),
+    path: z.string(),           // Relative path to folder
+});
 ```
 
-## Files to Change
+**Response**: `prompt_ready` with folder enrichment prompt.
 
-### Remove
-- `handleAnalyzeCodebase` (replaced by file_info)
-- `handleReportAnalysis` (replaced by report_file_info)
+### `report_folder_info`
 
-### Keep (modified)
-- `handleInspectSource` - Still useful for LLM to read specific lines
-- `handleSetWorkspaceRoot` - Still needed for standalone mode
-- `handleOpenWindow` - Keep for webview generation
+Callback to save LLM-generated folder documentation.
 
-### Add
-- `handleFileInfo` - New primary entry point
-- `handleReportFileInfo` - New callback for LLM results
+```typescript
+ReportFolderInfoSchema = z.object({
+    workspaceRoot: z.string(),
+    path: z.string(),
+    overview: z.string(),
+    inputs: z.string().optional(),
+    outputs: z.string().optional(),
+    key_files: z.array(z.object({
+        name: z.string(),
+        summary: z.string(),
+    })),
+    architecture: z.string(),
+});
+```
 
-## Integration with `src/info/`
+**Output**: Saves to `.arch/<folder>/README.md`
 
-The new MCP will use:
-- `generateSingleFileInfo()` from `src/info/index.ts`
-- `buildReverseCallIndex()` for caller info
-- `readFile()` for source code
+### `inspect_source`
 
-## Storage
+Read specific lines from a source file.
 
-Enriched files saved to: `.artifacts/src/<path>/file_name.md`
-(Same location as basic file_info, but with LLM enrichment)
+```typescript
+InspectSourceSchema = z.object({
+    path: z.string(),       // Relative path
+    startLine: z.number(),  // 1-indexed
+    endLine: z.number(),    // 1-indexed
+});
+```
+
+### `open_window`
+
+Open the LLMem webview panel (VS Code/Antigravity only).
+
+```typescript
+OpenWindowSchema = z.object({
+    viewColumn: z.number().optional(),  // 1-3
+});
+```
+
+## Two-Phase Documentation Flow
+
+```
+1. Agent calls file_info(path)
+   → Extract imports, exports, functions
+   → Build enrichment prompt with source code
+   → Return prompt_ready response
+
+2. Host LLM processes prompt
+   → Reads source code
+   → Generates overview and function summaries
+
+3. Agent calls report_file_info(enriched data)
+   → Format as markdown design document
+   → Save to .arch/<path>.md
+   → Return success
+```
+
+## Path Security
+
+All tools validate paths to prevent directory traversal:
+
+```typescript
+// path-utils.ts
+validateWorkspaceRoot(root)        // Ensure root exists and is absolute
+validateWorkspacePath(root, path)  // Ensure path stays within workspace
+writeFileInWorkspace(root, path, content)  // Safe file write
+readFileInWorkspace(root, path)    // Safe file read
+```
+
+## Server Initialization
+
+```typescript
+// server.ts
+export async function startServer(
+    config: Config,
+    workspaceRoot: string
+): Promise<void>
+```
+
+Uses MCP SDK with stdio transport for communication with AI agents.
+
+## Response Types
+
+```typescript
+// handlers.ts
+formatSuccess(data)           // Successful response
+formatError(message)          // Error response
+formatPromptResponse(         // Response requiring LLM action
+    prompt,
+    callbackTool,
+    callbackArgs
+)
+```
+
+## Observability
+
+All tool calls are wrapped with `withObservation()` for logging:
+
+```typescript
+// observer.ts
+export const handleFileInfo = withObservation(
+    jsonConsoleObserver,
+    { requestId, method, toolName },
+    handleFileInfoImpl
+);
+```

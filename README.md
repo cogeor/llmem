@@ -1,20 +1,25 @@
-# LLMem - Codebase Summary Tool
+# LLMem - Codebase Graph & Documentation Tool
 
-**LLMem** is an MCP (Model Context Protocol) server extension designed for the Antigravity IDE. It provides **interactive graph visualization** of your codebase's import dependencies and function calls, alongside tools for generating architectural documentation.
+**LLMem** is an MCP (Model Context Protocol) server that provides **interactive graph visualization** of your codebase's import dependencies and function calls, alongside tools for generating architectural documentation.
 
-By pre-computing dependency graphs and structural summaries, LLMem allows the MCP agent to provide rich codebase context **without additional reasoning or searching**. This reduces the number of output tokens and enables a broader understanding of the codebase in a single query.
+Works with:
+- **Claude Code** — as a CLI plugin with live-reloading webview
+- **Antigravity IDE / VS Code** — as an extension with integrated panel
+
+By pre-computing dependency graphs and structural summaries, LLMem allows MCP agents to provide rich codebase context **without additional reasoning or searching**. This reduces output tokens and enables broader codebase understanding in a single query.
 
 ![LLMem Plugin Overview](images/graph-preview.png)
 
-**Note:** This project started December 11th, 2025 and is in the alpha stage. I am a team of one, developing this as a hobby. It will always stay free and open-source. If you find issues, or have suggestions, please don't hesitate to contact me. You can find more information on the design of the project, and other topics on my [personal website](https://www.costasnotes.ch) and (soon) [substack](https://substack.com/@costageorgantas).
+**Note:** This project started December 11th, 2025 and is in the alpha stage. I am a team of one, developing this as a hobby. It will always stay free and open-source. If you find issues or have suggestions, please don't hesitate to contact me. You can find more information on the design of the project, and other topics on my [personal website](https://www.costasnotes.ch) and (soon) [substack](https://substack.com/@costageorgantas).
 
 ## 🚀 Key Features
 
-- **MCP-Native**: Operates as a Model Context Protocol server, compatible with any VS Code-like IDE.
-- **Shadow Filesystem**: Maintains a parallel `.arch/` directory. For every source file or folder, LLMem creates corresponding documentation files.
-- **Strategic Summarization**: Generates high-level summaries for folders and files, allowing the LLM to understand the codebase structure without requiring full file contents in context.
-- **Code Intelligence**: Detailed structural analysis (imports, exports, function signatures) using Tree-sitter parsers.
-- **Graph Visualization**: Interactive visualization of import dependencies and function calls across your codebase.
+- **Dual Platform**: Works as a Claude Code CLI plugin or VS Code/Antigravity extension
+- **MCP-Native**: Full Model Context Protocol support for AI-powered codebase analysis
+- **Graph Visualization**: Interactive visualization of import dependencies and function calls
+- **Code Intelligence**: Structural analysis (imports, exports, function signatures) using Tree-sitter parsers
+- **Shadow Filesystem**: Maintains a parallel `.arch/` directory with AI-generated documentation
+- **Live Reload**: Graph server watches for changes and auto-updates the visualization
 
 > [!IMPORTANT]
 > **Call graphs are TypeScript/JavaScript only.** Other languages (Python, C++, Rust, R) support import graphs only.
@@ -32,103 +37,142 @@ LLMem uses tree-sitter for fast, reliable parsing. TypeScript/JavaScript also us
 | Rust | `.rs` | tree-sitter | ✅ | ❌ |
 | R | `.R`, `.r` | tree-sitter | ✅ | ❌ |
 
+**To enable additional languages**, install the corresponding tree-sitter grammar:
+
+```bash
+npm install tree-sitter-python    # Python support
+npm install tree-sitter-cpp       # C/C++ support
+npm install tree-sitter-rust      # Rust support
+npm install @davisvaughan/tree-sitter-r  # R support
+```
+
 > [!TIP]
-> Install tree-sitter grammar packages via npm for additional language support. If a package is missing, LLMem will skip that language.
+> TypeScript/JavaScript works out of the box. Other languages require installing their grammar package.
 
 ## 📦 Installation
 
 Prerequisites:
-- Antigravity IDE (or VS Code)
 - Node.js (v18+)
+- Claude Code CLI, Antigravity IDE, or VS Code
 
-### Install as Extension
+### Option A: Claude Code Plugin
 
 1. **Clone and build**
    ```bash
-   git clone https://github.com/your-org/llmem.git
+   git clone https://github.com/llmem/llmem.git
+   cd llmem
+   npm install
+   npm run build:claude
+   ```
+
+2. **(Optional) Add language support** — install grammars for languages you need:
+   ```bash
+   npm install tree-sitter-python tree-sitter-cpp  # etc.
+   ```
+
+3. **Add to Claude Code config** (`~/.config/claude/config.json` or `settings.json`):
+   ```json
+   {
+     "mcpServers": {
+       "llmem": {
+         "command": "node",
+         "args": ["/path/to/llmem/dist/claude/index.js"]
+       }
+     }
+   }
+   ```
+
+4. **Start the graph server** (in your project directory):
+   ```bash
+   npm run serve
+   ```
+   This starts a live-reloading webview at `http://localhost:3000`.
+
+### Option B: VS Code / Antigravity Extension
+
+1. **Clone and build**
+   ```bash
+   git clone https://github.com/llmem/llmem.git
    cd llmem
    npm install
    npm run package
    ```
    This creates a `.vsix` file in the project root.
 
-2. **Install the VSIX**
+2. **(Optional) Add language support** — install grammars for languages you need:
    ```bash
+   npm install tree-sitter-python tree-sitter-cpp  # etc.
+   ```
+
+3. **Install the VSIX**
+   ```bash
+   code --install-extension llmem-0.1.0.vsix
+   # or for Antigravity:
    antigravity --install-extension llmem-0.1.0.vsix
    ```
 
 ### Development Mode
 
-For contributors who want to run/debug the extension:
+For contributors:
 
-1. **Clone the repository**
+1. **Clone and install**
    ```bash
-   git clone https://github.com/your-org/llmem.git
+   git clone https://github.com/llmem/llmem.git
    cd llmem
-   ```
-
-2. **Install dependencies**
-   ```bash
    npm install
    ```
 
-3. **Build the extension**
+2. **Build**
    ```bash
-   npm run build
+   npm run build:all    # Build both VS Code extension and Claude CLI
    ```
 
-4. **Launch in development mode**
-   Open the folder in Antigravity/VS Code, then press `F5` to launch the Extension Development Host. The extension will be active in the new window.
+3. **Run**
+   - **VS Code/Antigravity**: Press `F5` to launch Extension Development Host
+   - **Claude CLI**: Run `npm run serve` to start the graph server
 
 ## 🎯 Usage Workflow
 
-LLMem works in two stages: **graph visualization** (in the IDE panel) and **documentation generation** (via MCP tools).
+LLMem works in two stages: **graph visualization** and **documentation generation** (via MCP tools).
 
-### Step 1: Open the LLMem Panel
+### Using with Claude Code
 
-Open the command palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and run:
+1. **Start the graph server** in your project:
+   ```bash
+   npm run serve
+   ```
+   This opens the webview at `http://localhost:3000` with live reload.
 
-```
-LLMem: Open View Panel
-```
+2. **Toggle watched files** in the left panel — click the circles next to files/folders to include them in the graph.
 
-This opens the LLMem webview showing your workspace file tree and the dependency graph.
+3. **Use MCP tools** via Claude:
+   - "Run mcp folder_info on src/graph"
+   - "Run mcp file_info on src/mcp/tools.ts"
 
-### Step 2: Toggle Watched Files
+### Using with VS Code / Antigravity
 
-For large codebases, graph edges are computed **lazily** to save resources:
+1. **Open the LLMem Panel** via command palette (`Ctrl+Shift+P`):
+   ```
+   LLMem: Open View Panel
+   ```
 
-1. In the file explorer (left panel), you'll see toggle buttons (circles) next to files and folders — these are toggled watch lists
-2. **Grey** circles indicate unwatched items; **green** circles indicate watched items
-3. Click a toggle to **watch** a file/folder — this triggers edge computation and turns the button green
-4. Watched items have their import and call relationships appear in the graph
+2. **Toggle watched files** — grey circles = unwatched, green = watched.
+
+3. **Use MCP tools** via the IDE's agent.
+
+### Navigating the Graph
+
+The graph displays:
+- **Import edges**: File-to-file import dependencies (all languages)
+- **Call edges**: Function-to-function call relationships (**TypeScript/JavaScript only**)
+
+**Controls:**
+- Pan: Click and drag
+- Zoom: Mouse wheel
+- Select: Click a node to highlight connections
 
 > [!TIP]
 > Toggle an entire folder to watch all files within it at once.
-
-### Step 3: Explore the Graph
-
-The graph (shown in the preview image above) displays:
-- **Import edges**: File-to-file import dependencies (all languages)
-- **Call edges**: Function-to-function call relationships (**TypeScript/JavaScript only**)
-- **Node selection**: Click a node to highlight its connections
-
-**Navigation:**
-- Pan: Click and drag
-- Zoom: Mouse wheel
-- Select: Click a node
-
-### Step 4: Generate Documentation via MCP
-
-Once edges are computed, use your MCP-compatible agent (e.g., Antigravity) to generate documentation:
-
-**Folder documentation:**
-> "Run mcp folder_info on src/graph"
-
-**File documentation:**
-> "Run mcp file_info on src/mcp/tools.ts"
-
-The agent uses the computed graph to understand dependencies and generates detailed documentation saved to `.arch/`.
 
 ---
 
@@ -144,36 +188,46 @@ The agent uses the computed graph to understand dependencies and generates detai
 | `open_window` | Open the LLMem panel in the IDE |
 
 > [!IMPORTANT]
-> MCP documentation tools require the graph to be computed first. Make sure to **toggle watched files** in the panel before generating summaries.
+> MCP documentation tools require the graph to be computed first. Make sure to **toggle watched files** before generating summaries.
 
 ## 🏗️ Architecture
 
-The user flows from **User** -> **MCP Agent** -> **LLMem MCP Server**.
+```
+User → MCP Agent (Claude Code / Antigravity) → LLMem MCP Server
+```
 
-- **User**: Asks a question about the codebase.
-- **Agent**: Determines it needs code context and calls MCP tools.
+- **User**: Asks a question about the codebase
+- **Agent**: Calls MCP tools to gather context
 - **LLMem**:
-    1. Analyzes the codebase using Tree-sitter and edge graph data.
-    2. Generates prompts for the LLM to create documentation.
-    3. Saves documentation to `.arch/` directory.
-- **Agent**: Uses the context to answer the User.
+  1. Parses code using Tree-sitter (TS Compiler API for TypeScript/JavaScript)
+  2. Builds import/call graphs from edge list data
+  3. Generates documentation prompts for the LLM
+  4. Saves documentation to `.arch/` directory
+- **Agent**: Uses the context to answer the User
 
 ## 🛠️ Development
 
-- **Build**: `npm run compile`
-- **Watch**: `npm run watch` (for auto-recompilation)
-- **Test**: `npm test`
+| Command | Description |
+|---------|-------------|
+| `npm run build:all` | Build everything (VS Code + Claude CLI) |
+| `npm run build:vscode` | Build VS Code extension only |
+| `npm run build:claude` | Build Claude CLI only |
+| `npm run watch` | Watch mode for TypeScript |
+| `npm run serve` | Start graph server with live reload |
+| `npm test` | Run tests |
 
 ## 📁 Directory Structure
 
-- `src/extension`: VS Code/Antigravity IDE integration.
-- `src/mcp`: MCP server implementation with tool handlers (`file_info`, `folder_info`, `inspect_source`, etc.).
-- `src/artifact`: Core logic for managing the artifact filesystem and path mapping.
-- `src/parser`: Tree-sitter based code analysis and signature extraction.
-- `src/graph`: EdgeList graph data structures for tracking imports and function calls.
-- `src/info`: Information extraction utilities for file and folder documentation.
-- `src/webview`: Interactive graph visualization UI components.
-- `images/`: Screenshot assets for documentation.
+| Directory | Description |
+|-----------|-------------|
+| `src/extension` | VS Code/Antigravity IDE integration |
+| `src/claude` | Claude Code CLI plugin and graph server |
+| `src/mcp` | MCP server implementation and tool handlers |
+| `src/parser` | Tree-sitter parsers for code analysis |
+| `src/graph` | EdgeList data structures for imports and calls |
+| `src/info` | Information extraction for documentation |
+| `src/webview` | Interactive graph visualization UI |
+| `src/artifact` | Shadow filesystem (`.arch/`) management |
 
 ## 📄 License
 
