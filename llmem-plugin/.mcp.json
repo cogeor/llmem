@@ -3,7 +3,8 @@
     "command": "node",
     "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.js", "mcp"],
     "env": {
-      "LLMEM_WORKSPACE": "${workspaceFolder}"
+      "LLMEM_WORKSPACE": "${workspaceFolder}",
+      "NODE_PATH": "${LLMEM_NODE_MODULES}"
     }
   }
 }
