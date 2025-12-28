@@ -1,7 +1,7 @@
 
 import * as fs from 'fs-extra';
 import * as path from 'path';
-import * as esbuild from 'esbuild';
+// NOTE: esbuild is lazy-loaded to avoid errors when not installed (e.g., in bundled MCP server)
 import { generateWorkTree } from './worktree';
 import { convertAllMarkdown } from './utils/md-converter';
 import { loadDesignDocs } from './design-docs';
@@ -79,7 +79,10 @@ export async function generateStaticWebview(
         }
     } else {
         // Bundle from source TypeScript
+        // Lazy-load esbuild to avoid errors when not installed
         try {
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            const esbuild = require('esbuild');
             await esbuild.build({
                 entryPoints: [path.join(srcWebview, 'ui', 'main.ts')],
                 bundle: true,
