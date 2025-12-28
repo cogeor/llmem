@@ -1,7 +1,7 @@
 {
   "llmem": {
     "command": "node",
-    "args": ["${CLAUDE_PLUGIN_ROOT}/../dist/claude/claude/cli.js", "mcp"],
+    "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.js", "mcp"],
     "env": {
       "LLMEM_WORKSPACE": "${workspaceFolder}"
     }
