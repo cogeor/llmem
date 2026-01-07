@@ -1,7 +1,7 @@
 /**
  * Line Counter
- * 
- * Counts lines of code in folders, supporting all LSP-enabled languages.
+ *
+ * Counts lines of code in folders for all supported languages.
  * Used for determining whether to defer call graph computation.
  */
 

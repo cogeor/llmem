@@ -24,7 +24,7 @@ LLMem uses tree-sitter for fast, reliable syntax parsing of non-TypeScript/JavaS
 
 1. **Fast**: Incremental parsing, 10,000+ lines/sec
 2. **Accurate**: Language-specific grammars maintained by the community
-3. **No external dependencies**: Works offline, no LSP servers needed
+3. **No external dependencies**: Works offline, no language toolchains required
 4. **Consistent**: Same parsing behavior across platforms
 
 ## Supported Languages
@@ -48,7 +48,6 @@ Tree-sitter provides **syntax** only, not **semantics**. For TypeScript/JavaScri
 
 For other languages, reliable call graph extraction would require:
 - Language-specific type systems
-- LSP servers (which are slow and complex)
 - Custom semantic analysis per language
 
 The tradeoff: **Import graphs for all languages, call graphs for TS/JS only**.

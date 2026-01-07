@@ -441,8 +441,8 @@ A: No. Start with basics (imports, functions, calls). Incrementally add classes,
 **Q: What if import resolution is complex (like Python's PYTHONPATH)?**
 A: Best-effort resolution is fine. Unresolved imports just show as module names, not file paths.
 
-**Q: Can I use LSP instead of tree-sitter?**
-A: Yes, but you'll need to implement the adapter differently (see `TypeScriptAdapter` for compiler API example). Tree-sitter is faster and doesn't require language servers installed.
+**Q: Can I use a compiler API instead of tree-sitter?**
+A: Yes, but you'll need to implement the adapter differently (see `TypeScriptAdapter` for compiler API example). Tree-sitter is faster and works without needing language-specific toolchains installed.
 
 **Q: How do I handle language-specific features (Rust lifetimes, C++ templates)?**
 A: Include them in the signature string. They don't need special handling for graph edges.

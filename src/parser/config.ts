@@ -73,7 +73,7 @@ export function isSupportedFile(filename: string): boolean {
 }
 
 /**
- * Get language identifier from file path (for syntax highlighting, LSP, etc.)
+ * Get language identifier from file path (for syntax highlighting, etc.)
  */
 export function getLanguageFromPath(filePath: string): string {
     if (filePath.endsWith('.ts') || filePath.endsWith('.tsx')) return 'typescript';

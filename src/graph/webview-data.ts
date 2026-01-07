@@ -1,11 +1,10 @@
 /**
  * Prepares graph data for the visualization webview.
- * 
- * Supports both split stores (ImportEdgeListStore + CallEdgeListStore)
- * and legacy single-file EdgeListStore.
+ *
+ * Uses split stores (ImportEdgeListStore + CallEdgeListStore).
  */
 
-import { buildGraphsFromEdgeList, buildGraphsFromSplitEdgeLists } from './index';
+import { buildGraphsFromSplitEdgeLists } from './index';
 import { ColorGenerator } from './utils';
 import { EdgeListData } from './edgelist';
 
@@ -47,15 +46,6 @@ export function prepareWebviewDataFromSplitEdgeLists(
     watchedFiles?: Set<string>
 ): WebviewGraphData {
     const { importGraph, callGraph } = buildGraphsFromSplitEdgeLists(importData, callData, watchedFiles);
-    return transformGraphsToVisData(importGraph, callGraph);
-}
-
-/**
- * Prepare webview data from legacy single edge list.
- * @deprecated Use prepareWebviewDataFromSplitEdgeLists() with separate stores
- */
-export function prepareWebviewDataFromEdgeList(data: EdgeListData): WebviewGraphData {
-    const { importGraph, callGraph } = buildGraphsFromEdgeList(data);
     return transformGraphsToVisData(importGraph, callGraph);
 }
 

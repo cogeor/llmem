@@ -1,6 +1,5 @@
-
-import { prepareWebviewDataFromEdgeList } from '../graph/webview-data';
-import { EdgeListStore } from '../graph/edgelist';
+import { prepareWebviewDataFromSplitEdgeLists } from '../graph/webview-data';
+import { ImportEdgeListStore, CallEdgeListStore } from '../graph/edgelist';
 import { generateStaticWebview, GeneratorOptions } from '../webview/generator';
 import { loadConfig, getConfig } from '../extension/config';
 import * as path from 'path';
@@ -30,14 +29,17 @@ async function run() {
         const root = process.cwd();
         const artifactDir = path.join(root, config.artifactRoot);
 
-        console.log(`Loading edge list from: ${artifactDir}`);
-        const edgeListStore = new EdgeListStore(artifactDir);
-        await edgeListStore.load();
+        console.log(`Loading edge lists from: ${artifactDir}`);
+        const importStore = new ImportEdgeListStore(artifactDir);
+        const callStore = new CallEdgeListStore(artifactDir);
+        await Promise.all([importStore.load(), callStore.load()]);
 
-        const stats = edgeListStore.getStats();
-        console.log(`Edge list: ${stats.nodes} nodes, ${stats.edges} edges`);
+        const importStats = importStore.getStats();
+        const callStats = callStore.getStats();
+        console.log(`Import edge list: ${importStats.nodes} nodes, ${importStats.edges} edges`);
+        console.log(`Call edge list: ${callStats.nodes} nodes, ${callStats.edges} edges`);
 
-        const graphData = prepareWebviewDataFromEdgeList(edgeListStore.getData());
+        const graphData = prepareWebviewDataFromSplitEdgeLists(importStore.getData(), callStore.getData());
 
         console.log(`Import Nodes: ${graphData.importGraph.nodes.length}`);
         console.log(`Call Nodes: ${graphData.callGraph.nodes.length}`);

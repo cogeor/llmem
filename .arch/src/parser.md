@@ -27,10 +27,9 @@ src/parser/
 ├── rust/               # Rust adapter (tree-sitter)
 │   ├── adapter.ts
 │   └── extractor.ts
-├── r/                  # R adapter (tree-sitter)
-│   ├── adapter.ts
-│   └── extractor.ts
-└── lsp/                # Legacy LSP support (deprecated)
+└── r/                  # R adapter (tree-sitter)
+    ├── adapter.ts
+    └── extractor.ts
 ```
 
 ## Language Support
