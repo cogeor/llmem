@@ -103,18 +103,17 @@ Edge list-based graph representation for tracking relationships:
 
 ### Parser System (`src/parser/`)
 
-Code analysis using Language Server Protocol and Tree-sitter:
+Code analysis using TypeScript Compiler API and Tree-sitter:
 
 - **ts-service.ts**: TypeScript/JavaScript analysis (built-in)
 - **ts-extractor.ts**: Extract imports, exports, function signatures
-- **registry.ts**: LSP server registry for multiple languages
-- **config.ts**: Language-specific LSP configurations (Python, C/C++, Rust, Dart, R)
+- **registry.ts**: Parser registry for multiple languages
+- **config.ts**: Extension mappings and parser configuration
 - **interfaces.ts**: Common interfaces for all language parsers
 
 **Multi-Language Support**:
-- TypeScript/JavaScript: Built-in support
-- Other languages: Require LSP servers in PATH (pylsp, clangd, rust-analyzer, etc.)
-- Auto-detection: LLMem checks for available LSP servers at runtime
+- TypeScript/JavaScript: Built-in support via TypeScript Compiler API
+- Python, C/C++, Rust, R: Tree-sitter parsers (import graphs only)
 
 ### Information Extraction (`src/info/`)
 
@@ -166,7 +165,7 @@ Agent processes with LLM, calls report_file_info
 
 ```
 User toggles file/folder to "watched"
-  → Parse source files with LSP/Tree-sitter
+  → Parse source files with TS Compiler/Tree-sitter
   → Extract import edges (file → file)
   → Extract call edges (function → function)
   → Add to edge lists (in-memory)

@@ -1,9 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { generateWorkTree, ITreeNode } from './worktree';
-import { prepareWebviewDataFromSplitEdgeLists, prepareWebviewDataFromEdgeList, WebviewGraphData } from '../graph/webview-data';
+import { prepareWebviewDataFromSplitEdgeLists, WebviewGraphData } from '../graph/webview-data';
 import { DesignDocManager, DesignDoc } from './design-docs';
-import { ImportEdgeListStore, CallEdgeListStore, EdgeListStore } from '../graph/edgelist';
+import { ImportEdgeListStore, CallEdgeListStore } from '../graph/edgelist';
 import { TypeScriptService } from '../parser/ts-service';
 import { TypeScriptExtractor } from '../parser/ts-extractor';
 import { artifactToEdgeList } from '../graph/artifact-converter';
@@ -161,8 +161,8 @@ export class WebviewDataService {
 
         const program = tsService.getProgram();
         if (!program) {
-            console.warn('[WebviewDataService] No TypeScript program created - this is expected for projects using other languages (Python, C++, R, Dart, Rust, etc.)');
-            console.warn('[WebviewDataService] TypeScript files will not be processed. Use LSP-based tools for other languages.');
+            console.warn('[WebviewDataService] No TypeScript program created - this is expected for non-TS/JS projects');
+            console.warn('[WebviewDataService] TypeScript files will not be processed. Other languages use tree-sitter parsers.');
             return;
         }
 
@@ -280,38 +280,4 @@ export class WebviewDataService {
         };
     }
 
-    /**
-     * Collects data using a provided legacy EdgeListStore (for backward compatibility).
-     * @deprecated Use collectDataWithSplitEdgeLists() instead
-     */
-    static async collectDataWithEdgeList(
-        projectRoot: string,
-        edgeListStore: EdgeListStore
-    ): Promise<WebviewData> {
-        // Ensure .arch exists
-        const archRoot = path.join(projectRoot, '.arch');
-        if (!fs.existsSync(archRoot)) {
-            try {
-                fs.mkdirSync(archRoot, { recursive: true });
-            } catch (e) {
-                console.error('Failed to create .arch directory:', e);
-            }
-        }
-
-        // 1. Graph Data (from provided edge list)
-        const graphData = prepareWebviewDataFromEdgeList(edgeListStore.getData());
-
-        // 2. Work Tree
-        const workTree = await generateWorkTree(projectRoot, projectRoot);
-
-        // 3. Design Docs
-        const docManager = new DesignDocManager(projectRoot);
-        const designDocs = await docManager.getAllDocsAsync();
-
-        return {
-            graphData,
-            workTree,
-            designDocs
-        };
-    }
 }

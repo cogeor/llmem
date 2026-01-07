@@ -30,8 +30,8 @@ import {
 import { getStoredWorkspaceRoot } from './server';
 import { getConfig } from '../extension/config';
 import { generateStaticWebview } from '../webview/generator';
-import { prepareWebviewDataFromEdgeList } from '../graph/webview-data';
-import { EdgeListStore } from '../graph/edgelist';
+import { prepareWebviewDataFromSplitEdgeLists } from '../graph/webview-data';
+import { ImportEdgeListStore, CallEdgeListStore } from '../graph/edgelist';
 
 // ============================================================================
 // Tool Schemas (Zod)
@@ -419,10 +419,11 @@ async function handleOpenWindowImpl(
 
     const artifactDir = path.join(root, safeConfig.artifactRoot);
 
-    // Load edge list and build graphs
-    const edgeListStore = new EdgeListStore(artifactDir);
-    await edgeListStore.load();
-    const graphData = prepareWebviewDataFromEdgeList(edgeListStore.getData());
+    // Load split edge lists and build graphs
+    const importStore = new ImportEdgeListStore(artifactDir);
+    const callStore = new CallEdgeListStore(artifactDir);
+    await Promise.all([importStore.load(), callStore.load()]);
+    const graphData = prepareWebviewDataFromSplitEdgeLists(importStore.getData(), callStore.getData());
 
     // Generate Webview
     const webviewDir = path.join(artifactDir, 'webview');
