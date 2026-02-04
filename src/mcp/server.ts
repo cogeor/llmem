@@ -134,6 +134,7 @@ export async function startServer(config: Config, workspaceRoot: string): Promis
         if (!tool) {
             console.error(`[${reqCorrelationId}] Unknown tool: ${toolName}`);
             return {
+                isError: true,
                 content: [
                     {
                         type: 'text',
@@ -161,6 +162,7 @@ export async function startServer(config: Config, workspaceRoot: string): Promis
             const errorMessage = err instanceof Error ? err.message : String(err);
             console.error(`[${reqCorrelationId}] Tool error: ${errorMessage}`);
             return {
+                isError: true,
                 content: [
                     {
                         type: 'text',
