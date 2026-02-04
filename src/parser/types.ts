@@ -8,7 +8,7 @@ export interface Loc {
 }
 
 export type ImportSpec = {
-    kind: 'es';
+    kind: 'es' | 'namespace';
     source: string;
     resolvedPath: string | null;
     specifiers: Array<{ name: string; alias?: string }>;
