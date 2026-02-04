@@ -9,12 +9,13 @@
  * - Or auto-detects project root by walking up from cwd
  *
  * Usage in Claude Code:
- * Add to ~/.config/claude/config.json:
+ * 1. Install: npm link (from the llmem directory)
+ * 2. Add to Claude Code settings:
  * {
  *   "mcpServers": {
  *     "llmem": {
- *       "command": "node",
- *       "args": ["/path/to/llmem/dist/claude/index.js"],
+ *       "command": "llmem",
+ *       "args": ["mcp"],
  *       "env": {
  *         "LLMEM_WORKSPACE": "${workspaceFolder}"
  *       }
