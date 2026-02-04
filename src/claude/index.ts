@@ -24,7 +24,7 @@
  * }
  */
 
-import { startServer } from '../mcp/server';
+import { startServer, stopServer } from '../mcp/server';
 import { getClaudeConfig } from './config';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -84,6 +84,20 @@ async function main(): Promise<void> {
         await startServer(config, workspaceRoot);
         console.error('[Claude] MCP server started successfully');
         console.error('[Claude] Ready to receive requests from Claude Code');
+
+        // Graceful shutdown handler
+        const shutdown = async (signal: string) => {
+            console.error(`[Claude] Received ${signal}, shutting down gracefully...`);
+            try {
+                await stopServer();
+            } catch (err) {
+                console.error('[Claude] Error during shutdown:', err);
+            }
+            process.exit(0);
+        };
+
+        process.once('SIGTERM', () => shutdown('SIGTERM'));
+        process.once('SIGINT', () => shutdown('SIGINT'));
     } catch (error) {
         console.error('[Claude] Failed to start MCP server:', error);
         process.exit(1);
