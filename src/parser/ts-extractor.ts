@@ -108,8 +108,12 @@ export class TypeScriptExtractor implements ArtifactExtractor {
                         // (Checker usually works if program is correct)
                     }
 
+                    // Determine import kind based on specifiers
+                    const hasNamespaceImport = specifiers.some(s => s.name === '*');
+                    const importKind = hasNamespaceImport ? 'namespace' : 'es';
+
                     imports.push({
-                        kind: 'es',
+                        kind: importKind,
                         source,
                         resolvedPath,
                         specifiers,
@@ -163,6 +167,30 @@ export class TypeScriptExtractor implements ArtifactExtractor {
                 });
             }
 
+            // INTERFACE DECLARATIONS (export interface Foo { ... })
+            else if (ts.isInterfaceDeclaration(node)) {
+                const isExported = !!(node.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword));
+                if (isExported && node.name) {
+                    exports.push({
+                        type: 'named',
+                        name: node.name.text,
+                        loc: getLoc(node)
+                    });
+                }
+            }
+
+            // TYPE ALIAS DECLARATIONS (export type Foo = ...)
+            else if (ts.isTypeAliasDeclaration(node)) {
+                const isExported = !!(node.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword));
+                if (isExported && node.name) {
+                    exports.push({
+                        type: 'named',
+                        name: node.name.text,
+                        loc: getLoc(node)
+                    });
+                }
+            }
+
             // ENTITIES (Functions, Classes, Variables that are const arrows)
             else if (ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node) || ts.isMethodDeclaration(node) || ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
                 let name = '';
@@ -174,10 +202,24 @@ export class TypeScriptExtractor implements ArtifactExtractor {
                     name = node.name?.text || 'anonymous';
                     kind = 'function';
                     isExported = !!(node.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword));
+                    if (isExported && node.name) {
+                        exports.push({
+                            type: 'named',
+                            name: node.name.text,
+                            loc: getLoc(node)
+                        });
+                    }
                 } else if (ts.isClassDeclaration(node)) {
                     name = node.name?.text || 'anonymous';
                     kind = 'class';
                     isExported = !!(node.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword));
+                    if (isExported && node.name) {
+                        exports.push({
+                            type: 'named',
+                            name: node.name.text,
+                            loc: getLoc(node)
+                        });
+                    }
                 } else if (ts.isMethodDeclaration(node)) {
                     name = node.name?.getText(sourceFile) || 'anonymous';
                     kind = 'method';
