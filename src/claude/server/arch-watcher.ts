@@ -62,6 +62,10 @@ export class ArchWatcherService {
         // Load marked for markdown conversion
         await this.loadMarked();
 
+        if (!this.marked) {
+            console.warn('[ArchWatcher] marked module not available - HTML rendering disabled. Install the "marked" npm package.');
+        }
+
         // Ensure .arch directory exists
         if (!fs.existsSync(this.archDir)) {
             try {
@@ -148,8 +152,12 @@ export class ArchWatcherService {
 
         // Schedule new event
         const timeout = setTimeout(async () => {
-            this.pendingEvents.delete(absolutePath);
-            await this.emitEvent(type, absolutePath);
+            try {
+                this.pendingEvents.delete(absolutePath);
+                await this.emitEvent(type, absolutePath);
+            } catch (e) {
+                console.error(`[ArchWatcher] Error in debounce handler for ${absolutePath}:`, e);
+            }
         }, this.debounceDelay);
 
         this.pendingEvents.set(absolutePath, timeout);

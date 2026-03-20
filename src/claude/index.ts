@@ -98,6 +98,10 @@ async function main(): Promise<void> {
 
         process.once('SIGTERM', () => shutdown('SIGTERM'));
         process.once('SIGINT', () => shutdown('SIGINT'));
+
+        process.on('unhandledRejection', (reason, promise) => {
+            console.error('[Claude] Unhandled rejection:', reason);
+        });
     } catch (error) {
         console.error('[Claude] Failed to start MCP server:', error);
         process.exit(1);

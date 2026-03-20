@@ -173,15 +173,16 @@ async function handleFileInfoImpl(
     );
 }
 
-export const handleFileInfo = withObservation(
-    getDefaultObserver(),
-    {
-        requestId: generateCorrelationId(),
-        method: 'tools/call',
-        toolName: 'file_info',
-    },
-    handleFileInfoImpl
-);
+export const handleFileInfo = (args: unknown) =>
+    withObservation(
+        getDefaultObserver(),
+        {
+            requestId: generateCorrelationId(),
+            method: 'tools/call',
+            toolName: 'file_info',
+        },
+        handleFileInfoImpl
+    )(args);
 
 /**
  * Callback: Receive LLM enrichment and format as design document
@@ -261,15 +262,16 @@ async function handleReportFileInfoImpl(
     });
 }
 
-export const handleReportFileInfo = withObservation(
-    getDefaultObserver(),
-    {
-        requestId: generateCorrelationId(),
-        method: 'tools/call',
-        toolName: 'report_file_info',
-    },
-    handleReportFileInfoImpl
-);
+export const handleReportFileInfo = (args: unknown) =>
+    withObservation(
+        getDefaultObserver(),
+        {
+            requestId: generateCorrelationId(),
+            method: 'tools/call',
+            toolName: 'report_file_info',
+        },
+        handleReportFileInfoImpl
+    )(args);
 
 /**
  * Get folder info for semantic enrichment
@@ -310,15 +312,16 @@ async function handleFolderInfoImpl(
     );
 }
 
-export const handleFolderInfo = withObservation(
-    getDefaultObserver(),
-    {
-        requestId: generateCorrelationId(),
-        method: 'tools/call',
-        toolName: 'folder_info',
-    },
-    handleFolderInfoImpl
-);
+export const handleFolderInfo = (args: unknown) =>
+    withObservation(
+        getDefaultObserver(),
+        {
+            requestId: generateCorrelationId(),
+            method: 'tools/call',
+            toolName: 'folder_info',
+        },
+        handleFolderInfoImpl
+    )(args);
 
 /**
  * Callback: Receive LLM enrichment for folder info
@@ -377,15 +380,16 @@ async function handleReportFolderInfoImpl(
     });
 }
 
-export const handleReportFolderInfo = withObservation(
-    getDefaultObserver(),
-    {
-        requestId: generateCorrelationId(),
-        method: 'tools/call',
-        toolName: 'report_folder_info',
-    },
-    handleReportFolderInfoImpl
-);
+export const handleReportFolderInfo = (args: unknown) =>
+    withObservation(
+        getDefaultObserver(),
+        {
+            requestId: generateCorrelationId(),
+            method: 'tools/call',
+            toolName: 'report_folder_info',
+        },
+        handleReportFolderInfoImpl
+    )(args);
 
 /**
  * Inspect specific lines of source code
@@ -435,15 +439,16 @@ async function handleInspectSourceImpl(
     return formatSuccess(snippet);
 }
 
-export const handleInspectSource = withObservation(
-    getDefaultObserver(),
-    {
-        requestId: generateCorrelationId(),
-        method: 'tools/call',
-        toolName: 'inspect_source',
-    },
-    handleInspectSourceImpl
-);
+export const handleInspectSource = (args: unknown) =>
+    withObservation(
+        getDefaultObserver(),
+        {
+            requestId: generateCorrelationId(),
+            method: 'tools/call',
+            toolName: 'inspect_source',
+        },
+        handleInspectSourceImpl
+    )(args);
 
 /**
  * Generate Static Webview for Browser Viewing
@@ -488,15 +493,16 @@ async function handleOpenWindowImpl(
     });
 }
 
-export const handleOpenWindow = withObservation(
-    getDefaultObserver(),
-    {
-        requestId: generateCorrelationId(),
-        method: 'tools/call',
-        toolName: 'open_window',
-    },
-    handleOpenWindowImpl
-);
+export const handleOpenWindow = (args: unknown) =>
+    withObservation(
+        getDefaultObserver(),
+        {
+            requestId: generateCorrelationId(),
+            method: 'tools/call',
+            toolName: 'open_window',
+        },
+        handleOpenWindowImpl
+    )(args);
 
 // ============================================================================
 // Tool Definitions for Registration
