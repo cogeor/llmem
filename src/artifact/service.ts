@@ -113,7 +113,8 @@ export function getWorkspaceRoot(): string {
 export function getSupportedExtensions(): string[] {
     // Use ParserRegistry to get supported extensions
     try {
-        const { ParserRegistry } = require('./parser/registry');
+        // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+        const { ParserRegistry } = require('../parser/registry');
         return ParserRegistry.getInstance().getSupportedExtensions();
     } catch {
         // Fallback if registry not available

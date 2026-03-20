@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
 import { HotReloadService } from './hot-reload';
 import { getConfig } from './config';
 import { WebviewDataService } from '../webview/data-service';
@@ -231,7 +232,6 @@ export class LLMemPanel {
         const absolutePath = path.join(workspaceRoot, targetPath);
 
         // Detect if path is file or folder
-        const fs = require('fs');
         const isFile = fs.existsSync(absolutePath) && fs.statSync(absolutePath).isFile();
 
         console.log(`[LLMemPanel] Regenerating edges for: ${targetPath} (isFile: ${isFile})`);
@@ -276,7 +276,6 @@ export class LLMemPanel {
 
         const config = getConfig();
         const artifactRoot = path.join(workspaceRoot, config.artifactRoot);
-        const fs = require('fs');
 
         console.log(`[LLMemPanel] Toggle watch: ${targetPath} -> ${watched}`);
 
