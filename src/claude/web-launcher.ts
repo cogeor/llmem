@@ -219,15 +219,20 @@ export async function getGraphStats(
  * @param url - file:// URL to open
  */
 export function openInBrowser(url: string): void {
-    const { exec } = require('child_process');
-    const command =
-        process.platform === 'win32'
-            ? 'start'
-            : process.platform === 'darwin'
-                ? 'open'
-                : 'xdg-open';
-
-    exec(`${command} "${url}"`, (error: any) => {
+    const { execFile } = require('child_process');
+    let cmd: string;
+    let args: string[];
+    if (process.platform === 'win32') {
+        cmd = 'cmd';
+        args = ['/c', 'start', '', url];
+    } else if (process.platform === 'darwin') {
+        cmd = 'open';
+        args = [url];
+    } else {
+        cmd = 'xdg-open';
+        args = [url];
+    }
+    execFile(cmd, args, (error: any) => {
         if (error) {
             console.error(`Failed to open browser: ${error.message}`);
         }
