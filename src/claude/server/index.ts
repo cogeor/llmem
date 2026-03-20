@@ -29,6 +29,8 @@ export interface ServerConfig {
     openBrowser?: boolean;
     /** Enable verbose logging (default: false) */
     verbose?: boolean;
+    /** Optional Bearer token required for POST /api/arch */
+    apiToken?: string;
 }
 
 /**
@@ -42,7 +44,7 @@ export class GraphServer {
     private watchManager: WatchManager;
     private archWatcher: ArchWatcherService;
 
-    private config: Required<ServerConfig>;
+    private config: Required<ServerConfig> & { apiToken: string };
     private webviewDir: string;
     private isRegenerating = false;
 
@@ -53,6 +55,7 @@ export class GraphServer {
             artifactRoot: config.artifactRoot || '.artifacts',
             openBrowser: config.openBrowser || false,
             verbose: config.verbose || false,
+            apiToken: config.apiToken || '',
         };
 
         this.webviewDir = path.join(
@@ -122,7 +125,7 @@ export class GraphServer {
 
         // Start listening
         await new Promise<void>((resolve, reject) => {
-            this.httpServer!.listen(this.config.port, () => {
+            this.httpServer!.listen(this.config.port, '127.0.0.1', () => {
                 this.printServerInfo();
                 resolve();
             });
@@ -284,6 +287,17 @@ export class GraphServer {
                 }
             } else if (req.method === 'POST') {
                 // POST /api/arch - Save design document
+                if (this.config.apiToken) {
+                    const authHeader = req.headers['authorization'] ?? '';
+                    const expected = `Bearer ${this.config.apiToken}`;
+                    if (authHeader !== expected) {
+                        this.httpHandler.sendJson(res, 401, {
+                            success: false,
+                            message: 'Unauthorized'
+                        });
+                        return;
+                    }
+                }
                 const body = await this.readRequestBody(req);
                 let parsed;
                 try {
@@ -448,14 +462,21 @@ export class GraphServer {
      * Open browser
      */
     private openBrowser(): void {
-        const { exec } = require('child_process');
-        const url = `http://localhost:${this.config.port}`;
-        const command =
-            process.platform === 'win32' ? 'start' :
-            process.platform === 'darwin' ? 'open' :
-            'xdg-open';
-
-        exec(`${command} "${url}"`, (error: any) => {
+        const { execFile } = require('child_process');
+        const url = `http://127.0.0.1:${this.config.port}`;
+        let cmd: string;
+        let args: string[];
+        if (process.platform === 'win32') {
+            cmd = 'cmd';
+            args = ['/c', 'start', '', url];
+        } else if (process.platform === 'darwin') {
+            cmd = 'open';
+            args = [url];
+        } else {
+            cmd = 'xdg-open';
+            args = [url];
+        }
+        execFile(cmd, args, (error: any) => {
             if (error) {
                 console.error(`Failed to open browser: ${error.message}`);
                 console.log(`Please open ${url} manually.`);
@@ -472,7 +493,7 @@ export class GraphServer {
         console.log('│  LLMem Graph Server                     │');
         console.log('└─────────────────────────────────────────┘');
         console.log('');
-        console.log(`  🌐 Server running at: http://localhost:${this.config.port}`);
+        console.log(`  🌐 Server running at: http://127.0.0.1:${this.config.port}`);
         console.log(`  📁 Serving from: ${this.webviewDir}`);
         console.log(`  📊 Workspace: ${this.config.workspaceRoot}`);
         console.log('');

@@ -34,6 +34,45 @@ import { prepareWebviewDataFromSplitEdgeLists } from '../graph/webview-data';
 import { ImportEdgeListStore, CallEdgeListStore } from '../graph/edgelist';
 
 // ============================================================================
+// Constants
+// ============================================================================
+
+const INSPECT_SOURCE_MAX_LINES = 500;
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/**
+ * Assert that the caller-supplied workspaceRoot matches the server-stored root.
+ * Throws a formatted error if they differ after resolution.
+ */
+function assertWorkspaceRootMatch(callerRoot: string): void {
+    let stored: string;
+    try {
+        stored = getStoredWorkspaceRoot();
+    } catch {
+        // Server not yet initialized — fall through; validateWorkspaceRoot will catch invalid roots
+        return;
+    }
+    const resolved = path.resolve(callerRoot);
+    const storedResolved = path.resolve(stored);
+    if (process.platform === 'win32') {
+        if (resolved.toLowerCase() !== storedResolved.toLowerCase()) {
+            throw new Error(
+                `workspaceRoot mismatch: caller supplied '${callerRoot}' but server root is '${stored}'.`
+            );
+        }
+    } else {
+        if (resolved !== storedResolved) {
+            throw new Error(
+                `workspaceRoot mismatch: caller supplied '${callerRoot}' but server root is '${stored}'.`
+            );
+        }
+    }
+}
+
+// ============================================================================
 // Tool Schemas (Zod)
 // ============================================================================
 
@@ -105,6 +144,7 @@ async function handleFileInfoImpl(
 
     // Validate workspace root
     validateWorkspaceRoot(workspaceRoot);
+    assertWorkspaceRootMatch(workspaceRoot);
 
     // Validate path stays within workspace
     validateWorkspacePath(workspaceRoot, relativePath);
@@ -161,6 +201,7 @@ async function handleReportFileInfoImpl(
 
     // Validate workspace root
     validateWorkspaceRoot(workspaceRoot);
+    assertWorkspaceRootMatch(workspaceRoot);
 
     // Validate path stays within workspace
     validateWorkspacePath(workspaceRoot, relativePath);
@@ -248,6 +289,7 @@ async function handleFolderInfoImpl(
 
     // Validate workspace root
     validateWorkspaceRoot(workspaceRoot);
+    assertWorkspaceRootMatch(workspaceRoot);
 
     // Validate path stays within workspace
     validateWorkspacePath(workspaceRoot, folderPath);
@@ -296,6 +338,7 @@ async function handleReportFolderInfoImpl(
 
     // Validate workspace root
     validateWorkspaceRoot(workspaceRoot);
+    assertWorkspaceRootMatch(workspaceRoot);
 
     // Validate path stays within workspace
     validateWorkspacePath(workspaceRoot, folderPath);
@@ -376,6 +419,13 @@ async function handleInspectSourceImpl(
 
     if (startLine < 1 || endLine < startLine || startLine > totalLines) {
         return formatError(`Invalid line range: ${startLine}-${endLine} (file has ${totalLines} lines)`);
+    }
+
+    if (endLine - startLine + 1 > INSPECT_SOURCE_MAX_LINES) {
+        return formatError(
+            `Line range too large: requested ${endLine - startLine + 1} lines, ` +
+            `maximum is ${INSPECT_SOURCE_MAX_LINES}. Split the request into smaller ranges.`
+        );
     }
 
     const safeEnd = Math.min(endLine, totalLines);

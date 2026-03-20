@@ -188,6 +188,18 @@ export class ArchWatcherService {
     }
 
     /**
+     * Assert that absolutePath is contained within archDir to prevent directory traversal.
+     */
+    private assertInArchDir(absolutePath: string): void {
+        const base = path.resolve(this.archDir);
+        const target = path.resolve(absolutePath);
+        const sep = path.sep;
+        if (!target.startsWith(base + sep) && target !== base) {
+            throw new Error(`Path escapes .arch boundary: ${absolutePath}`);
+        }
+    }
+
+    /**
      * Read a specific design doc by relative path
      * @param relativePath Path relative to .arch, e.g. "src/parser.md"
      * @returns DesignDoc or null if not found
@@ -201,6 +213,8 @@ export class ArchWatcherService {
         // Ensure .md extension
         const mdPath = relativePath.endsWith('.md') ? relativePath : `${relativePath}.md`;
         const absolutePath = path.join(this.archDir, mdPath);
+
+        this.assertInArchDir(absolutePath);
 
         if (!fs.existsSync(absolutePath)) {
             return null;
@@ -229,6 +243,8 @@ export class ArchWatcherService {
         // Ensure .md extension
         const mdPath = relativePath.endsWith('.md') ? relativePath : `${relativePath}.md`;
         const absolutePath = path.join(this.archDir, mdPath);
+
+        this.assertInArchDir(absolutePath);
 
         try {
             // Ensure directory exists

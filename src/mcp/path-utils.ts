@@ -49,10 +49,12 @@ export function validateWorkspacePath(
     const targetPath = path.resolve(root, relativePath);
 
     // 2. Enforce workspace boundary
-    // Use path.sep to ensure correct separator for the platform
-    const rootWithSep = root + path.sep;
+    // Normalize case for case-insensitive file systems (Windows)
+    const normalizedRoot = process.platform === 'win32' ? root.toLowerCase() : root;
+    const normalizedTarget = process.platform === 'win32' ? targetPath.toLowerCase() : targetPath;
+    const rootWithSep = normalizedRoot + path.sep;
 
-    if (!targetPath.startsWith(rootWithSep) && targetPath !== root) {
+    if (!normalizedTarget.startsWith(rootWithSep) && normalizedTarget !== normalizedRoot) {
         throw new Error(
             `Path validation failed: '${relativePath}' escapes workspace root. ` +
             `Refusing to access files outside workspace.`
