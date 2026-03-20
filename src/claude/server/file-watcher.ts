@@ -146,11 +146,15 @@ export class FileWatcherService {
         }
 
         this.sourceTimeout = setTimeout(async () => {
-            const files = Array.from(this.changedSourceFiles);
-            this.changedSourceFiles.clear();
+            try {
+                const files = Array.from(this.changedSourceFiles);
+                this.changedSourceFiles.clear();
 
-            if (this.onSourceChange) {
-                await this.onSourceChange(files);
+                if (this.onSourceChange) {
+                    await this.onSourceChange(files);
+                }
+            } catch (e) {
+                console.error('[FileWatcher] Error in source change handler:', e);
             }
         }, 1000);
     }
@@ -169,8 +173,12 @@ export class FileWatcherService {
         }
 
         this.edgeListTimeout = setTimeout(async () => {
-            if (this.onEdgeListChange) {
-                await this.onEdgeListChange();
+            try {
+                if (this.onEdgeListChange) {
+                    await this.onEdgeListChange();
+                }
+            } catch (e) {
+                console.error('[FileWatcher] Error in edge list change handler:', e);
             }
         }, 500);
     }

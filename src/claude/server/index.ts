@@ -197,7 +197,17 @@ export class GraphServer {
         // /api/watch - Add/Remove watched files (POST/DELETE)
         this.httpHandler.registerApiHandler('/api/watch', async (req, res) => {
             const body = await this.readRequestBody(req);
-            const { path: relativePath } = JSON.parse(body);
+            let parsed: { path?: string };
+            try {
+                parsed = JSON.parse(body);
+            } catch {
+                this.httpHandler.sendJson(res, 400, {
+                    success: false,
+                    message: 'Invalid JSON body'
+                });
+                return;
+            }
+            const { path: relativePath } = parsed;
 
             if (!relativePath) {
                 this.httpHandler.sendJson(res, 400, {

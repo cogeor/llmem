@@ -20,7 +20,7 @@
  * 
  * Set to 1 for testing, 10000 for production.
  */
-export const LAZY_CODEBASE_LINE_THRESHOLD = 1; // TODO: Change to 10000 for production
+export const LAZY_CODEBASE_LINE_THRESHOLD = 10000;
 
 // ============================================================================
 // Supported Extensions (SINGLE SOURCE OF TRUTH)

@@ -78,6 +78,16 @@ abstract class BaseEdgeListStore {
             if (fsSync.existsSync(this.filePath)) {
                 const content = await fs.readFile(this.filePath, 'utf-8');
                 this.data = JSON.parse(content);
+                // Validate shape
+                if (typeof this.data !== 'object' || this.data === null ||
+                    !Array.isArray(this.data.nodes) || !Array.isArray(this.data.edges)) {
+                    console.error(`[${this.constructor.name}] Invalid edge list shape, starting fresh`);
+                    this.data = this.createEmpty();
+                }
+                // Normalize missing version
+                if (!this.data.version) {
+                    this.data.version = EDGELIST_VERSION;
+                }
                 console.error(`[${this.constructor.name}] Loaded ${this.data.nodes.length} nodes, ${this.data.edges.length} edges`);
             } else {
                 this.data = this.createEmpty();

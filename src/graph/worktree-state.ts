@@ -77,13 +77,20 @@ export class WatchService {
                 const content = await fs.readFile(filePath, 'utf-8');
                 const rawState = JSON.parse(content);
 
+                if (typeof rawState !== 'object' || rawState === null) {
+                    console.error('[WatchService] Invalid state file shape, starting fresh');
+                    return;
+                }
+
                 // Check version and migrate if needed
                 if (rawState.version?.startsWith('1.')) {
                     await this.migrateFromV1(rawState as WatchStateV1);
                 } else {
                     const state = rawState as WatchStateV2;
-                    this.watchedFiles = new Set(state.watchedFiles || []);
-                    this.fileHashes = new Map(Object.entries(state.fileHashes || {}));
+                    this.watchedFiles = new Set(Array.isArray(state.watchedFiles) ? state.watchedFiles : []);
+                    this.fileHashes = new Map(Object.entries(
+                        (state.fileHashes && typeof state.fileHashes === 'object') ? state.fileHashes : {}
+                    ));
                 }
 
                 console.error(`[WatchService] Loaded ${this.watchedFiles.size} watched files`);
