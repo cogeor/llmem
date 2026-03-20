@@ -4,6 +4,7 @@
  * This bridges the parsing layer to the edge list storage.
  */
 
+import * as path from 'path';
 import { FileArtifact, Entity, ImportSpec, CallSite } from '../parser/types';
 import { NodeEntry, EdgeEntry } from './edgelist';
 import { normalizePath } from './utils';
@@ -138,7 +139,6 @@ function resolveImportTarget(sourceFileId: string, imp: ImportSpec): string | nu
 
     // Try to resolve relative imports
     if (imp.source.startsWith('.')) {
-        const path = require('path');
         const sourceDir = path.dirname(sourceFileId);
 
         // Count leading dots to determine directory level
@@ -195,7 +195,6 @@ function resolveImportTarget(sourceFileId: string, imp: ImportSpec): string | nu
         if (parts.length >= 2 && !imp.source.startsWith('.')) {
             // Convert dot notation to file path for workspace imports
             // e.g., src.db.models.ticker → src/db/models/ticker.py
-            const path = require('path');
             const sourceExt = path.extname(sourceFileId);
             const defaultExt = sourceExt || '.ts';
             const filePath = parts.join('/') + defaultExt;

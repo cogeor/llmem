@@ -45,7 +45,7 @@ export type UnresolvedCall = {
     callSiteId: string;
     calleeName: string;
     kind: string;
-    loc?: any;
+    loc?: { line: number; column: number };
 };
 
 export interface CallGraph extends Graph<EntityNode, CallEdge> {

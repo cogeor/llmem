@@ -275,7 +275,7 @@ export class GraphView {
 
     // --- Resize Handling ---
     private resizeObserver: ResizeObserver | null = null;
-    private resizeTimeout: any = null;
+    private resizeTimeout: ReturnType<typeof setTimeout> | null = null;
 
     private setupResizeObserver() {
         if (this.resizeObserver) return;
