@@ -17,7 +17,7 @@
  *       "command": "llmem",
  *       "args": ["mcp"],
  *       "env": {
- *         "LLMEM_WORKSPACE": "${workspaceFolder}"
+ *         "LLMEM_WORKSPACE": "/home/user/projects/myproject"
  *       }
  *     }
  *   }

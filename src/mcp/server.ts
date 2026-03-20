@@ -24,6 +24,10 @@ import { generateCorrelationId } from './handlers';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { zodToJsonSchema } = require('zod-to-json-schema');
 
+// Read version from package.json at runtime
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const PACKAGE_VERSION: string = require('../../package.json').version as string;
+
 // ============================================================================
 // Type Helpers
 // ============================================================================
@@ -101,7 +105,7 @@ export async function startServer(config: Config, workspaceRoot: string): Promis
     server = new Server(
         {
             name: 'llmem',
-            version: '0.1.0',
+            version: PACKAGE_VERSION,
         },
         {
             capabilities: {
@@ -202,6 +206,7 @@ export async function stopServer(): Promise<void> {
 
     transport = null;
     serverConfig = null;
+    storedWorkspaceRoot = null;
 
     console.error(`[${correlationId}] MCP server stopped`);
 }
@@ -254,6 +259,24 @@ async function main(): Promise<void> {
 
     try {
         await startServer(defaultConfig, workspaceRoot);
+
+        // Graceful shutdown handler
+        const shutdown = async (signal: string) => {
+            console.error(`[MCP] Received ${signal}, shutting down gracefully...`);
+            try {
+                await stopServer();
+            } catch (err) {
+                console.error('[MCP] Error during shutdown:', err);
+            }
+            process.exit(0);
+        };
+
+        process.once('SIGTERM', () => shutdown('SIGTERM'));
+        process.once('SIGINT', () => shutdown('SIGINT'));
+
+        process.on('unhandledRejection', (reason) => {
+            console.error('[MCP] Unhandled rejection:', reason);
+        });
     } catch (error) {
         console.error('[MCP] Failed to start MCP server:', error);
         process.exit(1);
