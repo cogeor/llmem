@@ -29,6 +29,7 @@ import {
 } from './path-utils';
 import { getStoredWorkspaceRoot } from './server';
 import { getConfig } from '../extension/config';
+import { DEFAULT_CONFIG } from '../config-defaults';
 import { generateStaticWebview } from '../webview/generator';
 import { prepareWebviewDataFromSplitEdgeLists } from '../graph/webview-data';
 import { ImportEdgeListStore, CallEdgeListStore } from '../graph/edgelist';
@@ -465,7 +466,7 @@ async function handleOpenWindowImpl(
 
     const root = getStoredWorkspaceRoot();
 
-    let safeConfig = { artifactRoot: '.artifacts', maxFilesPerFolder: 20, maxFileSizeKB: 512 };
+    let safeConfig = { ...DEFAULT_CONFIG };
     try {
         safeConfig = getConfig();
     } catch {

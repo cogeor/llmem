@@ -1,9 +1,11 @@
 /**
  * LLMem Configuration Module
- * 
+ *
  * Loads and validates configuration from environment variables.
  * Provides typed configuration interface to other modules.
  */
+
+import { DEFAULT_CONFIG, ENV_VARS, MAX_FILES_PER_FOLDER_CAP, MAX_FILE_SIZE_KB_CAP } from '../config-defaults';
 
 /**
  * Configuration interface for LLMem extension
@@ -17,37 +19,52 @@ export interface Config {
     maxFileSizeKB: number;
 }
 
-/**
- * Default configuration values
- */
-const DEFAULT_CONFIG: Config = {
-    artifactRoot: '.artifacts',
-    maxFilesPerFolder: 20,
-    maxFileSizeKB: 512,
-};
-
 /** Cached configuration instance */
 let configInstance: Config | null = null;
 
 /**
  * Load configuration from environment variables
- * 
+ *
+ * Priority (highest to lowest):
+ *   1. Environment variables (LLMEM_* prefix)
+ *   2. VS Code workspace settings (llmem.*)
+ *   3. Built-in defaults
+ *
  * @returns Loaded configuration object
  */
 export function loadConfig(): Config {
+    // Read VS Code workspace settings (silently ignored outside VS Code)
+    let vsCodeConfig: { artifactRoot?: string; maxFilesPerFolder?: number; maxFileSizeKB?: number } = {};
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const vscode = require('vscode');
+        const ws = vscode.workspace.getConfiguration('llmem');
+        vsCodeConfig = {
+            artifactRoot: ws.get('artifactRoot') as string | undefined,
+            maxFilesPerFolder: ws.get('maxFilesPerFolder') as number | undefined,
+            maxFileSizeKB: ws.get('maxFileSizeKB') as number | undefined,
+        };
+    } catch {
+        // Not running inside VS Code — ignore
+    }
+
     configInstance = {
-        artifactRoot: process.env.ARTIFACT_ROOT || DEFAULT_CONFIG.artifactRoot,
+        artifactRoot: process.env[ENV_VARS.ARTIFACT_ROOT]
+            || vsCodeConfig.artifactRoot
+            || DEFAULT_CONFIG.artifactRoot,
         maxFilesPerFolder: parseInt(
-            process.env.MAX_FILES_PER_FOLDER || String(DEFAULT_CONFIG.maxFilesPerFolder),
+            process.env[ENV_VARS.MAX_FILES_PER_FOLDER]
+                || String(vsCodeConfig.maxFilesPerFolder ?? DEFAULT_CONFIG.maxFilesPerFolder),
             10
         ),
         maxFileSizeKB: parseInt(
-            process.env.MAX_FILE_SIZE_KB || String(DEFAULT_CONFIG.maxFileSizeKB),
+            process.env[ENV_VARS.MAX_FILE_SIZE_KB]
+                || String(vsCodeConfig.maxFileSizeKB ?? DEFAULT_CONFIG.maxFileSizeKB),
             10
         ),
     };
 
-    // Validate numeric values
+    // Validate numeric values — lower bound
     if (isNaN(configInstance.maxFilesPerFolder) || configInstance.maxFilesPerFolder < 1) {
         configInstance.maxFilesPerFolder = DEFAULT_CONFIG.maxFilesPerFolder;
     }
@@ -56,12 +73,20 @@ export function loadConfig(): Config {
         configInstance.maxFileSizeKB = DEFAULT_CONFIG.maxFileSizeKB;
     }
 
+    // Validate numeric values — upper-bound caps
+    if (configInstance.maxFilesPerFolder > MAX_FILES_PER_FOLDER_CAP) {
+        configInstance.maxFilesPerFolder = MAX_FILES_PER_FOLDER_CAP;
+    }
+    if (configInstance.maxFileSizeKB > MAX_FILE_SIZE_KB_CAP) {
+        configInstance.maxFileSizeKB = MAX_FILE_SIZE_KB_CAP;
+    }
+
     return configInstance;
 }
 
 /**
  * Get the current configuration
- * 
+ *
  * @throws Error if loadConfig() has not been called
  * @returns Current configuration object
  */

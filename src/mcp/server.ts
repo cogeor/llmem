@@ -16,6 +16,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { Config } from '../extension/config';
+import { DEFAULT_CONFIG } from '../config-defaults';
 import { TOOLS } from './tools';
 import { generateCorrelationId } from './handlers';
 
@@ -237,11 +238,7 @@ export function getServerConfig(): Config | null {
  */
 async function main(): Promise<void> {
     // Default config for standalone mode
-    const defaultConfig: Config = {
-        artifactRoot: '.artifacts',
-        maxFilesPerFolder: 20,
-        maxFileSizeKB: 512,
-    };
+    const defaultConfig: Config = { ...DEFAULT_CONFIG };
 
     // REQUIRE workspace root from environment variable
     const workspaceRoot = process.env.LLMEM_WORKSPACE;
