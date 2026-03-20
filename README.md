@@ -88,6 +88,9 @@ Prerequisites:
    ```
    This starts a live-reloading webview at `http://localhost:3000`.
 
+> [!NOTE]
+> `dist/claude/index.js` (the MCP server) and `npm run serve` (the graph server) are **two separate processes**. The MCP server handles tool calls from Claude; the graph server serves the visualization UI. Both must be running for the full experience.
+
 ### Option B: VS Code / Antigravity Extension
 
 1. **Clone and build**
@@ -228,6 +231,80 @@ User → MCP Agent (Claude Code / Antigravity) → LLMem MCP Server
 | `src/info` | Information extraction for documentation |
 | `src/webview` | Interactive graph visualization UI |
 | `src/artifact` | Shadow filesystem (`.arch/`) management |
+
+## Configuration
+
+LLMem exposes three settings (configurable in VS Code settings or via environment):
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `artifactRoot` | `.artifacts` | Directory for edge lists and generated webview files |
+| `maxFilesPerFolder` | `20` | Maximum files processed per folder analysis |
+| `maxFileSizeKB` | `512` | Files larger than this are skipped during analysis |
+
+### Workspace Root Detection
+
+The MCP server determines the workspace root in this priority order:
+
+1. Root stored in extension context (set when the extension activates)
+2. `LLMEM_WORKSPACE` environment variable
+3. Auto-detect by walking up from cwd, looking for `.arch`, `.artifacts`, or `package.json`
+4. Fallback to current working directory
+
+### Client Configuration
+
+**Claude Desktop** — config file location:
+- Linux/macOS: `~/.config/claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "llmem": {
+      "command": "node",
+      "args": ["/absolute/path/to/llmem/dist/claude/index.js"],
+      "env": {
+        "LLMEM_WORKSPACE": "/absolute/path/to/your/project"
+      }
+    }
+  }
+}
+```
+
+**Claude Code** — config file location:
+- Linux/macOS: `~/.config/claude/config.json`
+- Windows: `%APPDATA%\Claude\config.json`
+
+```json
+{
+  "mcpServers": {
+    "llmem": {
+      "command": "node",
+      "args": ["/absolute/path/to/llmem/dist/claude/index.js"]
+    }
+  }
+}
+```
+
+**VS Code** — `.vscode/settings.json` in your project:
+
+```json
+{
+  "llmem.artifactRoot": ".artifacts",
+  "llmem.maxFilesPerFolder": 20,
+  "llmem.maxFileSizeKB": 512
+}
+```
+
+## Known Issues
+
+### report_file_info and report_folder_info save to wrong path
+
+When running as a standalone MCP server (Claude Code / Claude Desktop), `report_file_info` and `report_folder_info` may save the generated `.arch/` files to the application data directory instead of your project workspace.
+
+**Workaround:** After calling `report_file_info` or `report_folder_info`, copy the generated content manually to the correct `.arch/` path in your workspace.
+
+This is a known limitation of the standalone MCP server mode and will be fixed in a future release.
 
 ## 📄 License
 

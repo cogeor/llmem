@@ -278,6 +278,20 @@ abstract class BaseEdgeListStore {
 // ImportEdgeListStore - for file-to-file import relationships
 // ============================================================================
 
+/**
+ * Stores and manages file-to-file import relationships.
+ *
+ * Each edge represents one file importing another. Nodes represent source files.
+ * Persisted to `import-edgelist.json` in the artifact root.
+ *
+ * Typical usage:
+ * ```typescript
+ * const store = new ImportEdgeListStore(artifactRoot);
+ * await store.load();
+ * store.addEdge({ source: 'src/a.ts', target: 'src/b.ts', kind: 'import' });
+ * await store.save();
+ * ```
+ */
 export class ImportEdgeListStore extends BaseEdgeListStore {
     constructor(artifactRoot: string) {
         super(artifactRoot, IMPORT_EDGELIST_FILENAME, 'import');
@@ -288,6 +302,24 @@ export class ImportEdgeListStore extends BaseEdgeListStore {
 // CallEdgeListStore - for entity-to-entity call relationships
 // ============================================================================
 
+/**
+ * Stores and manages function/entity call relationships.
+ *
+ * Each edge represents one code entity (function, method, arrow function) calling
+ * another. Nodes represent named entities scoped to their containing file.
+ * Persisted to `call-edgelist.json` in the artifact root.
+ *
+ * Node IDs use the format `{fileId}::{entityName}`, e.g.
+ * `src/parser/ts-service.ts::getTypeScriptFiles`.
+ *
+ * Typical usage:
+ * ```typescript
+ * const store = new CallEdgeListStore(artifactRoot);
+ * await store.load();
+ * store.addEdge({ source: 'src/a.ts::foo', target: 'src/b.ts::bar', kind: 'call' });
+ * await store.save();
+ * ```
+ */
 export class CallEdgeListStore extends BaseEdgeListStore {
     constructor(artifactRoot: string) {
         super(artifactRoot, CALL_EDGELIST_FILENAME, 'call');

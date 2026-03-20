@@ -512,7 +512,7 @@ export const handleOpenWindow = (args: unknown) =>
 export const toolDefinitions = [
     {
         name: 'file_info',
-        description: 'Get semantic documentation for a source file. Returns structural info and prompts for LLM enrichment. After calling this tool, you MUST call report_file_info to save the enriched documentation.',
+        description: 'Get semantic documentation for a source file. Returns structural info and a prompt for LLM enrichment. You MUST process the returned prompt through the LLM first, then call report_file_info with the enriched result to save the documentation.',
         schema: FileInfoSchema,
         handler: handleFileInfo,
     },
@@ -536,13 +536,13 @@ export const toolDefinitions = [
     },
     {
         name: 'inspect_source',
-        description: 'Read a specific range of lines from a source file.',
+        description: 'Read a specific range of lines from a source file. The workspaceRoot is fixed at server initialization; use relative paths only.',
         schema: InspectSourceSchema,
         handler: handleInspectSource,
     },
     {
         name: 'open_window',
-        description: 'Open the LLMem Webview Panel in the IDE.',
+        description: 'Open the LLMem graph visualization. In standalone mode (Claude Code CLI) this opens a file:// URL in the browser; in IDE mode (VS Code / Antigravity) it opens an integrated webview panel.',
         schema: OpenWindowSchema,
         handler: handleOpenWindow,
     },
