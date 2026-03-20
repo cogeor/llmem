@@ -74,6 +74,13 @@ export function getStoredWorkspaceRoot(): string {
     return storedWorkspaceRoot;
 }
 
+/**
+ * Set the stored workspace root directly (for testing only)
+ */
+export function setStoredWorkspaceRoot(root: string | null): void {
+    storedWorkspaceRoot = root;
+}
+
 // ============================================================================
 // Server Lifecycle
 // ============================================================================

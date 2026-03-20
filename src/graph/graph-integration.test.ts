@@ -500,23 +500,28 @@ describe('Graph Building Edge Cases', () => {
     });
 
     test('deduplicates edges', () => {
-        const importData = {
-            version: '1.0.0',
-            timestamp: new Date().toISOString(),
-            nodes: [
-                { id: 'src/a.ts', name: 'a.ts', kind: 'file' as const, fileId: 'src/a.ts' },
-                { id: 'src/b.ts', name: 'b.ts', kind: 'file' as const, fileId: 'src/b.ts' },
-            ],
-            edges: [
-                { source: 'src/a.ts', target: 'src/b.ts', kind: 'import' as const },
-                { source: 'src/a.ts', target: 'src/b.ts', kind: 'import' as const }, // duplicate
-            ],
-        };
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-dedup-'));
+        try {
+            const importData = {
+                version: '1.0.0',
+                timestamp: new Date().toISOString(),
+                nodes: [
+                    { id: 'src/a.ts', name: 'a.ts', kind: 'file' as const, fileId: 'src/a.ts' },
+                    { id: 'src/b.ts', name: 'b.ts', kind: 'file' as const, fileId: 'src/b.ts' },
+                ],
+                edges: [
+                    { source: 'src/a.ts', target: 'src/b.ts', kind: 'import' as const },
+                    { source: 'src/a.ts', target: 'src/b.ts', kind: 'import' as const }, // duplicate
+                ],
+            };
 
-        const store = new ImportEdgeListStore(os.tmpdir());
-        store.addEdges(importData.edges);
+            const store = new ImportEdgeListStore(tempDir);
+            store.addEdges(importData.edges);
 
-        // Store should deduplicate
-        assert.equal(store.getEdges().length, 1);
+            // Store should deduplicate
+            assert.equal(store.getEdges().length, 1);
+        } finally {
+            fs.rmSync(tempDir, { recursive: true, force: true });
+        }
     });
 });
