@@ -2,17 +2,10 @@
     "extends": "./tsconfig.base.json",
     "compilerOptions": {
         "outDir": "dist/claude",
-        "rootDir": "src"
+        "rootDir": "src/claude"
     },
     "include": [
-        "src/claude/**/*",
-        "src/mcp/**/*",
-        "src/graph/**/*",
-        "src/parser/**/*",
-        "src/info/**/*",
-        "src/artifact/**/*",
-        "src/webview/**/*",
-        "src/extension/config.ts"
+        "src/claude/**/*"
     ],
     "exclude": [
         "node_modules",
