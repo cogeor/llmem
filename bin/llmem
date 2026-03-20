@@ -25,11 +25,24 @@ if (command === 'mcp') {
         console.error('MCP server error:', err);
         process.exit(1);
     });
+} else if (!command || command === '--help' || command === '-h' || command === 'help') {
+    // Show usage when no command or help requested
+    console.log('Usage: llmem <command>');
+    console.log('');
+    console.log('Commands:');
+    console.log('  mcp     Start MCP server for Claude Code (stdio mode)');
+    console.log('  serve   Start HTTP webview server');
+    console.log('  stats   Show graph statistics');
+    console.log('');
+    console.log('Options:');
+    console.log('  -h, --help  Show this help message');
+    console.log('');
+    console.log('Environment variables:');
+    console.log('  LLMEM_WORKSPACE  Explicit workspace root path (e.g. /home/user/projects/myproject)');
+    process.exit(command ? 0 : 1);
 } else {
-    // Run CLI (serve, generate, stats, etc.)
-    const { main } = require(path.join(distDir, 'cli.js'));
-    main().catch(err => {
-        console.error('CLI error:', err);
-        process.exit(1);
-    });
+    // Unknown command - show error and usage
+    console.error(`llmem: unknown command '${command}'`);
+    console.error('Run `llmem --help` for usage.');
+    process.exit(1);
 }

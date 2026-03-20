@@ -1,0 +1,12 @@
+{
+    "servers": {
+        "llmem": {
+            "type": "stdio",
+            "command": "llmem",
+            "args": ["mcp"],
+            "env": {
+                "LLMEM_WORKSPACE": "${workspaceFolder}"
+            }
+        }
+    }
+}
