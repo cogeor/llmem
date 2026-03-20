@@ -21,6 +21,13 @@
   "bin": {
     "llmem": "./bin/llmem"
   },
+  "files": [
+    "dist/",
+    "bin/",
+    "README.md",
+    "LICENSE",
+    "assets/"
+  ],
   "contributes": {
     "commands": [
       {
