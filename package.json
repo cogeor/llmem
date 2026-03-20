@@ -1,23 +1,53 @@
 {
   "name": "llmem",
-  "displayName": "LLMem - LLM Artifact Manager",
-  "description": "MCP server extension for generating and managing LLM artifacts",
+  "displayName": "LLMem - Codebase Graph & Documentation",
+  "description": "MCP server extension for generating interactive graph visualizations and documentation for codebases",
   "version": "0.1.0",
   "publisher": "llmem",
+  "license": "MIT",
+  "homepage": "https://github.com/llmem/llmem",
+  "bugs": {
+    "url": "https://github.com/llmem/llmem/issues"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/llmem/llmem.git"
   },
+  "keywords": [
+    "mcp",
+    "graph",
+    "visualization",
+    "dependency",
+    "documentation",
+    "ai",
+    "codebase",
+    "import",
+    "call-graph",
+    "architecture"
+  ],
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.85.0",
+    "node": ">=18.0.0"
   },
   "categories": [
+    "Visualization",
     "Other"
   ],
+  "galleryBanner": {
+    "color": "#1e1e2e",
+    "theme": "dark"
+  },
+  "extensionKind": [
+    "workspace"
+  ],
+  "mcpName": "io.github.llmem/llmem",
   "activationEvents": [
     "onStartupFinished"
   ],
   "main": "./dist/extension/extension.js",
+  "exports": {
+    ".": "./dist/claude/index.js"
+  },
   "bin": {
     "llmem": "./bin/llmem"
   },

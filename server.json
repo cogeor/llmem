@@ -1,0 +1,57 @@
+{
+  "name": "io.github.llmem/llmem",
+  "displayName": "LLMem - Codebase Graph & Documentation",
+  "description": "MCP server extension for generating interactive graph visualizations and documentation for codebases",
+  "version": "0.1.0",
+  "license": "MIT",
+  "homepage": "https://github.com/llmem/llmem",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/llmem/llmem.git"
+  },
+  "keywords": [
+    "mcp",
+    "graph",
+    "visualization",
+    "dependency",
+    "documentation",
+    "ai",
+    "codebase",
+    "import",
+    "call-graph",
+    "architecture"
+  ],
+  "transports": [
+    {
+      "type": "stdio",
+      "command": "node",
+      "args": ["dist/claude/index.js"]
+    }
+  ],
+  "tools": [
+    {
+      "name": "file_info",
+      "description": "Extract structural information from a source file and return a prompt for LLM enrichment"
+    },
+    {
+      "name": "report_file_info",
+      "description": "Save LLM-generated file documentation to the .arch/ shadow filesystem"
+    },
+    {
+      "name": "folder_info",
+      "description": "Extract structural information from a folder and return a prompt for LLM enrichment"
+    },
+    {
+      "name": "report_folder_info",
+      "description": "Save LLM-generated folder documentation to the .arch/ shadow filesystem"
+    },
+    {
+      "name": "inspect_source",
+      "description": "Read specific line ranges from source files"
+    },
+    {
+      "name": "open_window",
+      "description": "Open the LLMem dependency graph visualization panel"
+    }
+  ]
+}
