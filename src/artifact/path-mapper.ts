@@ -1,7 +1,6 @@
 import * as path from 'path';
 import * as os from 'os';
-
-const ARTIFACTS_DIR = '.artifacts';
+import { DEFAULT_CONFIG } from '../config-defaults';
 
 /**
  * Returns the absolute path to the artifacts root directory for the workspace.
@@ -9,7 +8,7 @@ const ARTIFACTS_DIR = '.artifacts';
  * For this extension, we usually run from workspace root.
  */
 export function getArtifactsRoot(workspaceRoot: string): string {
-    return path.join(workspaceRoot, ARTIFACTS_DIR);
+    return path.join(workspaceRoot, DEFAULT_CONFIG.artifactRoot);
 }
 
 /**

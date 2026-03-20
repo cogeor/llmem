@@ -38,7 +38,31 @@
         "command": "llmem.openPanel",
         "title": "LLMem: Open Panel"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "LLMem",
+      "properties": {
+        "llmem.artifactRoot": {
+          "type": "string",
+          "default": ".artifacts",
+          "description": "Root folder for artifacts (relative to workspace root)."
+        },
+        "llmem.maxFilesPerFolder": {
+          "type": "number",
+          "default": 20,
+          "minimum": 1,
+          "maximum": 500,
+          "description": "Maximum number of files to include per folder when building context."
+        },
+        "llmem.maxFileSizeKB": {
+          "type": "number",
+          "default": 512,
+          "minimum": 1,
+          "maximum": 10240,
+          "description": "Maximum file size in KB to include in context."
+        }
+      }
+    }
   },
   "scripts": {
     "compile": "npm run compile:vscode",
