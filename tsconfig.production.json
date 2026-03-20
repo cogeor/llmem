@@ -1,0 +1,7 @@
+{
+    "extends": "./tsconfig.vscode.json",
+    "compilerOptions": {
+        "sourceMap": false,
+        "declarationMap": false
+    }
+}

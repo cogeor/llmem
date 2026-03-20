@@ -48,8 +48,7 @@ export class LLMemPanel {
                 enableScripts: true,
                 retainContextWhenHidden: true,
                 localResourceRoots: [
-                    vscode.Uri.joinPath(extensionUri, 'dist', 'webview'),
-                    vscode.Uri.joinPath(extensionUri, 'src', 'webview', 'styles')
+                    vscode.Uri.joinPath(extensionUri, 'dist', 'webview')
                 ]
             }
         );
@@ -60,15 +59,15 @@ export class LLMemPanel {
     private _getHtmlForWebview(): string {
         const webview = this._panel.webview;
         const distWebview = vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview');
-        const srcStyles = vscode.Uri.joinPath(this._extensionUri, 'src', 'webview', 'styles');
+        const distStyles = vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview', 'styles');
 
         // Asset URIs
         const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(distWebview, 'main.js'));
-        const baseStyle = webview.asWebviewUri(vscode.Uri.joinPath(srcStyles, 'base.css'));
-        const layoutStyle = webview.asWebviewUri(vscode.Uri.joinPath(srcStyles, 'layout.css'));
-        const treeStyle = webview.asWebviewUri(vscode.Uri.joinPath(srcStyles, 'tree.css'));
-        const detailStyle = webview.asWebviewUri(vscode.Uri.joinPath(srcStyles, 'detail.css'));
-        const graphStyle = webview.asWebviewUri(vscode.Uri.joinPath(srcStyles, 'graph.css'));
+        const baseStyle = webview.asWebviewUri(vscode.Uri.joinPath(distStyles, 'base.css'));
+        const layoutStyle = webview.asWebviewUri(vscode.Uri.joinPath(distStyles, 'layout.css'));
+        const treeStyle = webview.asWebviewUri(vscode.Uri.joinPath(distStyles, 'tree.css'));
+        const detailStyle = webview.asWebviewUri(vscode.Uri.joinPath(distStyles, 'detail.css'));
+        const graphStyle = webview.asWebviewUri(vscode.Uri.joinPath(distStyles, 'graph.css'));
 
         const nonce = this._getNonce();
 

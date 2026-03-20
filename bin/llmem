@@ -12,8 +12,8 @@
 const path = require('path');
 
 // Determine the dist directory relative to this script
-// The Claude CLI is compiled to dist/claude/claude/ (per tsconfig.claude.json)
-const distDir = path.join(__dirname, '..', 'dist', 'claude', 'claude');
+// The Claude CLI is compiled to dist/claude/ (per tsconfig.claude.json)
+const distDir = path.join(__dirname, '..', 'dist', 'claude');
 
 // Get command from args
 const command = process.argv[2];
