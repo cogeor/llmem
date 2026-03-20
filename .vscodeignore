@@ -22,8 +22,14 @@ src/**
 # Development artifacts
 *.vsix
 
-# Exclude only type definitions from node_modules (not runtime deps)
-node_modules/.bin/**
-node_modules/@types/**
-node_modules/@typescript-eslint/**
-node_modules/eslint/**
+# Exclude all node_modules (not needed in VSIX; vsce bundles deps)
+node_modules/**
+
+# MCP server CLI (not needed inside VSIX)
+dist/claude/**
+
+# Delegate work folder
+.delegate/**
+
+# Per-target tsconfig files
+tsconfig.*.json
