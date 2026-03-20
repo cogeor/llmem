@@ -11,11 +11,12 @@ import { strict as assert } from 'assert';
 import { test, describe, before, after } from 'node:test';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import * as http from 'http';
 import { WebSocket } from 'ws';
 
-// Test workspace setup
-const TEST_WORKSPACE = path.join(process.cwd(), '.test-workspace');
+// Test workspace setup - use system temp dir to avoid polluting project root
+const TEST_WORKSPACE = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-arch-'));
 const TEST_ARCH_DIR = path.join(TEST_WORKSPACE, '.arch');
 const TEST_ARTIFACTS_DIR = path.join(TEST_WORKSPACE, '.artifacts');
 
@@ -81,12 +82,7 @@ function waitForWsMessage(ws: WebSocket, timeout = 5000): Promise<any> {
  * Setup test workspace
  */
 function setupTestWorkspace(): void {
-    // Clean up if exists
-    if (fs.existsSync(TEST_WORKSPACE)) {
-        fs.rmSync(TEST_WORKSPACE, { recursive: true });
-    }
-
-    // Create directories
+    // Create directories (TEST_WORKSPACE already exists from mkdtempSync)
     fs.mkdirSync(TEST_ARCH_DIR, { recursive: true });
     fs.mkdirSync(TEST_ARTIFACTS_DIR, { recursive: true });
 
@@ -112,7 +108,7 @@ function setupTestWorkspace(): void {
  */
 function cleanupTestWorkspace(): void {
     if (fs.existsSync(TEST_WORKSPACE)) {
-        fs.rmSync(TEST_WORKSPACE, { recursive: true });
+        fs.rmSync(TEST_WORKSPACE, { recursive: true, force: true });
     }
 }
 
@@ -317,19 +313,13 @@ describe('WebSocket Incremental Updates', () => {
 
         await createPromise;
 
-        try {
-            const message = await messagePromise;
-            // Should be arch:created or arch:updated (depends on timing)
-            assert.ok(
-                message.type === 'arch:created' || message.type === 'arch:updated',
-                `Expected arch event, got: ${message.type}`
-            );
-            assert.ok(message.data.path.includes('ws-test-create'));
-        } catch (e) {
-            // WebSocket message might not arrive if debounce window is long
-            // This is acceptable - the file was still created
-            console.log('Note: WebSocket message not received (debounce timing)');
-        }
+        const message = await messagePromise;
+        // Should be arch:created or arch:updated (depends on timing)
+        assert.ok(
+            message.type === 'arch:created' || message.type === 'arch:updated',
+            `Expected arch event, got: ${message.type}`
+        );
+        assert.ok(message.data.path.includes('ws-test-create'));
 
         ws.close();
     });
@@ -353,15 +343,11 @@ describe('WebSocket Incremental Updates', () => {
         // Now modify it
         fs.writeFileSync(filePath, '# Modified');
 
-        try {
-            const message = await waitForWsMessage(ws, 3000);
-            assert.ok(
-                message.type === 'arch:updated' || message.type === 'arch:created',
-                `Expected arch event, got: ${message.type}`
-            );
-        } catch (e) {
-            console.log('Note: WebSocket message not received (debounce timing)');
-        }
+        const message = await waitForWsMessage(ws, 3000);
+        assert.ok(
+            message.type === 'arch:updated' || message.type === 'arch:created',
+            `Expected arch event, got: ${message.type}`
+        );
 
         ws.close();
     });
@@ -385,13 +371,9 @@ describe('WebSocket Incremental Updates', () => {
         // Delete it
         fs.unlinkSync(filePath);
 
-        try {
-            const message = await waitForWsMessage(ws, 3000);
-            assert.equal(message.type, 'arch:deleted');
-            assert.ok(message.data.path.includes('ws-test-delete'));
-        } catch (e) {
-            console.log('Note: WebSocket message not received (debounce timing)');
-        }
+        const message = await waitForWsMessage(ws, 3000);
+        assert.equal(message.type, 'arch:deleted');
+        assert.ok(message.data.path.includes('ws-test-delete'));
 
         ws.close();
     });

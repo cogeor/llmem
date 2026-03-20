@@ -17,9 +17,11 @@ import {
     ReportFileInfoSchema,
     FolderInfoSchema,
     ReportFolderInfoSchema,
+    handleInspectSourceImpl,
 } from './tools';
 
 import { validateRequest, formatSuccess, formatError, formatPromptResponse } from './handlers';
+import { setStoredWorkspaceRoot } from './server';
 
 // ============================================================================
 // Test Fixtures
@@ -414,5 +416,75 @@ describe('MCP End-to-End Workflow', () => {
         assert.ok(content.includes('greet'), 'Should document greet');
         assert.ok(content.includes('add'), 'Should document add');
         assert.ok(content.includes('sample TypeScript module'), 'Should include overview text');
+    });
+});
+
+// ============================================================================
+// inspect_source Tests
+// ============================================================================
+
+describe('inspect_source handler', () => {
+    let workspace: TestWorkspace;
+    const SAMPLE_LINES = Array.from({ length: 10 }, (_, i) => `line${i + 1}`).join('\n');
+
+    before(() => {
+        workspace = createTestWorkspace();
+        // Write a predictable file for line-range tests
+        fs.writeFileSync(path.join(workspace.root, 'src', 'lines.txt'), SAMPLE_LINES);
+        // Set the stored workspace root so handleInspectSourceImpl can resolve paths
+        setStoredWorkspaceRoot(workspace.root);
+    });
+
+    after(() => {
+        setStoredWorkspaceRoot(null);
+        workspace.cleanup();
+    });
+
+    test('valid line range returns correct lines', async () => {
+        const result = await handleInspectSourceImpl({
+            path: 'src/lines.txt',
+            startLine: 2,
+            endLine: 4,
+        });
+
+        assert.equal(result.status, 'success', `Expected success but got: ${result.error}`);
+        const snippet = result.data as string;
+        assert.ok(snippet.includes('line2'), 'Should include line2');
+        assert.ok(snippet.includes('line3'), 'Should include line3');
+        assert.ok(snippet.includes('line4'), 'Should include line4');
+        assert.ok(!snippet.includes('line1'), 'Should not include line1');
+        assert.ok(!snippet.includes('line5'), 'Should not include line5');
+    });
+
+    test('line range too large (>500) returns error', async () => {
+        // Write a file with enough lines to test the limit
+        const bigContent = Array.from({ length: 10 }, (_, i) => `line${i + 1}`).join('\n');
+        fs.writeFileSync(path.join(workspace.root, 'src', 'big.txt'), bigContent);
+
+        const result = await handleInspectSourceImpl({
+            path: 'src/big.txt',
+            startLine: 1,
+            endLine: 502, // Exceeds INSPECT_SOURCE_MAX_LINES (500)
+        });
+
+        assert.equal(result.status, 'error', 'Should return error for oversized range');
+        assert.ok(
+            result.error?.includes('too large') || result.error?.includes('maximum'),
+            `Error should mention size limit: ${result.error}`
+        );
+    });
+
+    test('missing file returns error', async () => {
+        const result = await handleInspectSourceImpl({
+            path: 'src/does-not-exist.ts',
+            startLine: 1,
+            endLine: 5,
+        });
+
+        assert.equal(result.status, 'error', 'Should return error for missing file');
+        assert.ok(
+            result.error?.includes('not found') || result.error?.includes('does-not-exist'),
+            `Error should mention file: ${result.error}`
+        );
     });
 });

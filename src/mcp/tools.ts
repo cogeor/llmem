@@ -399,7 +399,7 @@ export const handleReportFolderInfo = (args: unknown) =>
  * rather than requiring it in parameters. This is because it's primarily
  * used for quick inspections where the workspace context is already known.
  */
-async function handleInspectSourceImpl(
+export async function handleInspectSourceImpl(
     args: unknown
 ): Promise<McpResponse<string>> {
     const validation = validateRequest(InspectSourceSchema, args);
