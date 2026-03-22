@@ -9,6 +9,10 @@ node_modules/
 # Build output
 dist
 *.vsix
+src/**/*.js
+src/**/*.js.map
+src/**/*.d.ts
+src/**/*.d.ts.map
 
 # Environment (contains API keys)
 .env
