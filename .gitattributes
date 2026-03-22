@@ -1,0 +1,4 @@
+# Prevent 3-way merge on package-lock.json — merging this file produces
+# corrupted lock files that break npm ci. On conflict, accept ours and
+# regenerate with `npm install`.
+package-lock.json merge=ours
