@@ -50,26 +50,25 @@ function createTestWorkspace(): TestWorkspace {
  * - vscode build: dist/mcp/server.test.js, cli at dist/claude/claude/cli.js
  * - claude build: dist/claude/mcp/server.test.js, cli at dist/claude/claude/cli.js
  */
-function getCliPath(): string {
-    // From dist/mcp/, the CLI is at ../claude/claude/cli.js
-    const fromMcpPath = path.join(__dirname, '../claude/claude/cli.js');
-    if (fs.existsSync(fromMcpPath)) {
-        return fromMcpPath;
+function getCliPath(): string | null {
+    const candidates = [
+        // From dist/mcp/ when both builds ran: ../claude/claude/cli.js
+        path.join(__dirname, '../claude/claude/cli.js'),
+        // From dist/claude/mcp/: ../claude/cli.js
+        path.join(__dirname, '../claude/cli.js'),
+    ];
+
+    for (const candidate of candidates) {
+        if (fs.existsSync(candidate)) {
+            return candidate;
+        }
     }
 
-    // From dist/claude/mcp/, the CLI is at ../claude/cli.js
-    const fromClaudeMcpPath = path.join(__dirname, '../claude/cli.js');
-    if (fs.existsSync(fromClaudeMcpPath)) {
-        return fromClaudeMcpPath;
-    }
-
-    // Log available paths for debugging
-    console.error('[Test] CLI path not found. Tried:', fromMcpPath, fromClaudeMcpPath);
-    console.error('[Test] __dirname:', __dirname);
-
-    // Fallback - try the first option anyway
-    return fromMcpPath;
+    return null;
 }
+
+const cliPath = getCliPath();
+const skipReason = cliPath ? undefined : 'CLI not built (requires compile:claude)';
 
 /**
  * Start MCP server as subprocess and send a message
@@ -80,7 +79,9 @@ async function startMcpServerWithMessage(
     timeoutMs: number = 15000
 ): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
     return new Promise((resolve, reject) => {
-        const cliPath = getCliPath();
+        if (!cliPath) {
+            return reject(new Error('CLI not built'));
+        }
 
         const child = spawn('node', [cliPath, 'mcp'], {
             env: { ...process.env, ...env },
@@ -142,7 +143,7 @@ async function startMcpServerWithMessage(
 // Workspace Detection Tests
 // ============================================================================
 
-describe('MCP Server Workspace Detection', () => {
+describe('MCP Server Workspace Detection', { skip: skipReason }, () => {
     let workspace: TestWorkspace;
 
     before(() => {
@@ -209,7 +210,7 @@ describe('MCP Server Workspace Detection', () => {
 // MCP Protocol Tests
 // ============================================================================
 
-describe('MCP Protocol Compliance', () => {
+describe('MCP Protocol Compliance', { skip: skipReason }, () => {
     let workspace: TestWorkspace;
 
     before(() => {
@@ -285,7 +286,7 @@ describe('MCP Protocol Compliance', () => {
 // NODE_PATH Tests
 // ============================================================================
 
-describe('NODE_PATH Module Loading', () => {
+describe('NODE_PATH Module Loading', { skip: skipReason }, () => {
     let workspace: TestWorkspace;
     let modulesDir: string;
 
@@ -386,7 +387,7 @@ describe('NODE_PATH Module Loading', () => {
 // Error Handling Tests
 // ============================================================================
 
-describe('MCP Server Error Handling', () => {
+describe('MCP Server Error Handling', { skip: skipReason }, () => {
     test('handles missing workspace gracefully', async () => {
         const initMessage = {
             jsonrpc: '2.0',
