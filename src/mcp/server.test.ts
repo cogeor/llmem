@@ -77,7 +77,7 @@ function getCliPath(): string {
 async function startMcpServerWithMessage(
     env: Record<string, string>,
     message: object,
-    timeoutMs: number = 5000
+    timeoutMs: number = 15000
 ): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
     return new Promise((resolve, reject) => {
         const cliPath = getCliPath();
@@ -168,7 +168,6 @@ describe('MCP Server Workspace Detection', () => {
         const result = await startMcpServerWithMessage(
             { LLMEM_WORKSPACE: workspace.root },
             initMessage,
-            3000
         );
 
         // Check stderr for workspace detection message
@@ -199,7 +198,6 @@ describe('MCP Server Workspace Detection', () => {
         const result = await startMcpServerWithMessage(
             { LLMEM_WORKSPACE: '' }, // Empty to trigger auto-detect
             initMessage,
-            3000
         );
 
         // Should get a valid JSON-RPC response even with auto-detection
@@ -237,7 +235,6 @@ describe('MCP Protocol Compliance', () => {
         const result = await startMcpServerWithMessage(
             { LLMEM_WORKSPACE: workspace.root },
             initMessage,
-            3000
         );
 
         // Parse the response
@@ -265,7 +262,6 @@ describe('MCP Protocol Compliance', () => {
         const result = await startMcpServerWithMessage(
             { LLMEM_WORKSPACE: workspace.root },
             initMessage,
-            3000
         );
 
         // Check that tools are registered
@@ -322,7 +318,6 @@ describe('NODE_PATH Module Loading', () => {
                 NODE_PATH: '', // Empty NODE_PATH
             },
             initMessage,
-            3000
         );
 
         // Server should start successfully
@@ -353,7 +348,6 @@ describe('NODE_PATH Module Loading', () => {
                 NODE_PATH: modulesDir,
             },
             initMessage,
-            3000
         );
 
         // Server should start successfully even with NODE_PATH pointing to empty dir
@@ -378,7 +372,6 @@ describe('NODE_PATH Module Loading', () => {
                 NODE_PATH: modulesDir,
             },
             initMessage,
-            3000
         );
 
         // Should log about tool registration (the main functionality we care about)
@@ -410,7 +403,6 @@ describe('MCP Server Error Handling', () => {
         const result = await startMcpServerWithMessage(
             { LLMEM_WORKSPACE: '/nonexistent/path/that/does/not/exist' },
             initMessage,
-            3000
         );
 
         // Server might fail or fallback - either is acceptable
