@@ -104,7 +104,7 @@
     "watch:claude": "tsc -watch -p ./tsconfig.claude.json",
     "lint": "eslint src --ext ts",
     "test": "node --test dist/**/*.test.js",
-    "verify": "echo \"Skipping verification\"",
+    "verify": "npm ci --dry-run && npm run compile",
     "build:webview": "npx ts-node src/scripts/build_webview.ts",
     "build": "npm run build:vscode",
     "build:vscode": "npm run compile:vscode && npm run build:webview",
