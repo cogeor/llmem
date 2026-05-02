@@ -8,7 +8,7 @@
 //   1. mcp -> extension                       (Loop 04 / 10 fix)
 //   2. extension -> scripts                   (fixed in Loop 05)
 //   3. scripts -> extension                   (Loop 04 / 05 fix)
-//   4. info -> artifact (deprecated module)   (Loop 07 fix)
+//   4. info -> artifact (deprecated module)   (fixed in Loop 07)
 //   5. extension -> artifact (deprecated)     (Loop 15 fix)
 //   6. claude -> extension                    (Loop 04 fix)
 //   7. config-defaults -> extension           (Loop 04 fix)
@@ -110,16 +110,6 @@ const KNOWN_VIOLATIONS: readonly KnownViolation[] = [
     from: 'src/scripts/generate_webview.ts',
     to: 'src/extension/config.ts',
     reason: 'getConfig+loadConfig runtime; Loop 09/10 moves runtime out of extension/',
-  },
-  {
-    from: 'src/info/mcp.ts',
-    to: 'src/artifact/storage.ts',
-    reason: 'info -> deprecated artifact; Loop 07 (app-document-file) fixes',
-  },
-  {
-    from: 'src/info/mcp.ts',
-    to: 'src/artifact/service.ts',
-    reason: 'info -> deprecated artifact; Loop 07 (app-document-file) fixes',
   },
   {
     from: 'src/extension/hot-reload.ts',

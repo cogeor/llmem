@@ -178,7 +178,6 @@ const WRITE_ALLOWLIST: ReadonlySet<string> = new Set([
   'src/graph/edgelist.ts',
   'src/graph/plot/generator.ts',
   'src/graph/worktree-state.ts',
-  'src/mcp/path-utils.ts',
   'src/scripts/generate_edgelist.ts',
   'src/scripts/scan_codebase.ts',
   'src/scripts/test-arch-watcher.ts',

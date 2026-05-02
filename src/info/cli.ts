@@ -76,10 +76,13 @@ async function main() {
 
     // Semantic mode: output LLM prompt to stdout
     if (SEMANTIC_MODE) {
-        const { getFileInfoForMcp, buildEnrichmentPrompt } = await import('./mcp');
-        const data = await getFileInfoForMcp(root, relativePath);
-        const prompt = buildEnrichmentPrompt(data.filePath, data.markdown, data.sourceCode);
-        console.log(prompt);
+        const { buildDocumentFilePrompt } = await import('../application/document-file');
+        const { asWorkspaceRoot, asRelPath } = await import('../core/paths');
+        const data = await buildDocumentFilePrompt({
+            workspaceRoot: asWorkspaceRoot(root),
+            filePath: asRelPath(relativePath),
+        });
+        console.log(data.prompt);
         return;
     }
 

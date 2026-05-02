@@ -33,6 +33,11 @@ import { DEFAULT_CONFIG } from '../config-defaults';
 import { generateStaticWebview } from '../webview/generator';
 import { prepareWebviewDataFromSplitEdgeLists } from '../graph/webview-data';
 import { ImportEdgeListStore, CallEdgeListStore } from '../graph/edgelist';
+import {
+    buildDocumentFilePrompt,
+    processFileInfoReport,
+} from '../application/document-file';
+import { asWorkspaceRoot, asRelPath } from '../core/paths';
 
 // ============================================================================
 // Constants
@@ -150,22 +155,17 @@ async function handleFileInfoImpl(
     // Validate path stays within workspace
     validateWorkspacePath(workspaceRoot, relativePath);
 
-    // Import MCP functions dynamically
-    const { getFileInfoForMcp, buildEnrichmentPrompt } = await import('../info/mcp');
-
-    // Get file info data
-    const data = await getFileInfoForMcp(workspaceRoot, relativePath);
-
-    // Build the enrichment prompt
-    const prompt = buildEnrichmentPrompt(
-        data.filePath,
-        data.markdown,
-        data.sourceCode
-    );
+    // Build the design-doc prompt via the application-layer service.
+    // The branded WorkspaceRoot is the only source of truth for path
+    // resolution; no `process.cwd()` involvement.
+    const data = await buildDocumentFilePrompt({
+        workspaceRoot: asWorkspaceRoot(workspaceRoot),
+        filePath: asRelPath(relativePath),
+    });
 
     // Return prompt_ready response for host LLM to process
     return formatPromptResponse(
-        prompt,
+        data.prompt,
         'report_file_info',
         {
             workspaceRoot: workspaceRoot,
@@ -208,58 +208,23 @@ async function handleReportFileInfoImpl(
     // Validate path stays within workspace
     validateWorkspacePath(workspaceRoot, relativePath);
 
-    // Format as design document
-    const lines: string[] = [];
-
-    lines.push(`# DESIGN DOCUMENT: ${relativePath}`);
-    lines.push('');
-    lines.push('> **Instructions:** This document serves as a blueprint for implementing the source code. Review the specifications below before writing code.');
-    lines.push('');
-    lines.push('---');
-    lines.push('');
-
-    lines.push('## FILE OVERVIEW');
-    lines.push('');
-    lines.push(overview);
-    lines.push('');
-
-    if (inputs) {
-        lines.push(`**Inputs:** ${inputs}`);
-        lines.push('');
-    }
-    if (outputs) {
-        lines.push(`**Outputs:** ${outputs}`);
-        lines.push('');
-    }
-
-    lines.push('---');
-    lines.push('');
-    lines.push('## FUNCTION SPECIFICATIONS');
-    lines.push('');
-
-    for (const func of functions) {
-        lines.push(`### \`${func.name}\``);
-        lines.push('');
-        lines.push(`**Purpose:** ${func.purpose}`);
-        lines.push('');
-        lines.push('**Implementation:**');
-        lines.push('');
-        lines.push(func.implementation);
-        lines.push('');
-    }
-
-    const designDoc = lines.join('\n');
-
-    // Save to .arch/<path>.md using safe path utilities
-    const artifactRelativePath = path.join('.arch', `${relativePath}.md`);
-    writeFileInWorkspace(workspaceRoot, artifactRelativePath, designDoc);
-
-    const artifactPath = validateWorkspacePath(workspaceRoot, artifactRelativePath);
+    // Persist via the application-layer service. The branded WorkspaceRoot
+    // is the only source of truth for the destination — `process.cwd()`
+    // is never consulted, so the README "Known Issue" workaround is no
+    // longer needed.
+    const result = await processFileInfoReport({
+        workspaceRoot: asWorkspaceRoot(workspaceRoot),
+        filePath: asRelPath(relativePath),
+        overview,
+        inputs,
+        outputs,
+        functions,
+    });
 
     return formatSuccess({
         message: 'Design document generated and saved',
-        artifactPath: artifactPath,
-        designDocument: designDoc,
+        artifactPath: result.archPath,
+        designDocument: result.designDocument,
     });
 }
 
@@ -370,7 +335,7 @@ async function handleReportFolderInfoImpl(
 
     // Save to .arch/<folder>/README.md using safe path utilities
     const artifactRelativePath = path.join('.arch', folderPath, 'README.md');
-    writeFileInWorkspace(workspaceRoot, artifactRelativePath, content);
+    await writeFileInWorkspace(workspaceRoot, artifactRelativePath, content);
 
     const artifactPath = validateWorkspacePath(workspaceRoot, artifactRelativePath);
 

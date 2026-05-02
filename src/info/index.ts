@@ -1,25 +1,27 @@
 /**
  * File Info Module - Public API
- * 
+ *
  * Generates human-readable markdown documentation for source files
  * with function signatures and call relationships.
- * 
+ *
  * NOTE: The graph-based functions have been disabled pending edge list integration.
+ *
+ * Loop 07: the MCP-prompt-building surface previously exported from
+ * `./mcp` has moved to `src/application/document-file.ts`. The
+ * remaining helpers in this module are domain-shaped extractors used
+ * by the application layer.
  */
 
-import * as fs from 'fs';
 import * as path from 'path';
-import { buildReverseCallIndex } from './reverse-index';
 import { extractFileInfo } from './extractor';
 import { renderFileInfoMarkdown } from './renderer';
-import { FileInfo, ReverseCallIndex } from './types';
+import { ReverseCallIndex } from './types';
 
 // Re-export types
 export * from './types';
 export { extractFileInfo } from './extractor';
 export { renderFileInfoMarkdown } from './renderer';
 export { buildReverseCallIndex } from './reverse-index';
-export * from './mcp';
 export * from './filter';
 
 /**

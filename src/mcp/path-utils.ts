@@ -10,6 +10,8 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
+import { safeMkdir, safeWriteFile } from '../workspace/safe-fs';
+import { asWorkspaceRoot, asRelPath } from '../core/paths';
 
 // ============================================================================
 // Path Validation
@@ -97,21 +99,19 @@ export function validateWorkspaceRoot(workspaceRoot: string): void {
  * Ensure a directory exists within the workspace
  * Creates parent directories recursively if needed
  *
+ * Loop 07: delegates to `safeMkdir` from `workspace/safe-fs`.
+ *
  * @param workspaceRoot - Workspace root path
  * @param relativePath - Path relative to workspace root
  * @returns Validated absolute directory path
  * @throws Error if the path escapes workspace boundary
  */
-export function ensureDirectoryInWorkspace(
+export async function ensureDirectoryInWorkspace(
     workspaceRoot: string,
     relativePath: string
-): string {
+): Promise<string> {
     const targetPath = validateWorkspacePath(workspaceRoot, relativePath);
-
-    if (!fs.existsSync(targetPath)) {
-        fs.mkdirSync(targetPath, { recursive: true });
-    }
-
+    await safeMkdir(asWorkspaceRoot(workspaceRoot), asRelPath(relativePath));
     return targetPath;
 }
 
@@ -142,27 +142,29 @@ export function readFileInWorkspace(
  * Safely write a file within the workspace
  * Creates parent directories if needed
  *
+ * Loop 07: delegates to `safeWriteFile` from `workspace/safe-fs`.
+ * The `encoding` parameter is preserved for backward compatibility
+ * but is ignored (safeWriteFile always uses utf-8). Existing callers
+ * never passed a non-default encoding, so this is a no-op delta.
+ *
  * @param workspaceRoot - Workspace root path
  * @param relativePath - Path relative to workspace root
  * @param content - File content to write
- * @param encoding - File encoding (default: 'utf-8')
- * @throws Error if path is invalid
+ * @param _encoding - Ignored; retained for signature compatibility
+ * @throws PathEscapeError if relativePath escapes the workspace
  */
-export function writeFileInWorkspace(
+export async function writeFileInWorkspace(
     workspaceRoot: string,
     relativePath: string,
     content: string,
-    encoding: BufferEncoding = 'utf-8'
-): void {
-    const filePath = validateWorkspacePath(workspaceRoot, relativePath);
-
-    // Ensure parent directory exists
-    const dir = path.dirname(filePath);
-    if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-    }
-
-    fs.writeFileSync(filePath, content, encoding);
+    _encoding: BufferEncoding = 'utf-8'
+): Promise<void> {
+    // Containment check still goes through validateWorkspacePath so the
+    // legacy "Path validation failed" error message stays stable for
+    // tests that pin it. safeWriteFile then re-validates via
+    // resolveInsideWorkspace + actually writes the file.
+    validateWorkspacePath(workspaceRoot, relativePath);
+    await safeWriteFile(asWorkspaceRoot(workspaceRoot), asRelPath(relativePath), content);
 }
 
 /**
