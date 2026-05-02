@@ -4,7 +4,8 @@ import * as fs from 'fs';
 import { HotReloadService } from './hot-reload';
 import { getConfig } from './config';
 import { WebviewDataService } from '../webview/data-service';
-import { generateCallEdgesForFolderRecursive } from '../scripts/generate-call-edges';
+import { scanFile, scanFolderRecursive, type ScanLogger } from '../application/scan';
+import { asWorkspaceRoot } from '../core/paths';
 import { parseGraphId } from '../core/ids';
 
 /**
@@ -169,7 +170,12 @@ export class LLMemPanel {
 
         try {
             // Generate edges for the folder (this also creates nodes)
-            const result = await generateCallEdgesForFolderRecursive(workspaceRoot, folderPath, artifactRoot);
+            const result = await scanFolderRecursive({
+                workspaceRoot: asWorkspaceRoot(workspaceRoot),
+                folderPath,
+                artifactDir: artifactRoot,
+                logger: this._panelLogger(),
+            });
 
             // Load the updated edge lists to get the new nodes and edges
             const { CallEdgeListStore } = await import('../graph/edgelist');
@@ -253,11 +259,19 @@ export class LLMemPanel {
             try {
                 let result;
                 if (isFile) {
-                    // Import the file function dynamically to avoid circular deps
-                    const { generateCallEdgesForFile } = await import('../scripts/generate-call-edges');
-                    result = await generateCallEdgesForFile(workspaceRoot, targetPath, artifactRoot);
+                    result = await scanFile({
+                        workspaceRoot: asWorkspaceRoot(workspaceRoot),
+                        filePath: targetPath,
+                        artifactDir: artifactRoot,
+                        logger: this._panelLogger(),
+                    });
                 } else {
-                    result = await generateCallEdgesForFolderRecursive(workspaceRoot, targetPath, artifactRoot);
+                    result = await scanFolderRecursive({
+                        workspaceRoot: asWorkspaceRoot(workspaceRoot),
+                        folderPath: targetPath,
+                        artifactDir: artifactRoot,
+                        logger: this._panelLogger(),
+                    });
                 }
                 vscode.window.showInformationMessage(`Added ${result.newEdges} new edges. Total: ${result.totalEdges}`);
 
@@ -406,10 +420,15 @@ export class LLMemPanel {
             console.log(`[LLMemPanel] ${changedFiles.length} files have changed`);
 
             // Regenerate edges for changed files
-            const { generateCallEdgesForFile } = await import('../scripts/generate-call-edges');
+            const logger = this._panelLogger();
             for (const filePath of changedFiles) {
                 try {
-                    await generateCallEdgesForFile(workspaceRoot, filePath, artifactRoot);
+                    await scanFile({
+                        workspaceRoot: asWorkspaceRoot(workspaceRoot),
+                        filePath,
+                        artifactDir: artifactRoot,
+                        logger,
+                    });
                 } catch (e) {
                     console.error(`[LLMemPanel] Failed to regenerate edges for ${filePath}:`, e);
                 }
@@ -505,6 +524,20 @@ export class LLMemPanel {
             text += chars.charAt(Math.floor(Math.random() * chars.length));
         }
         return text;
+    }
+
+    /**
+     * Build a ScanLogger that bridges scan progress into the existing
+     * panel-side console.log shape. Replacing console with an OutputChannel
+     * is a future-loop concern (Phase-5 logging unification); for now we
+     * preserve today's exact log strings.
+     */
+    private _panelLogger(): ScanLogger {
+        return {
+            info: (m) => console.log(m),
+            warn: (m) => console.warn(m),
+            error: (m) => console.error(m),
+        };
     }
 
     public dispose() {

@@ -14,6 +14,8 @@ import { FileWatcherService } from './file-watcher';
 import { HttpRequestHandler } from './http-handler';
 import { WatchManager } from './watch-manager';
 import { ArchWatcherService, ArchFileEvent } from './arch-watcher';
+import { scanFile, type ScanLogger } from '../../application/scan';
+import { asWorkspaceRoot } from '../../core/paths';
 
 /**
  * Server configuration
@@ -47,6 +49,12 @@ export class GraphServer {
     private config: Required<ServerConfig> & { apiToken: string };
     private webviewDir: string;
     private isRegenerating = false;
+
+    private readonly serverLogger: ScanLogger = {
+        info: (m) => { if (this.config.verbose) console.log(m); },
+        warn: (m) => console.warn(m),
+        error: (m) => console.error(m),
+    };
 
     constructor(config: ServerConfig) {
         this.config = {
@@ -225,10 +233,15 @@ export class GraphServer {
                 if (result.success) {
                     // Regenerate edges for newly watched files
                     const artifactDir = path.join(this.config.workspaceRoot, this.config.artifactRoot);
-                    const { generateCallEdgesForFile } = await import('../../scripts/generate-call-edges');
+                    const logger = this.serverLogger;
 
                     for (const file of result.addedFiles) {
-                        await generateCallEdgesForFile(this.config.workspaceRoot, file, artifactDir);
+                        await scanFile({
+                            workspaceRoot: asWorkspaceRoot(this.config.workspaceRoot),
+                            filePath: file,
+                            artifactDir,
+                            logger,
+                        });
                     }
 
                     await this.regenerateWebview();
@@ -372,10 +385,15 @@ export class GraphServer {
             console.log(`🔄 Regenerating edges for ${files.length} changed file(s)...`);
 
             const artifactDir = path.join(this.config.workspaceRoot, this.config.artifactRoot);
-            const { generateCallEdgesForFile } = await import('../../scripts/generate-call-edges');
+            const logger = this.serverLogger;
 
             for (const file of files) {
-                await generateCallEdgesForFile(this.config.workspaceRoot, file, artifactDir);
+                await scanFile({
+                    workspaceRoot: asWorkspaceRoot(this.config.workspaceRoot),
+                    filePath: file,
+                    artifactDir,
+                    logger,
+                });
             }
 
             console.log('✓ Edges regenerated');

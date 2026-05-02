@@ -6,7 +6,7 @@
 //
 // Rules (declaration order matters for diagnostics):
 //   1. mcp -> extension                       (Loop 04 / 10 fix)
-//   2. extension -> scripts                   (Loop 05 fix)
+//   2. extension -> scripts                   (fixed in Loop 05)
 //   3. scripts -> extension                   (Loop 04 / 05 fix)
 //   4. info -> artifact (deprecated module)   (Loop 07 fix)
 //   5. extension -> artifact (deprecated)     (Loop 15 fix)
@@ -110,19 +110,6 @@ const KNOWN_VIOLATIONS: readonly KnownViolation[] = [
     from: 'src/scripts/generate_webview.ts',
     to: 'src/extension/config.ts',
     reason: 'getConfig+loadConfig runtime; Loop 09/10 moves runtime out of extension/',
-  },
-  {
-    from: 'src/extension/panel.ts',
-    to: 'src/scripts/generate-call-edges.ts',
-    reason: 'extension -> scripts; Loop 05 (app-scan-extraction) fixes',
-  },
-  {
-    // ADDED-IN-IMPLEMENTATION: PLAN's grep missed this because it's a dynamic
-    // import (`await import(...)` at hot-reload.ts:178), not a static `from`
-    // clause. Captured here with the same Loop 05 ownership as panel.ts.
-    from: 'src/extension/hot-reload.ts',
-    to: 'src/scripts/generate-call-edges.ts',
-    reason: 'extension -> scripts (dynamic import); Loop 05 (app-scan-extraction) fixes',
   },
   {
     from: 'src/info/mcp.ts',

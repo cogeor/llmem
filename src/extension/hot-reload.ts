@@ -3,6 +3,8 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { WebviewDataService, WebviewData } from '../webview/data-service';
 import { getSupportedExtensions } from '../artifact/service';
+import { scanFile, type ScanLogger } from '../application/scan';
+import { asWorkspaceRoot } from '../core/paths';
 
 /**
  * Service to handle hot reloading of the webview data.
@@ -28,6 +30,12 @@ export class HotReloadService {
     private archRoot: string;
 
     private onUpdate: (data: WebviewData) => void;
+
+    private readonly _scanLogger: ScanLogger = {
+        info: (m) => console.log(m),
+        warn: (m) => console.warn(m),
+        error: (m) => console.error(m),
+    };
 
     constructor(
         artifactRoot: string,
@@ -174,10 +182,13 @@ export class HotReloadService {
 
             console.log('[HotReload] Watched files changed, regenerating edges:', watchedChangedFiles);
             try {
-                // Regenerate edges for each changed file in watched paths
-                const { generateCallEdgesForFile } = await import('../scripts/generate-call-edges');
                 for (const file of watchedChangedFiles) {
-                    await generateCallEdgesForFile(this.projectRoot, file, this.artifactRoot);
+                    await scanFile({
+                        workspaceRoot: asWorkspaceRoot(this.projectRoot),
+                        filePath: file,
+                        artifactDir: this.artifactRoot,
+                        logger: this._scanLogger,
+                    });
                 }
 
                 // Refresh the webview data
