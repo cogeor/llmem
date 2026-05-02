@@ -3,10 +3,66 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { HotReloadService } from './hot-reload';
 import { getConfig } from './config';
-import { WebviewDataService } from '../webview/data-service';
-import { scanFile, scanFolderRecursive, type ScanLogger } from '../application/scan';
-import { asWorkspaceRoot } from '../core/paths';
+import { collectViewerData, type ViewerData } from '../application/viewer-data';
+import { scanFile, scanFolderRecursive } from '../application/scan';
+import type { Logger } from '../core/logger';
+import { asWorkspaceRoot, asAbsPath } from '../core/paths';
 import { parseGraphId } from '../core/ids';
+import type { DesignDoc } from '../webview/design-docs';
+
+/**
+ * Renderer shape produced from a `ViewerData`'s raw markdown by the panel
+ * before posting to the webview. The viewer expects the legacy
+ * `Record<string, DesignDoc>` shape, where each value carries both the
+ * markdown source and the rendered HTML.
+ */
+interface ViewerDataRendered {
+    graphData: ViewerData['graphData'];
+    workTree: ViewerData['workTree'];
+    designDocs: Record<string, DesignDoc>;
+}
+
+/**
+ * Render raw markdown into the legacy `DesignDoc` shape using `marked`.
+ *
+ * Application-layer `collectViewerData` returns raw markdown only; the
+ * panel renders here so presentation stays out of the application layer.
+ * (Loop 06 deliberate split.) Consolidating with `webview/design-docs.ts`
+ * is Loop 12 territory.
+ *
+ * Uses dynamic import for ESM-only `marked` — same workaround
+ * `DesignDocManager.getAllDocsAsync` uses.
+ */
+async function renderViewerDocs(raw: Record<string, string>): Promise<Record<string, DesignDoc>> {
+    const out: Record<string, DesignDoc> = {};
+    const dynamicImport = new Function('specifier', 'return import(specifier)');
+    let marked: any;
+    try {
+        const mod = await dynamicImport('marked');
+        marked = mod.marked;
+    } catch (e) {
+        console.error('[LLMemPanel] Failed to import marked:', e);
+        return out;
+    }
+    for (const [key, markdown] of Object.entries(raw)) {
+        try {
+            const html = await marked.parse(markdown);
+            out[key] = { markdown, html };
+        } catch (e) {
+            console.error(`[LLMemPanel] Failed to render design doc: ${key}`, e);
+        }
+    }
+    return out;
+}
+
+/** Compose a rendered viewer payload for posting to the webview. */
+async function toRenderedViewerData(data: ViewerData): Promise<ViewerDataRendered> {
+    return {
+        graphData: data.graphData,
+        workTree: data.workTree,
+        designDocs: await renderViewerDocs(data.designDocs),
+    };
+}
 
 /**
  * Manages the LLMem Webview Panel
@@ -276,10 +332,15 @@ export class LLMemPanel {
                 vscode.window.showInformationMessage(`Added ${result.newEdges} new edges. Total: ${result.totalEdges}`);
 
                 // Refresh webview data
-                const data = await WebviewDataService.collectData(workspaceRoot, artifactRoot);
+                const raw = await collectViewerData({
+                    workspaceRoot: asWorkspaceRoot(workspaceRoot),
+                    artifactRoot: asAbsPath(artifactRoot),
+                    logger: this._panelLogger(),
+                });
+                const rendered = await toRenderedViewerData(raw);
                 this._panel.webview.postMessage({
                     type: 'data:refresh',
-                    data: data
+                    data: rendered
                 });
             } catch (e: any) {
                 vscode.window.showErrorMessage(`Failed to generate edges: ${e.message}`);
@@ -363,10 +424,15 @@ export class LLMemPanel {
             });
 
             // Refresh webview data
-            const data = await WebviewDataService.collectData(workspaceRoot, artifactRoot);
+            const raw = await collectViewerData({
+                workspaceRoot: asWorkspaceRoot(workspaceRoot),
+                artifactRoot: asAbsPath(artifactRoot),
+                logger: this._panelLogger(),
+            });
+            const rendered = await toRenderedViewerData(raw);
             this._panel.webview.postMessage({
                 type: 'data:refresh',
-                data: data
+                data: rendered
             });
 
             console.log(`[LLMemPanel] Removed ${removedFiles.length} files from watch`);
@@ -463,16 +529,21 @@ export class LLMemPanel {
         // Send initial data
         try {
             console.log('[LLMemPanel] Collecting initial data...');
-            const data = await WebviewDataService.collectData(workspaceRoot, artifactRoot);
+            const raw = await collectViewerData({
+                workspaceRoot: asWorkspaceRoot(workspaceRoot),
+                artifactRoot: asAbsPath(artifactRoot),
+                logger: this._panelLogger(),
+            });
+            const rendered = await toRenderedViewerData(raw);
             this._panel.webview.postMessage({
                 type: 'data:init',
-                data: data
+                data: rendered
             });
             console.log('[LLMemPanel] Initial data sent:', {
-                importNodes: data.graphData.importGraph.nodes.length,
-                importEdges: data.graphData.importGraph.edges.length,
-                callNodes: data.graphData.callGraph.nodes.length,
-                callEdges: data.graphData.callGraph.edges.length
+                importNodes: rendered.graphData.importGraph.nodes.length,
+                importEdges: rendered.graphData.importGraph.edges.length,
+                callNodes: rendered.graphData.callGraph.nodes.length,
+                callEdges: rendered.graphData.callGraph.edges.length
             });
 
             // Send watched files to webview
@@ -527,12 +598,12 @@ export class LLMemPanel {
     }
 
     /**
-     * Build a ScanLogger that bridges scan progress into the existing
-     * panel-side console.log shape. Replacing console with an OutputChannel
-     * is a future-loop concern (Phase-5 logging unification); for now we
-     * preserve today's exact log strings.
+     * Build a Logger that bridges scan / viewer-data progress into the
+     * existing panel-side console.log shape. Replacing console with an
+     * OutputChannel is a future-loop concern (Phase-5 logging
+     * unification); for now we preserve today's exact log strings.
      */
-    private _panelLogger(): ScanLogger {
+    private _panelLogger(): Logger {
         return {
             info: (m) => console.log(m),
             warn: (m) => console.warn(m),

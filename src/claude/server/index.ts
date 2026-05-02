@@ -14,7 +14,8 @@ import { FileWatcherService } from './file-watcher';
 import { HttpRequestHandler } from './http-handler';
 import { WatchManager } from './watch-manager';
 import { ArchWatcherService, ArchFileEvent } from './arch-watcher';
-import { scanFile, type ScanLogger } from '../../application/scan';
+import { scanFile } from '../../application/scan';
+import type { Logger } from '../../core/logger';
 import { asWorkspaceRoot } from '../../core/paths';
 
 /**
@@ -50,7 +51,7 @@ export class GraphServer {
     private webviewDir: string;
     private isRegenerating = false;
 
-    private readonly serverLogger: ScanLogger = {
+    private readonly serverLogger: Logger = {
         info: (m) => { if (this.config.verbose) console.log(m); },
         warn: (m) => console.warn(m),
         error: (m) => console.error(m),

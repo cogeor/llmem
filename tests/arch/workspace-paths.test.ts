@@ -182,7 +182,6 @@ const WRITE_ALLOWLIST: ReadonlySet<string> = new Set([
   'src/scripts/generate_edgelist.ts',
   'src/scripts/scan_codebase.ts',
   'src/scripts/test-arch-watcher.ts',
-  'src/webview/data-service.ts',
   'src/webview/generator.ts',
   'src/webview/utils/md-converter.ts',
   'src/workspace/safe-fs.ts',

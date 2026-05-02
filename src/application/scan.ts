@@ -7,7 +7,10 @@
  * and the CLI shim (src/scripts/generate-call-edges.ts) consume.
  *
  * Logger discipline: this module MUST NOT call console.*. Pass a
- * ScanLogger; SILENT_LOGGER is used when none is provided.
+ * Logger; NoopLogger is used when none is provided. (Loop 05 introduced
+ * an inline `ScanLogger` interface here; Loop 06 promoted it to
+ * `core/logger.ts` so the new `application/viewer-data.ts` module can
+ * share the shape.)
  *
  * Error discipline: per-file failures are surfaced through
  * ScanResult.errors. The scan does not throw on individual file errors —
@@ -17,21 +20,13 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import type { WorkspaceRoot } from '../core/paths';
+import type { Logger } from '../core/logger';
+import { NoopLogger } from '../core/logger';
 import { CallEdgeListStore, ImportEdgeListStore } from '../graph/edgelist';
 import { artifactToEdgeList } from '../graph/artifact-converter';
 import { countFolderLines } from '../parser/line-counter';
 import { IGNORED_FOLDERS } from '../parser/config';
 import { ParserRegistry } from '../parser/registry';
-
-/**
- * Pluggable logger so the application module never calls console.*. CLI,
- * HTTP server, and VS Code panel each pass their own adapter.
- */
-export interface ScanLogger {
-    info(message: string): void;
-    warn(message: string): void;
-    error(message: string): void;
-}
 
 /**
  * A per-file failure surfaced to the caller. The scan continues past these
@@ -53,7 +48,7 @@ export interface ScanFolderOptions {
     /** Absolute path to the artifact directory (.artifacts). */
     artifactDir: string;
     /** Optional logger. Defaults to a no-op. */
-    logger?: ScanLogger;
+    logger?: Logger;
 }
 
 export interface ScanFileOptions {
@@ -63,7 +58,7 @@ export interface ScanFileOptions {
     /** Absolute path to the artifact directory (.artifacts). */
     artifactDir: string;
     /** Optional logger. Defaults to a no-op. */
-    logger?: ScanLogger;
+    logger?: Logger;
 }
 
 /**
@@ -83,16 +78,10 @@ export interface ScanResult {
     totalEdges: number;
 }
 
-const SILENT_LOGGER: ScanLogger = {
-    info: () => {},
-    warn: () => {},
-    error: () => {},
-};
-
 /** Scan a single file and append edges. */
 export async function scanFile(opts: ScanFileOptions): Promise<ScanResult> {
     const { workspaceRoot, filePath, artifactDir } = opts;
-    const logger = opts.logger ?? SILENT_LOGGER;
+    const logger = opts.logger ?? NoopLogger;
 
     const absoluteFile = path.join(workspaceRoot, filePath);
 
@@ -179,7 +168,7 @@ export async function scanFile(opts: ScanFileOptions): Promise<ScanResult> {
 /** Scan one folder (immediate children only) and append edges. */
 export async function scanFolder(opts: ScanFolderOptions): Promise<ScanResult> {
     const { workspaceRoot, folderPath, artifactDir } = opts;
-    const logger = opts.logger ?? SILENT_LOGGER;
+    const logger = opts.logger ?? NoopLogger;
 
     const absoluteFolder = path.join(workspaceRoot, folderPath);
 

@@ -1,10 +1,25 @@
 
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { WebviewDataService, WebviewData } from '../webview/data-service';
+import { collectViewerData } from '../application/viewer-data';
 import { getSupportedExtensions } from '../artifact/service';
-import { scanFile, type ScanLogger } from '../application/scan';
-import { asWorkspaceRoot } from '../core/paths';
+import { scanFile } from '../application/scan';
+import type { Logger } from '../core/logger';
+import { asWorkspaceRoot, asAbsPath } from '../core/paths';
+import type { DesignDoc } from '../webview/design-docs';
+import type { WebviewGraphData } from '../graph/webview-data';
+import type { ITreeNode } from '../webview/worktree';
+
+/**
+ * The rendered shape that hot-reload pushes to the panel. Identical to
+ * the pre-Loop-06 `WebviewData` interface (markdown rendered to HTML),
+ * preserved here so the panel-side callback contract does not change.
+ */
+export interface WebviewData {
+    graphData: WebviewGraphData;
+    workTree: ITreeNode;
+    designDocs: Record<string, DesignDoc>;
+}
 
 /**
  * Service to handle hot reloading of the webview data.
@@ -31,7 +46,7 @@ export class HotReloadService {
 
     private onUpdate: (data: WebviewData) => void;
 
-    private readonly _scanLogger: ScanLogger = {
+    private readonly _scanLogger: Logger = {
         info: (m) => console.log(m),
         warn: (m) => console.warn(m),
         error: (m) => console.error(m),
@@ -240,14 +255,49 @@ export class HotReloadService {
 
     public async sendUpdate() {
         try {
-            const data = await WebviewDataService.collectData(
-                this.projectRoot,
-                this.artifactRoot
-            );
+            const raw = await collectViewerData({
+                workspaceRoot: asWorkspaceRoot(this.projectRoot),
+                artifactRoot: asAbsPath(this.artifactRoot),
+                logger: this._scanLogger,
+            });
+            const designDocs = await renderRawDesignDocs(raw.designDocs);
+            const data: WebviewData = {
+                graphData: raw.graphData,
+                workTree: raw.workTree,
+                designDocs,
+            };
             this.onUpdate(data);
             console.log('[HotReload] Update sent');
         } catch (e) {
             console.error('[HotReload] Failed to collect data:', e);
         }
     }
+}
+
+/**
+ * Render raw markdown into `DesignDoc` shape. Mirrors the panel-side
+ * helper in `panel.ts`; kept here to avoid a cross-file import for a
+ * 20-line helper. Both helpers consolidate into `webview/design-docs.ts`
+ * in Loop 12 (web-viewer-isolate).
+ */
+async function renderRawDesignDocs(raw: Record<string, string>): Promise<Record<string, DesignDoc>> {
+    const out: Record<string, DesignDoc> = {};
+    const dynamicImport = new Function('specifier', 'return import(specifier)');
+    let marked: any;
+    try {
+        const mod = await dynamicImport('marked');
+        marked = mod.marked;
+    } catch (e) {
+        console.error('[HotReload] Failed to import marked:', e);
+        return out;
+    }
+    for (const [key, markdown] of Object.entries(raw)) {
+        try {
+            const html = await marked.parse(markdown);
+            out[key] = { markdown, html };
+        } catch (e) {
+            console.error(`[HotReload] Failed to render design doc: ${key}`, e);
+        }
+    }
+    return out;
 }

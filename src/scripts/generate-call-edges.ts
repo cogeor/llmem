@@ -11,10 +11,11 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
-import { scanFolder, scanFolderRecursive, type ScanLogger } from '../application/scan';
+import { scanFolder, scanFolderRecursive } from '../application/scan';
 import { asWorkspaceRoot } from '../core/paths';
+import type { Logger } from '../core/logger';
 
-const consoleLogger: ScanLogger = {
+const consoleLogger: Logger = {
     info: (m) => console.log(m),
     warn: (m) => console.warn(m),
     error: (m) => console.error(m),
