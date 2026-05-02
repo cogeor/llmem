@@ -2,59 +2,32 @@
 //
 // Two-part graph-ID safety net:
 //
-//   Part A — round-trip stub helpers. Pins the contract that Loop 03 will
-//   move into src/core/ids.ts. Today the contract module does NOT exist; the
-//   helpers here are test-only stubs. When Loop 03 lands, this file is
-//   updated to import the real helpers and the stubs are deleted in the same
-//   commit.
+//   Part A — round-trip checks against the contract module src/core/ids.ts.
+//   Loop 03 introduced the module; the previous stub helpers were deleted
+//   alongside the production-site refactor.
 //
 //   Part B — parsing-locality scan. Walks every .ts file under src/ and
 //   flags any source that uses '::' or '#' as a graph-ID separator outside
-//   the contract module. Today every observed file goes into
-//   KNOWN_VIOLATIONS; Loop 03 deletes most of them.
+//   the contract module.
 //
 // Allowlist (LITERAL_USE_ALLOWLIST) lists files where '::' or '#' is used
 // for something other than graph-ID parsing — e.g. Rust language syntax,
-// cosmetic label-wrapping in graph layout. They are not violations.
+// cosmetic label-wrapping in graph layout, or the contract module itself.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
+import {
+  makeFileId,
+  makeEntityId,
+  parseGraphId,
+  isExternalModuleId,
+} from '../../src/core/ids';
+
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const SRC_ROOT = path.join(REPO_ROOT, 'src');
-
-// ---------------------------------------------------------------------------
-// Part A — round-trip stub helpers (move to src/core/ids.ts in Loop 03)
-// ---------------------------------------------------------------------------
-
-type GraphId =
-  | { kind: 'file'; fileId: string }
-  | { kind: 'entity'; fileId: string; name: string }
-  | { kind: 'external'; module: string };
-
-function makeFileId(rel: string): string {
-  return rel;
-}
-
-function makeEntityId(fileId: string, name: string): string {
-  return `${fileId}::${name}`;
-}
-
-function isExternalModuleId(id: string): boolean {
-  // External modules: bare specifiers (no '::', no leading 'src/', no '/').
-  return !id.includes('::') && !id.startsWith('src/') && !id.includes('/');
-}
-
-function parseGraphId(id: string): GraphId {
-  if (id.includes('::')) {
-    const idx = id.indexOf('::');
-    return { kind: 'entity', fileId: id.slice(0, idx), name: id.slice(idx + 2) };
-  }
-  if (isExternalModuleId(id)) return { kind: 'external', module: id };
-  return { kind: 'file', fileId: id };
-}
 
 test('graph-ids: makeFileId is identity on repo-relative paths', () => {
   assert.equal(makeFileId('src/foo.ts'), 'src/foo.ts');
@@ -109,47 +82,15 @@ interface GraphIdViolation {
   readonly reason: string;
 }
 
-const KNOWN_VIOLATIONS: readonly GraphIdViolation[] = [
-  {
-    file: 'src/extension/panel.ts',
-    reason: 'startsWith(folderPath + "::"); Loop 03 replaces with parseGraphId',
-  },
-  {
-    file: 'src/graph/artifact-converter.ts',
-    reason: 'Builds ${fileId}::${name}; Loop 03 replaces with makeEntityId',
-  },
-  {
-    file: 'src/graph/edgelist.ts',
-    reason: 'Doc comments + node-id format; Loop 03 lifts format constants into core/ids',
-  },
-  {
-    file: 'src/info/cli.ts',
-    reason: 'Splits source/target on "::"; Loop 03 replaces with parseGraphId',
-  },
-  {
-    file: 'src/info/filter.ts',
-    reason: 'startsWith(fileId + "::") + split("::"); Loop 03 replaces with parseGraphId',
-  },
-  {
-    file: 'src/info/folder.ts',
-    reason: 'split("::") for source/target file extraction; Loop 03 replaces with parseGraphId',
-  },
-  {
-    file: 'src/info/mcp.ts',
-    reason: 'split("::") for source/target file extraction; Loop 03 replaces with parseGraphId',
-  },
-  {
-    file: 'src/webview/ui/components/GraphView.ts',
-    reason: 'lastIndexOf("#") in handleNodeClick; Loop 03 replaces with parseGraphId',
-  },
-];
+const KNOWN_VIOLATIONS: readonly GraphIdViolation[] = [];
 
-// Files where '::' or '#' appears for a non-graph-ID reason. These are NOT
-// violations.
+// Files where '::' or '#' appears for a non-graph-ID reason — or where the
+// file IS the contract module. These are NOT violations.
 const LITERAL_USE_ALLOWLIST: readonly string[] = [
-  'src/parser/rust/extractor.ts', // Rust path separator '::' is language syntax.
-  'src/webview/ui/graph/HierarchicalLayout.ts', // split(/[\/\\#:]/) — cosmetic label split.
-  'src/webview/ui/graph/NodeRenderer.ts', // split(/[\/\\:#]/) — cosmetic label wrapping.
+  'src/core/ids.ts',                              // contract module (Loop 03)
+  'src/parser/rust/extractor.ts',                 // Rust path separator '::' is language syntax.
+  'src/webview/ui/graph/HierarchicalLayout.ts',   // split(/[\/\\#:]/) — cosmetic label split.
+  'src/webview/ui/graph/NodeRenderer.ts',         // split(/[\/\\:#]/) — cosmetic label wrapping.
 ];
 
 // Detection regexes.

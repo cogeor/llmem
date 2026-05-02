@@ -24,7 +24,7 @@ export interface EdgeListData {
 }
 
 export interface NodeEntry {
-    id: string;           // "src/parser/ts-service.ts::getTypeScriptFiles"
+    id: string;           // see src/core/ids.ts (entity ID = fileId + ENTITY_SEPARATOR + name)
     name: string;         // "getTypeScriptFiles"
     kind: 'file' | 'function' | 'class' | 'method' | 'arrow' | 'const';
     fileId: string;       // "src/parser/ts-service.ts"
@@ -203,8 +203,8 @@ abstract class BaseEdgeListStore {
     removeEdgesBySourceFile(fileId: string): void {
         const before = this.data.edges.length;
         this.data.edges = this.data.edges.filter(e => {
-            // For import edges: source is the file ID
-            // For call edges: source contains the file ID (e.g., "fileId::functionName")
+            // For import edges: source is the file ID.
+            // For call edges: source is an entity graph-ID; see src/core/ids.ts.
             return !e.source.startsWith(fileId);
         });
         if (this.data.edges.length !== before) {
@@ -247,12 +247,14 @@ abstract class BaseEdgeListStore {
                 !normalizedFileId.startsWith(normalizedPath + '/');
         });
 
-        // Remove edges with sources in this folder/file
+        // Remove edges with sources in this folder/file. Loop 03 removed a
+        // dead `+ '#'` defensive prefix here: no node ID has ever contained
+        // '#' (the canonical separator is the ENTITY_SEPARATOR exported
+        // from src/core/ids.ts).
         const beforeEdges = this.data.edges.length;
         this.data.edges = this.data.edges.filter(e => {
             const normalizedSource = e.source.replace(/\\/g, '/');
             return !normalizedSource.startsWith(normalizedPath + '/') &&
-                !normalizedSource.startsWith(normalizedPath + '#') &&
                 normalizedSource !== normalizedPath;
         });
 
@@ -309,14 +311,18 @@ export class ImportEdgeListStore extends BaseEdgeListStore {
  * another. Nodes represent named entities scoped to their containing file.
  * Persisted to `call-edgelist.json` in the artifact root.
  *
- * Node IDs use the format `{fileId}::{entityName}`, e.g.
- * `src/parser/ts-service.ts::getTypeScriptFiles`.
+ * Node IDs are constructed by `makeEntityId` in src/core/ids.ts.
  *
  * Typical usage:
  * ```typescript
+ * import { makeEntityId } from '../core/ids';
  * const store = new CallEdgeListStore(artifactRoot);
  * await store.load();
- * store.addEdge({ source: 'src/a.ts::foo', target: 'src/b.ts::bar', kind: 'call' });
+ * store.addEdge({
+ *     source: makeEntityId('src/a.ts', 'foo'),
+ *     target: makeEntityId('src/b.ts', 'bar'),
+ *     kind: 'call'
+ * });
  * await store.save();
  * ```
  */

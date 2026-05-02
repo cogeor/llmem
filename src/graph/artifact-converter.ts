@@ -9,6 +9,7 @@ import { FileArtifact, Entity, ImportSpec, CallSite } from '../parser/types';
 import { NodeEntry, EdgeEntry } from './edgelist';
 import { normalizePath } from './utils';
 import { ALL_SUPPORTED_EXTENSIONS } from '../parser/config';
+import { makeEntityId } from '../core/ids';
 
 export interface ConversionResult {
     nodes: NodeEntry[];
@@ -39,7 +40,7 @@ export function artifactToEdgeList(artifact: FileArtifact, fileId: string): Conv
 
     // 1. Create entity nodes
     for (const entity of artifact.entities) {
-        const nodeId = `${fileId}::${entity.name}`;
+        const nodeId = makeEntityId(fileId, entity.name);
 
         // Map entity kind to node kind
         let kind: NodeEntry['kind'] = 'function';
@@ -100,7 +101,7 @@ export function artifactToEdgeList(artifact: FileArtifact, fileId: string): Conv
                 // Create nodes for imported classes/functions from external modules
                 for (const spec of imp.specifiers) {
                     if (spec.name !== '*') {
-                        const entityNodeId = `${targetFileId}::${spec.name}`;
+                        const entityNodeId = makeEntityId(targetFileId, spec.name);
                         const entityNodeExists = nodes.some(n => n.id === entityNodeId);
 
                         if (!entityNodeExists) {
@@ -234,7 +235,7 @@ function resolveCallToEdge(
             targetFileId = normalizePath(targetFileId);
         }
 
-        const targetNodeId = `${targetFileId}::${call.resolvedDefinition.name}`;
+        const targetNodeId = makeEntityId(targetFileId, call.resolvedDefinition.name);
         return {
             source: callerNodeId,
             target: targetNodeId,
@@ -254,7 +255,7 @@ function resolveCallToEdge(
             const localName = spec.alias || spec.name;
             if (localName === calleeName) {
                 // Found it - the call is to something from this import
-                const targetNodeId = `${targetFileId}::${spec.name}`;
+                const targetNodeId = makeEntityId(targetFileId, spec.name);
                 return {
                     source: callerNodeId,
                     target: targetNodeId,
@@ -265,7 +266,7 @@ function resolveCallToEdge(
     }
 
     // Local call within same file?
-    const targetNodeId = `${fileId}::${calleeName}`;
+    const targetNodeId = makeEntityId(fileId, calleeName);
     return {
         source: callerNodeId,
         target: targetNodeId,

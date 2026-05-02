@@ -15,6 +15,7 @@ import { TypeScriptExtractor } from '../parser/ts-extractor';
 import { artifactToEdgeList } from '../graph/artifact-converter';
 import { getImportEdges, getCallEdges, filterImportEdges } from './filter';
 import { FileArtifact, Entity } from '../parser/types';
+import { parseGraphId } from '../core/ids';
 
 // Configuration
 const INCLUDE_SIGNATURES = process.argv.includes('--signatures');
@@ -183,11 +184,14 @@ async function main() {
     // Filter and format call edges
     const formattedCallEdges: string[] = [];
     for (const edge of callEdges) {
-        // Extract source and target info
-        const sourceFile = edge.source.includes('::') ? edge.source.split('::')[0] : edge.source;
-        const sourceName = edge.source.includes('::') ? edge.source.split('::').pop()! : edge.source;
-        const targetFile = edge.target.includes('::') ? edge.target.split('::')[0] : edge.target;
-        const targetName = edge.target.includes('::') ? edge.target.split('::').pop()! : edge.target;
+        // Extract source and target info via the canonical contract.
+        const sourceParsed = parseGraphId(edge.source);
+        const targetParsed = parseGraphId(edge.target);
+
+        const sourceFile = sourceParsed.kind === 'entity' ? sourceParsed.fileId : edge.source;
+        const sourceName = sourceParsed.kind === 'entity' ? sourceParsed.name : edge.source;
+        const targetFile = targetParsed.kind === 'entity' ? targetParsed.fileId : edge.target;
+        const targetName = targetParsed.kind === 'entity' ? targetParsed.name : edge.target;
 
         // Skip stdlib functions
         if (stdlibFunctions.has(targetName)) {

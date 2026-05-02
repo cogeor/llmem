@@ -16,6 +16,7 @@ import { extractFileInfo } from './extractor';
 import { renderFileInfoMarkdown } from './renderer';
 import { FileInfo, ReverseCallIndex } from './types';
 import { getLanguageFromPath } from '../parser/config';
+import { parseGraphId } from '../core/ids';
 
 /**
  * Enriched function data from LLM
@@ -139,7 +140,8 @@ export async function getFileInfoForMcp(
     ]);
 
     const filteredCallEdges = callEdges.filter(edge => {
-        const targetName = edge.target.includes('::') ? edge.target.split('::').pop()! : edge.target;
+        const parsed = parseGraphId(edge.target);
+        const targetName = parsed.kind === 'entity' ? parsed.name : edge.target;
         return !stdlibFunctions.has(targetName);
     });
 
@@ -147,9 +149,12 @@ export async function getFileInfoForMcp(
         lines.push('(none)');
     } else {
         for (const edge of filteredCallEdges) {
-            const sourceName = edge.source.includes('::') ? edge.source.split('::').pop()! : edge.source;
-            const targetFile = edge.target.includes('::') ? edge.target.split('::')[0] : edge.target;
-            const targetName = edge.target.includes('::') ? edge.target.split('::').pop()! : edge.target;
+            const sourceParsed = parseGraphId(edge.source);
+            const targetParsed = parseGraphId(edge.target);
+
+            const sourceName = sourceParsed.kind === 'entity' ? sourceParsed.name : edge.source;
+            const targetFile = targetParsed.kind === 'entity' ? targetParsed.fileId : edge.target;
+            const targetName = targetParsed.kind === 'entity' ? targetParsed.name : edge.target;
 
             if (targetFile === filePath) {
                 lines.push(`- ${sourceName} → ${targetName}`);

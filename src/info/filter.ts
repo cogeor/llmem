@@ -6,6 +6,19 @@
  */
 
 import { EdgeEntry, NodeEntry } from '../graph/edgelist';
+import { isEntityOfFile, parseGraphId } from '../core/ids';
+
+/**
+ * Extract the file portion of a graph-ID. Entity IDs reduce to their
+ * containing fileId; file IDs and external module IDs pass through unchanged.
+ *
+ * Local helper rather than a core/ids export: see Loop 03 PLAN "Out of scope"
+ * — promote only when a non-info caller needs the same shape.
+ */
+function fileOf(graphId: string): string {
+    const parsed = parseGraphId(graphId);
+    return parsed.kind === 'entity' ? parsed.fileId : graphId;
+}
 
 /**
  * Check if a path is external (node_modules)
@@ -56,8 +69,8 @@ export function getEdgesFromFile(edges: EdgeEntry[], fileId: string): EdgeEntry[
         if (edge.kind === 'import') {
             return edge.source === fileId;
         }
-        // For call edges, source is entity (fileId::entityName)
-        return edge.source.startsWith(fileId + '::');
+        // For call edges, source is entity (fileId-prefixed graph-ID)
+        return isEntityOfFile(edge.source, fileId);
     });
 }
 
@@ -96,20 +109,11 @@ export function getEdgesForModule(edges: EdgeEntry[], folderPath: string, recurs
     };
 
     return edges.filter(edge => {
-        // Extract file path from source/target
-        // Source for import is fileId
-        // Source/Target for call is fileId::entity
-
-        let sourceFile = edge.source;
-        if (edge.kind === 'call' && edge.source.includes('::')) {
-            sourceFile = edge.source.split('::')[0];
-        }
-
-        let targetFile = edge.target;
-        if (edge.kind === 'call' && edge.target.includes('::')) {
-            targetFile = edge.target.split('::')[0];
-        }
-        // For imports, target is just the path
+        // Extract file path from source/target. For imports, source/target are
+        // already file IDs. For calls, they are entity graph-IDs (fileOf
+        // reduces them to the containing file).
+        const sourceFile = edge.kind === 'call' ? fileOf(edge.source) : edge.source;
+        const targetFile = edge.kind === 'call' ? fileOf(edge.target) : edge.target;
 
         const sourceIn = isInFolder(sourceFile);
         const targetIn = isInFolder(targetFile);

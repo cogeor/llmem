@@ -12,6 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ImportEdgeListStore, CallEdgeListStore, NodeEntry, EdgeEntry } from '../graph/edgelist';
 import { getImportEdges, getCallEdges, filterImportEdges, getEdgesForModule } from './filter';
+import { parseGraphId } from '../core/ids';
 
 /**
  * Data needed for the folder info prompt
@@ -181,19 +182,18 @@ export async function getFolderInfoForMcp(
         const source = edge.source;
         const target = edge.target;
 
-        let sourceFile = source;
-        if (source.includes('::')) sourceFile = source.split('::')[0];
+        const sourceParsed = parseGraphId(source);
+        const targetParsed = parseGraphId(target);
 
-        let targetFile = target;
-        if (target.includes('::')) targetFile = target.split('::')[0];
+        const sourceFile = sourceParsed.kind === 'entity' ? sourceParsed.fileId : source;
+        const targetFile = targetParsed.kind === 'entity' ? targetParsed.fileId : target;
+        const targetName = targetParsed.kind === 'entity' ? targetParsed.name : target;
+        const sourceName = sourceParsed.kind === 'entity' ? sourceParsed.name : path.basename(source);
 
-        const targetName = target.includes('::') ? target.split('::').pop()! : target;
         if (stdlibFunctions.has(targetName)) continue;
 
         const sourceIn = isInternal(sourceFile);
         const targetIn = isInternal(targetFile);
-
-        const sourceName = source.includes('::') ? source.split('::').pop()! : path.basename(source);
 
         const edgeStr = `${sourceName} → ${targetName}`;
 

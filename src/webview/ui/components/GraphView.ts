@@ -9,6 +9,7 @@
 import { GraphRenderer } from "../graph/GraphRenderer";
 import { DataProvider } from "../services/dataProvider";
 import { AppState, GraphData, WorkTreeNode, DirectoryNode } from "../types";
+import { parseGraphId } from "../../../core/ids";
 
 interface Props {
     el: HTMLElement;
@@ -187,13 +188,16 @@ export class GraphView {
 
     /**
      * Handle node click from graph.
+     *
+     * Loop 03 bugfix: this previously searched the node ID for a '#'
+     * fragment, but node IDs use the canonical separator owned by
+     * src/core/ids.ts, so that branch never fired and entity clicks sent
+     * the full entity ID as `selectedPath`. The contract refactor now parses
+     * node IDs correctly and selects the entity's containing file.
      */
     private handleNodeClick(nodeId: string): void {
-        let filePath = nodeId;
-        const hashIndex = nodeId.lastIndexOf('#');
-        if (hashIndex > 0) {
-            filePath = nodeId.substring(0, hashIndex);
-        }
+        const parsed = parseGraphId(nodeId);
+        const filePath = parsed.kind === 'entity' ? parsed.fileId : nodeId;
 
         this.state.set({
             selectedPath: filePath,

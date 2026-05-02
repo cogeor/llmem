@@ -5,6 +5,7 @@ import { HotReloadService } from './hot-reload';
 import { getConfig } from './config';
 import { WebviewDataService } from '../webview/data-service';
 import { generateCallEdgesForFolderRecursive } from '../scripts/generate-call-edges';
+import { parseGraphId } from '../core/ids';
 
 /**
  * Manages the LLMem Webview Panel
@@ -175,14 +176,21 @@ export class LLMemPanel {
             const callStore = new CallEdgeListStore(artifactRoot);
             await callStore.load();
 
-            // Get nodes and edges for this folder
+            // Get nodes and edges for this folder. Use the graph-ID contract:
+            // reduce each endpoint to its underlying file, then check folder
+            // containment. The previous code's `+ ENTITY_SEPARATOR` clauses
+            // were dead (folderPath cannot also be a file ID used as an
+            // entity prefix); see src/core/ids.ts.
             const nodes = callStore.getNodesByFolder(folderPath);
-            const edges = callStore.getEdges().filter(e =>
-                e.source.startsWith(folderPath + '/') ||
-                e.source.startsWith(folderPath + '::') ||
-                e.target.startsWith(folderPath + '/') ||
-                e.target.startsWith(folderPath + '::')
-            );
+            const fileFor = (graphId: string): string => {
+                const parsed = parseGraphId(graphId);
+                return parsed.kind === 'entity' ? parsed.fileId : graphId;
+            };
+            const isInFolder = (graphId: string): boolean => {
+                const file = fileFor(graphId);
+                return file === folderPath || file.startsWith(folderPath + '/');
+            };
+            const edges = callStore.getEdges().filter(e => isInFolder(e.source) || isInFolder(e.target));
 
             // Convert to VisNode/VisEdge format
             const visNodes = nodes.map(n => ({
