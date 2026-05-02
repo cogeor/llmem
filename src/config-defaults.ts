@@ -5,7 +5,7 @@
  * names used across the LLMem extension, Claude Code mode, and MCP server.
  */
 
-import { Config } from './extension/config';
+import type { Config } from './core/config-types';
 
 /**
  * Default configuration values shared by all LLMem modules.

@@ -1,5 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { getArchRoot, getDesignDocKey } from '../docs/arch-store';
+import { asWorkspaceRoot, asAbsPath } from '../core/paths';
 
 /**
  * Design document with both markdown source and rendered HTML
@@ -25,8 +27,8 @@ export class DesignDocManager {
     private archRoot: string;
 
     constructor(projectRoot: string) {
-        // Assume .arch is at the project root
-        this.archRoot = path.join(projectRoot, '.arch');
+        // .arch path mapping owned by src/docs/arch-store.ts (Loop 04).
+        this.archRoot = getArchRoot(asWorkspaceRoot(projectRoot));
     }
 
     /**
@@ -74,17 +76,9 @@ export class DesignDocManager {
                     const markdown = fs.readFileSync(filePath, 'utf-8');
                     const html = await marked.parse(markdown);
 
-                    // Key mapping:
-                    // .arch/src/parser.md -> src/parser.html (legacy file docs)
-                    // .arch/src/graph/README.md -> src/graph/README.md (new folder docs - preserve README.md)
-
+                    // Key mapping is owned by src/docs/arch-store.ts (Loop 04).
+                    const key = getDesignDocKey(asAbsPath(this.archRoot), asAbsPath(filePath));
                     const relPath = path.relative(this.archRoot, filePath).replace(/\\/g, '/');
-
-                    // For README.md files, preserve the full path as-is (folder docs use this format)
-                    // For other .md files, convert to .html (legacy file docs)
-                    const isReadme = path.basename(filePath).toLowerCase() === 'readme.md';
-                    const key = isReadme ? relPath : relPath.replace(/\.md$/, '.html');
-
                     console.log(`[DesignDocManager] Processed: ${relPath} -> ${key}`);
 
                     // Store both markdown and HTML

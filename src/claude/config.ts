@@ -5,7 +5,7 @@
  * Uses shared defaults from config-defaults.ts.
  */
 
-import { Config } from '../extension/config';
+import type { Config } from '../core/config-types';
 import { DEFAULT_CONFIG, ENV_VARS, MAX_FILES_PER_FOLDER_CAP, MAX_FILE_SIZE_KB_CAP } from '../config-defaults';
 
 /**

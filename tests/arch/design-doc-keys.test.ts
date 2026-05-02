@@ -1,38 +1,34 @@
 // tests/arch/design-doc-keys.test.ts
 //
-// Pins the design-doc key mapping logic from src/webview/design-docs.ts:81-86.
-//
-// Today's mapping (at the call site):
-//
-//     relPath  := path.relative(archRoot, filePath).replace(/\\/g, '/')
-//     isReadme := basename(filePath).toLowerCase() === 'readme.md'
-//     key      := isReadme ? relPath : relPath.replace(/\.md$/, '.html')
-//
-// The test does NOT import DesignDocManager (which depends on `marked`).
-// Instead it defines a local helper `mapDesignDocKey` that mirrors the logic
-// exactly. Two layers pin the contract:
+// Pins the design-doc key mapping logic. Loop 04 lifted the mapper out of
+// src/webview/design-docs.ts into src/docs/arch-store.ts (`getDesignDocKey`).
+// This test now imports `getDesignDocKey` directly. Two layers pin the
+// contract:
 //
 //   1. Behavioral table — every supported input maps to the expected key.
-//   2. Structural pin   — design-docs.ts contains the literal substrings
-//      we depend on. If Loop 04 changes the regex or the readme-check, both
-//      this pin and the behavioral table update in the same commit.
+//   2. Walker guard pin — design-docs.ts (which still owns the .arch
+//      walker) gates on `.endsWith('.md')` before calling the mapper.
+//      Loop 06 may relocate the walker; for now it stays put.
 //
-// When Loop 04 introduces src/docs/arch-store.ts, this test moves to import
-// that module's helper directly and the structural pin is removed in the
-// same commit.
+// The structural pin on the README/.html literals (which used to live in
+// design-docs.ts) was removed in Loop 04 because those literals now live
+// inside src/docs/arch-store.ts and the behavioral table catches any
+// regression there.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { getDesignDocKey } from '../../src/docs/arch-store';
+import { asAbsPath } from '../../src/core/paths';
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const DESIGN_DOCS_PATH = path.join(REPO_ROOT, 'src', 'webview', 'design-docs.ts');
 
+// Wrapper helper kept to minimize test-body churn. Behavior is identical to
+// calling getDesignDocKey directly.
 function mapDesignDocKey(archRoot: string, filePath: string): string {
-  const relPath = path.relative(archRoot, filePath).replace(/\\/g, '/');
-  const isReadme = path.basename(filePath).toLowerCase() === 'readme.md';
-  return isReadme ? relPath : relPath.replace(/\.md$/, '.html');
+  return getDesignDocKey(asAbsPath(archRoot), asAbsPath(filePath));
 }
 
 interface MappingCase {
@@ -103,35 +99,16 @@ test('design-doc key mapping: behavioral table', () => {
 });
 
 test('design-doc key mapping: only .md files reach the mapper (call-site guard)', () => {
-  // The walker in design-docs.ts gates on filePath.endsWith('.md') BEFORE
-  // calling the mapper. We cannot test the walker without importing marked,
-  // but we can pin the guard literal.
+  // The walker is in webview/design-docs.ts; the key-mapping helper now
+  // lives in src/docs/arch-store.ts (Loop 04). Loop 06 may relocate the
+  // walker. The walker gates on filePath.endsWith('.md') BEFORE calling
+  // the mapper. We cannot test the walker without importing marked, but
+  // we can pin the guard literal.
   const source = fs.readFileSync(DESIGN_DOCS_PATH, 'utf-8');
   assert.ok(
     source.includes(".endsWith('.md')") || source.includes('.endsWith(".md")'),
     `src/webview/design-docs.ts must guard on .endsWith('.md') before mapping keys; ` +
-      `if Loop 04 changes the guard, update tests/arch/design-doc-keys.test.ts in the same commit.`
-  );
-});
-
-test('design-doc key mapping: structural pin on the source-of-truth literals', () => {
-  const source = fs.readFileSync(DESIGN_DOCS_PATH, 'utf-8');
-
-  // The README check.
-  assert.ok(
-    source.includes("path.basename(filePath).toLowerCase() === 'readme.md'") ||
-      source.includes('path.basename(filePath).toLowerCase() === "readme.md"'),
-    `src/webview/design-docs.ts must contain the literal README-check ` +
-      `\`path.basename(filePath).toLowerCase() === 'readme.md'\`. If Loop 04 changes the ` +
-      `check, update both this pin and the behavioral table in the same commit.`
-  );
-
-  // The .md -> .html replacement.
-  assert.ok(
-    source.includes(".replace(/\\.md$/, '.html')") ||
-      source.includes('.replace(/\\.md$/, ".html")'),
-    `src/webview/design-docs.ts must contain the literal regex \`.replace(/\\.md$/, '.html')\`. ` +
-      `If Loop 04 changes the regex, update both this pin and the behavioral table in the same commit.`
+      `if a future loop changes the guard, update tests/arch/design-doc-keys.test.ts in the same commit.`
   );
 });
 

@@ -13,6 +13,9 @@ import * as path from 'path';
 import { ImportEdgeListStore, CallEdgeListStore, NodeEntry, EdgeEntry } from '../graph/edgelist';
 import { getImportEdges, getCallEdges, filterImportEdges, getEdgesForModule } from './filter';
 import { parseGraphId } from '../core/ids';
+// Loop 04: docs/arch-store now owns .arch path mapping. Loop 07/08 retires info/.
+import { getFolderArchPath } from '../docs/arch-store';
+import { asWorkspaceRoot, asRelPath } from '../core/paths';
 
 /**
  * Data needed for the folder info prompt
@@ -39,7 +42,7 @@ export function loadExistingFolderReadme(
     rootDir: string,
     folderPath: string
 ): string | null {
-    const readmePath = path.join(rootDir, '.arch', folderPath, 'README.md');
+    const readmePath = getFolderArchPath(asWorkspaceRoot(rootDir), asRelPath(folderPath));
     if (fs.existsSync(readmePath)) {
         try {
             return fs.readFileSync(readmePath, 'utf-8');
@@ -221,7 +224,7 @@ export async function getFolderInfoForMcp(
     else Array.from(new Set(incomingCalls)).sort().forEach(c => lines.push(`- ${c}`));
     lines.push('');
 
-    const readmePath = path.join(rootDir, '.arch', folderPath, 'README.md');
+    const readmePath = getFolderArchPath(asWorkspaceRoot(rootDir), asRelPath(folderPath));
 
     return {
         folderPath,

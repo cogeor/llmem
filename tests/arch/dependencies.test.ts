@@ -97,34 +97,19 @@ const RULES: readonly BoundaryRule[] = [
 // fail with "STALE", which is the exact signal the next reviewer needs.
 const KNOWN_VIOLATIONS: readonly KnownViolation[] = [
   {
-    from: 'src/mcp/server.ts',
-    to: 'src/extension/config.ts',
-    reason: 'Imports Config type; Loop 04 lifts type to core/config-types',
-  },
-  {
     from: 'src/mcp/tools.ts',
     to: 'src/extension/config.ts',
-    reason: 'Imports getConfig; Loop 10 (mcp split) drops it',
-  },
-  {
-    from: 'src/claude/config.ts',
-    to: 'src/extension/config.ts',
-    reason: 'Imports Config type; Loop 04 lifts type to core/config-types',
+    reason: 'Imports getConfig runtime; Loop 10 (mcp split) drops it',
   },
   {
     from: 'src/scripts/scan_codebase.ts',
     to: 'src/extension/config.ts',
-    reason: 'getConfig+loadConfig; Loop 04 lifts type, Loop 05+ may delete script',
+    reason: 'getConfig+loadConfig runtime; Loop 09/10 moves runtime out of extension/',
   },
   {
     from: 'src/scripts/generate_webview.ts',
     to: 'src/extension/config.ts',
-    reason: 'getConfig+loadConfig; Loop 04 lifts type',
-  },
-  {
-    from: 'src/config-defaults.ts',
-    to: 'src/extension/config.ts',
-    reason: 'Config type import in defaults module; Loop 04 fixes',
+    reason: 'getConfig+loadConfig runtime; Loop 09/10 moves runtime out of extension/',
   },
   {
     from: 'src/extension/panel.ts',

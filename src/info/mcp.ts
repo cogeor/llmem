@@ -17,6 +17,9 @@ import { renderFileInfoMarkdown } from './renderer';
 import { FileInfo, ReverseCallIndex } from './types';
 import { getLanguageFromPath } from '../parser/config';
 import { parseGraphId } from '../core/ids';
+// Loop 04: docs/arch-store now owns .arch path mapping. Loop 07/08 retires info/.
+import { getFileArchPath } from '../docs/arch-store';
+import { asWorkspaceRoot, asRelPath } from '../core/paths';
 
 /**
  * Enriched function data from LLM
@@ -170,7 +173,7 @@ export async function getFileInfoForMcp(
     const info: FileInfo = extractFileInfo(filePath, artifact, new Map());
 
     // Compute artifact path for .arch/{path}.md
-    const artifactPath = path.join(rootDir, '.arch', `${filePath}.md`);
+    const artifactPath = getFileArchPath(asWorkspaceRoot(rootDir), asRelPath(filePath));
 
     return {
         filePath,
@@ -441,25 +444,5 @@ export async function saveEnrichedFileInfo(
     // DISABLED: Legacy artifact system deprecated, using edge list instead
     console.error('[info/mcp] saveEnrichedFileInfo disabled - using edge list');
     return '';
-
-    /* Legacy code preserved for future lazy loading:
-    const markdown = renderEnrichedMarkdown(originalInfo, enriched);
-
-    // Output path: .artifacts/src/<path>/file_name/file_name.md
-    const normalizedPath = enriched.path.replace(/\\/g, '/');
-    const fileName = path.basename(normalizedPath);
-    const outputPath = path.join(rootDir, '.artifacts', normalizedPath, fileName + '.md');
-
-    // Ensure directory exists
-    const dir = path.dirname(outputPath);
-    if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-    }
-
-    // Write file
-    fs.writeFileSync(outputPath, markdown, 'utf-8');
-
-    return outputPath;
-    */
 }
 

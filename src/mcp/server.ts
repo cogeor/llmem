@@ -15,7 +15,7 @@ import {
     ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { Config } from '../extension/config';
+import type { Config } from '../core/config-types';
 import { DEFAULT_CONFIG } from '../config-defaults';
 import { TOOLS } from './tools';
 import { generateCorrelationId } from './handlers';

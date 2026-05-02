@@ -17,28 +17,25 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { resolveInsideWorkspace } from '../../src/workspace/safe-fs';
+import { asWorkspaceRoot } from '../../src/core/paths';
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const SRC_ROOT = path.join(REPO_ROOT, 'src');
 
 // ---------------------------------------------------------------------------
-// Part A — safe-fs containment stub
+// Part A — safe-fs containment (real module, src/workspace/safe-fs.ts)
+//
+// Loop 04 lifted these helpers out of the test stub into src/workspace/safe-fs.
+// PathEscapeError extends LLMemError extends Error and carries `code:
+// 'PATH_ESCAPE'`. The instance message contains the literal `PATH_ESCAPE` via
+// the LLMemError code prefix construction (see src/core/errors.ts).
 // ---------------------------------------------------------------------------
-
-function resolveInsideWorkspace(rootAbs: string, candidate: string): string {
-  const rootResolved = path.resolve(rootAbs);
-  const resolved = path.resolve(rootResolved, candidate);
-  const rel = path.relative(rootResolved, resolved);
-  if (rel.startsWith('..') || path.isAbsolute(rel)) {
-    throw new Error(`PATH_ESCAPE: ${candidate}`);
-  }
-  return resolved;
-}
 
 test('safe-fs: relative path resolves under root', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-arch-'));
   try {
-    const got = resolveInsideWorkspace(tmp, 'subdir/file.txt');
+    const got = resolveInsideWorkspace(asWorkspaceRoot(tmp), 'subdir/file.txt');
     assert.equal(got, path.resolve(tmp, 'subdir/file.txt'));
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -48,20 +45,24 @@ test('safe-fs: relative path resolves under root', () => {
 test('safe-fs: ./prefix relative path resolves under root', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-arch-'));
   try {
-    const got = resolveInsideWorkspace(tmp, './subdir/file.txt');
+    const got = resolveInsideWorkspace(asWorkspaceRoot(tmp), './subdir/file.txt');
     assert.equal(got, path.resolve(tmp, 'subdir/file.txt'));
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
 
-test('safe-fs: ../escape throws PATH_ESCAPE', () => {
+test('safe-fs: ../escape throws PathEscapeError (code PATH_ESCAPE)', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-arch-'));
   try {
     assert.throws(
-      () => resolveInsideWorkspace(tmp, '../escape.txt'),
-      /PATH_ESCAPE/,
-      `'../escape.txt' must throw PATH_ESCAPE because it resolves outside the workspace root.`
+      () => resolveInsideWorkspace(asWorkspaceRoot(tmp), '../escape.txt'),
+      (err: Error) => {
+        // Both: name-based check and code-based check via PathEscapeError.
+        return err.name === 'PathEscapeError' &&
+          (err as Error & { code?: string }).code === 'PATH_ESCAPE';
+      },
+      `'../escape.txt' must throw PathEscapeError because it resolves outside the workspace root.`
     );
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -71,7 +72,7 @@ test('safe-fs: ../escape throws PATH_ESCAPE', () => {
 test('safe-fs: absolute path equal to root resolves', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-arch-'));
   try {
-    const got = resolveInsideWorkspace(tmp, tmp);
+    const got = resolveInsideWorkspace(asWorkspaceRoot(tmp), tmp);
     assert.equal(got, path.resolve(tmp));
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -82,14 +83,14 @@ test('safe-fs: absolute path that is a child of root resolves', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-arch-'));
   try {
     const child = path.join(tmp, 'sub', 'file.txt');
-    const got = resolveInsideWorkspace(tmp, child);
+    const got = resolveInsideWorkspace(asWorkspaceRoot(tmp), child);
     assert.equal(got, path.resolve(child));
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
 
-test('safe-fs: absolute path on a sibling directory throws PATH_ESCAPE', () => {
+test('safe-fs: absolute path on a sibling directory throws PathEscapeError', () => {
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-arch-parent-'));
   try {
     const root = path.join(parent, 'workspace');
@@ -97,9 +98,9 @@ test('safe-fs: absolute path on a sibling directory throws PATH_ESCAPE', () => {
     fs.mkdirSync(root, { recursive: true });
     fs.mkdirSync(path.dirname(sibling), { recursive: true });
     assert.throws(
-      () => resolveInsideWorkspace(root, sibling),
-      /PATH_ESCAPE/,
-      `An absolute path on a sibling directory must throw PATH_ESCAPE.`
+      () => resolveInsideWorkspace(asWorkspaceRoot(root), sibling),
+      (err: Error) => err.name === 'PathEscapeError',
+      `An absolute path on a sibling directory must throw PathEscapeError.`
     );
   } finally {
     fs.rmSync(parent, { recursive: true, force: true });
@@ -139,18 +140,18 @@ test('safe-fs: symlinked escape — skipped on Windows non-elevated, otherwise b
     // resolveInsideWorkspace uses path.resolve only — it does NOT follow
     // symlinks. So purely textual containment passes here even though the
     // physical target is outside. This is intentional: the test pins the
-    // *textual* containment contract. Loop 04 must layer fs.realpathSync
-    // on top to defeat symlink-based escape.
+    // *textual* containment contract. A future loop must layer
+    // fs.realpathSync on top to defeat symlink-based escape.
     //
     // We assert this layered expectation explicitly:
     const candidate = path.join(linkInside, 'secret.txt');
-    const textual = resolveInsideWorkspace(root, candidate); // does not throw
+    const textual = resolveInsideWorkspace(asWorkspaceRoot(root), candidate); // does not throw
     const real = fs.realpathSync(textual);
     const realRel = path.relative(fs.realpathSync(root), real);
     assert.ok(
       realRel.startsWith('..') || path.isAbsolute(realRel),
       `Symlink target should resolve outside root; realRel=${realRel}. ` +
-        `Loop 04 must add fs.realpathSync containment on top of textual containment.`
+        `A future loop must add fs.realpathSync containment on top of textual containment.`
     );
   } finally {
     fs.rmSync(parent, { recursive: true, force: true });
@@ -177,7 +178,6 @@ const WRITE_ALLOWLIST: ReadonlySet<string> = new Set([
   'src/graph/edgelist.ts',
   'src/graph/plot/generator.ts',
   'src/graph/worktree-state.ts',
-  'src/info/mcp.ts',
   'src/mcp/path-utils.ts',
   'src/scripts/generate_edgelist.ts',
   'src/scripts/scan_codebase.ts',
@@ -185,6 +185,7 @@ const WRITE_ALLOWLIST: ReadonlySet<string> = new Set([
   'src/webview/data-service.ts',
   'src/webview/generator.ts',
   'src/webview/utils/md-converter.ts',
+  'src/workspace/safe-fs.ts',
 ]);
 
 // Heuristic regex on raw source — documented per PLAN. Matches:
@@ -192,11 +193,12 @@ const WRITE_ALLOWLIST: ReadonlySet<string> = new Set([
 //   fs.mkdir / fs.mkdirSync / fs.rm / fs.rmSync / fs.unlink / fs.unlinkSync /
 //   fs.rename / fs.renameSync
 //
-// Also matches `fsp.<method>` and `fsPromises.<method>` style aliases.
+// Also matches `fsp.<method>` and `fsPromises.<method>` style aliases, and
+// the `fs.promises.<method>` sub-property shape (Loop 04 D7 tightening).
 // We require the method to be followed by `(` to avoid matching property
 // access for type purposes (not common, but cheap to guard).
 const WRITE_METHOD_RE =
-  /\b(?:fs|fsp|fsPromises|fileSystem|fsExtra)\.(writeFile|writeFileSync|appendFile|appendFileSync|mkdir|mkdirSync|rm|rmSync|unlink|unlinkSync|rename|renameSync)\s*\(/g;
+  /\b(?:fs|fsp|fsPromises|fileSystem|fsExtra)(?:\.promises)?\.(writeFile|writeFileSync|appendFile|appendFileSync|mkdir|mkdirSync|rm|rmSync|unlink|unlinkSync|rename|renameSync)\s*\(/g;
 
 function shouldSkipDir(name: string): boolean {
   return (

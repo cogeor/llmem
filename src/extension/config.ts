@@ -6,18 +6,18 @@
  */
 
 import { DEFAULT_CONFIG, ENV_VARS, MAX_FILES_PER_FOLDER_CAP, MAX_FILE_SIZE_KB_CAP } from '../config-defaults';
+import type { Config } from '../core/config-types';
 
 /**
  * Configuration interface for LLMem extension
+ *
+ * Loop 04: the type lives in `src/core/config-types.ts`. This module
+ * re-exports it as a transitional shim so existing
+ * `import { Config } from '../extension/config'` callers keep working
+ * while Loop 09/10 moves the runtime (`getConfig`/`loadConfig`) out of
+ * `extension/`. After that, this re-export can go away too.
  */
-export interface Config {
-    /** Root folder for artifacts (relative to workspace) */
-    artifactRoot: string;
-    /** Maximum files to include per folder when building context */
-    maxFilesPerFolder: number;
-    /** Maximum file size in KB to include in context */
-    maxFileSizeKB: number;
-}
+export type { Config };
 
 /** Cached configuration instance */
 let configInstance: Config | null = null;
