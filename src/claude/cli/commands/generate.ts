@@ -50,6 +50,10 @@ const generateArgs = z.object({
 export const generateCommand: CommandSpec<typeof generateArgs> = {
     name: 'generate',
     description: 'Generate graph without starting server',
+    examples: [
+        { scenario: 'Regenerate the static webview from existing edge lists', command: 'llmem generate' },
+        { scenario: 'Regenerate against a specific workspace', command: 'llmem generate --workspace /path/to/repo' },
+    ],
     args: generateArgs,
     async run(args) {
         const workspace = detectWorkspace(args.workspace);

@@ -48,6 +48,9 @@ const statsArgs = z.object({
 export const statsCommand: CommandSpec<typeof statsArgs> = {
     name: 'stats',
     description: 'Show graph statistics',
+    examples: [
+        { scenario: 'Print graph statistics for the auto-detected workspace', command: 'llmem stats' },
+    ],
     args: statsArgs,
     async run(args) {
         const workspace = detectWorkspace(args.workspace);

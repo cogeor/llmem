@@ -1,0 +1,137 @@
+{
+  "binary": "llmem",
+  "commands": [
+    {
+      "args": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "open": {
+            "default": true,
+            "type": "boolean"
+          },
+          "port": {
+            "default": 3000,
+            "maximum": 65535,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "regenerate": {
+            "default": false,
+            "type": "boolean"
+          },
+          "verbose": {
+            "default": false,
+            "type": "boolean"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "description": "Start HTTP server for webview (default)",
+      "examples": [
+        {
+          "command": "llmem serve",
+          "scenario": "Open the viewer in your browser"
+        },
+        {
+          "command": "llmem serve --port 8080 --no-open",
+          "scenario": "Use port 8080 without opening a browser"
+        },
+        {
+          "command": "llmem serve --regenerate",
+          "scenario": "Force re-scan and regenerate before serving"
+        }
+      ],
+      "name": "serve"
+    },
+    {
+      "args": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "description": "Start MCP server for Claude Code (stdio)",
+      "examples": [
+        {
+          "command": "llmem mcp",
+          "scenario": "Start the MCP stdio server (Claude Code config target)"
+        }
+      ],
+      "name": "mcp"
+    },
+    {
+      "args": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "description": "Generate graph without starting server",
+      "examples": [
+        {
+          "command": "llmem generate",
+          "scenario": "Regenerate the static webview from existing edge lists"
+        },
+        {
+          "command": "llmem generate --workspace /path/to/repo",
+          "scenario": "Regenerate against a specific workspace"
+        }
+      ],
+      "name": "generate"
+    },
+    {
+      "args": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "description": "Show graph statistics",
+      "examples": [
+        {
+          "command": "llmem stats",
+          "scenario": "Print graph statistics for the auto-detected workspace"
+        }
+      ],
+      "name": "stats"
+    },
+    {
+      "args": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "json": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "description": "Print the machine-readable command schema (--json) or a human tree.",
+      "examples": [
+        {
+          "command": "llmem describe",
+          "scenario": "Print the human-readable command tree"
+        },
+        {
+          "command": "llmem describe --json",
+          "scenario": "Emit the full JSON schema for agent integration"
+        }
+      ],
+      "name": "describe"
+    }
+  ],
+  "version": "<X>"
+}

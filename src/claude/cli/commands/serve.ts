@@ -71,6 +71,11 @@ const serveArgs = z.object({
 export const serveCommand: CommandSpec<typeof serveArgs> = {
     name: 'serve',
     description: 'Start HTTP server for webview (default)',
+    examples: [
+        { scenario: 'Open the viewer in your browser', command: 'llmem serve' },
+        { scenario: 'Use port 8080 without opening a browser', command: 'llmem serve --port 8080 --no-open' },
+        { scenario: 'Force re-scan and regenerate before serving', command: 'llmem serve --regenerate' },
+    ],
     args: serveArgs,
     async run(args) {
         const workspace = detectWorkspace(args.workspace);

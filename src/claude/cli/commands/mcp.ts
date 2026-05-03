@@ -14,6 +14,9 @@ const mcpArgs = z.object({}); // no args — env vars only (LLMEM_WORKSPACE)
 export const mcpCommand: CommandSpec<typeof mcpArgs> = {
     name: 'mcp',
     description: 'Start MCP server for Claude Code (stdio)',
+    examples: [
+        { scenario: 'Start the MCP stdio server (Claude Code config target)', command: 'llmem mcp' },
+    ],
     args: mcpArgs,
     async run() {
         const { main } = await import('../../index');

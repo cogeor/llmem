@@ -5,8 +5,8 @@
  * and exports the REGISTRY array consumed by main.ts to dispatch argv
  * to the right handler.
  *
- * Loop 01 introduces only the four legacy commands (serve, mcp, generate,
- * stats). Subsequent loops add describe, scan, document, init, schema and
+ * Loop 04 added the `describe` command and the optional `examples` field
+ * on `CommandSpec`. Loops 05-07 will add `scan` / `document` / `init` and
  * mark legacy commands `hidden: true`.
  */
 
@@ -17,6 +17,8 @@ export interface CommandSpec<A extends z.ZodTypeAny = z.ZodTypeAny> {
     name: string;
     description: string;
     aliases?: string[];
+    /** Examples surfaced by `llmem describe` and human help. */
+    examples?: { scenario: string; command: string }[];
     args: A;
     hidden?: boolean;
     run(args: z.infer<A>, ctx: CliContext): Promise<void>;
@@ -26,6 +28,7 @@ import { serveCommand } from './commands/serve';
 import { mcpCommand } from './commands/mcp';
 import { generateCommand } from './commands/generate';
 import { statsCommand } from './commands/stats';
+import { describeCommand } from './commands/describe';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const REGISTRY: CommandSpec<any>[] = [
@@ -33,4 +36,5 @@ export const REGISTRY: CommandSpec<any>[] = [
     mcpCommand,
     generateCommand,
     statsCommand,
+    describeCommand,    // Loop 04
 ];
