@@ -15,6 +15,7 @@ import { scanFolder, scanFolderRecursive } from '../application/scan';
 import { asWorkspaceRoot } from '../core/paths';
 import type { Logger } from '../core/logger';
 import { createLogger } from '../common/logger';
+import { WorkspaceIO } from '../workspace/workspace-io';
 
 // Loop 20: route the application-layer adapter through the structured
 // logger. The script's own `console.log` progress prints stay (they
@@ -64,10 +65,12 @@ async function main(): Promise<void> {
     }
 
     try {
+        const io = await WorkspaceIO.create(asWorkspaceRoot(root));
         const opts = {
             workspaceRoot: asWorkspaceRoot(root),
             folderPath,
             artifactDir,
+            io,
             logger: consoleLogger,
         };
         const result = recursive

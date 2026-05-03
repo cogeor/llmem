@@ -182,11 +182,15 @@ interface WriteCallSite {
 
 // Production files allowed to call write-mutating fs methods. Anything
 // outside this list will fail the scan.
+//
+// L24 retired:
+//   - 'src/claude/server/arch-watcher.ts' — fs.mkdirSync + fs.writeFileSync
+//     replaced by WorkspaceIO.mkdirRecursive + writeFile.
+//   - 'src/graph/plot/generator.ts' — fs.writeFileSync replaced by
+//     WorkspaceIO.writeFile (savePlot signature now takes an `io` arg).
 const WRITE_ALLOWLIST: ReadonlySet<string> = new Set([
   'src/artifact/storage.ts',
-  'src/claude/server/arch-watcher.ts',
   'src/graph/edgelist.ts',
-  'src/graph/plot/generator.ts',
   'src/graph/worktree-state.ts',
   'src/scripts/generate_edgelist.ts',
   'src/scripts/scan_codebase.ts',
@@ -439,11 +443,6 @@ const KNOWN_WRITE_VIOLATIONS: readonly KnownFsWriteViolation[] = [
     rel: 'src/artifact/storage.ts',
     method: 'unlink',
     reason: 'L23 leaves the legacy free-function `deleteFile` raw per PLAN §23.2.c fallback option; live writers use the new ArtifactStorage class instead.',
-  },
-  {
-    rel: 'src/graph/plot/generator.ts',
-    method: 'writeFileSync',
-    reason: 'L23 deferred per PLAN — `savePlot` is only used by `src/scripts/` entry points, both owned by L24.',
   },
 ];
 

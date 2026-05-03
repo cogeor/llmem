@@ -13,14 +13,24 @@
  * application function mutates disk state.
  */
 
+import * as path from 'path';
 import { WatchService } from '../../graph/worktree-state';
 import { createLogger } from '../../common/logger';
+import type { WorkspaceIO } from '../../workspace/workspace-io';
 
 const log = createLogger('watch-manager');
 
 export interface WatchManagerConfig {
     workspaceRoot: string;
+    /**
+     * Workspace-relative artifact root (e.g. `.artifacts`). Joined with
+     * `workspaceRoot` internally before being handed to `WatchService`.
+     * Loop 24 surfaced this — previously the relative form was passed
+     * straight through, which silently resolved against the host's cwd.
+     */
     artifactRoot: string;
+    /** Required (L24): realpath-strong I/O surface anchored on the workspace root. */
+    io: WorkspaceIO;
     verbose?: boolean;
 }
 
@@ -41,12 +51,19 @@ export class WatchManager {
         this.config = {
             workspaceRoot: config.workspaceRoot,
             artifactRoot: config.artifactRoot,
+            io: config.io,
             verbose: config.verbose || false,
         };
 
+        // L24: WatchService expects an absolute artifact directory (so its
+        // workspace-relative state-file path is computed correctly when
+        // `io` is set). Compute it once here.
+        const artifactDir = path.join(this.config.workspaceRoot, this.config.artifactRoot);
+
         this.watchService = new WatchService(
-            this.config.artifactRoot,
-            this.config.workspaceRoot
+            artifactDir,
+            this.config.workspaceRoot,
+            this.config.io,
         );
     }
 
@@ -68,9 +85,11 @@ export class WatchManager {
      * the new set without staleness.
      */
     async refresh(): Promise<void> {
+        const artifactDir = path.join(this.config.workspaceRoot, this.config.artifactRoot);
         this.watchService = new WatchService(
-            this.config.artifactRoot,
+            artifactDir,
             this.config.workspaceRoot,
+            this.config.io,
         );
         await this.watchService.load();
     }

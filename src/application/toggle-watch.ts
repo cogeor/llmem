@@ -28,12 +28,11 @@
  *     Loop 16 (graph schema) decides whether to move it.
  */
 
-import * as fs from 'fs';
 import type { WorkspaceRoot, AbsPath, RelPath } from '../core/paths';
 import { asRelPath } from '../core/paths';
 import type { Logger } from '../core/logger';
 import { NoopLogger } from '../core/logger';
-import { resolveInsideWorkspace } from '../workspace/safe-fs';
+import { WorkspaceIO } from '../workspace/workspace-io';
 import { WatchService } from '../graph/worktree-state';
 import { CallEdgeListStore, ImportEdgeListStore } from '../graph/edgelist';
 import { scanFile, scanFolderRecursive } from './scan';
@@ -96,12 +95,13 @@ export async function addWatchedPath(
     const { workspaceRoot, artifactRoot, targetPath } = req;
     const logger = req.logger ?? NoopLogger;
 
-    // Resolve and validate the target path lives inside the workspace.
-    // resolveInsideWorkspace throws PathEscapeError on attempts to escape
-    // — the host surfaces that to the user.
-    const absoluteTarget = resolveInsideWorkspace(workspaceRoot, targetPath);
+    // L24: realpath-strong I/O surface anchored on the workspace root.
+    // io.exists / io.stat throw PathEscapeError on attempts to escape, so
+    // the previous resolveInsideWorkspace + fs.existsSync pair collapses
+    // to a single io.exists call.
+    const io = await WorkspaceIO.create(workspaceRoot);
 
-    if (!fs.existsSync(absoluteTarget)) {
+    if (!(await io.exists(targetPath))) {
         return {
             success: false,
             message: `Path does not exist: ${targetPath}`,
@@ -110,9 +110,9 @@ export async function addWatchedPath(
         };
     }
 
-    const isDirectory = fs.statSync(absoluteTarget).isDirectory();
+    const isDirectory = (await io.stat(targetPath)).isDirectory();
 
-    const watchService = new WatchService(artifactRoot, workspaceRoot);
+    const watchService = new WatchService(artifactRoot, workspaceRoot, io);
     await watchService.load();
 
     // Add to watch state. addFolder returns only files newly added (it
@@ -134,6 +134,7 @@ export async function addWatchedPath(
                 workspaceRoot,
                 folderPath: targetPath,
                 artifactDir: artifactRoot,
+                io,
                 logger,
             });
         } else {
@@ -141,6 +142,7 @@ export async function addWatchedPath(
                 workspaceRoot,
                 filePath: targetPath,
                 artifactDir: artifactRoot,
+                io,
                 logger,
             });
         }
@@ -185,15 +187,16 @@ export async function removeWatchedPath(
     const { workspaceRoot, artifactRoot, targetPath } = req;
     const logger = req.logger ?? NoopLogger;
 
-    // Path containment via safe-fs. Unlike the add path we tolerate a
-    // missing on-disk target (the user may be removing a stale watch
-    // entry); we still refuse path escape attempts.
-    const absoluteTarget = resolveInsideWorkspace(workspaceRoot, targetPath);
+    // L24: path containment via WorkspaceIO. Unlike the add path we
+    // tolerate a missing on-disk target (the user may be removing a stale
+    // watch entry); we still refuse path-escape attempts (io.exists /
+    // io.stat throw PathEscapeError up to the host).
+    const io = await WorkspaceIO.create(workspaceRoot);
 
     const isDirectory =
-        fs.existsSync(absoluteTarget) && fs.statSync(absoluteTarget).isDirectory();
+        (await io.exists(targetPath)) && (await io.stat(targetPath)).isDirectory();
 
-    const watchService = new WatchService(artifactRoot, workspaceRoot);
+    const watchService = new WatchService(artifactRoot, workspaceRoot, io);
     await watchService.load();
 
     // Remove from watch state.
@@ -214,13 +217,15 @@ export async function removeWatchedPath(
         }
     }
 
-    // Delete edges for the path from both stores.
-    const importStore = new ImportEdgeListStore(artifactRoot);
+    // Delete edges for the path from both stores. L24: `io` threaded for
+    // realpath-strong save; the boundary `Logger` interface here differs
+    // from the edge-list store's `common/logger` shape, so we omit it.
+    const importStore = new ImportEdgeListStore(artifactRoot, undefined, io);
     await importStore.load();
     importStore.removeByFolder(targetPath);
     await importStore.save();
 
-    const callStore = new CallEdgeListStore(artifactRoot);
+    const callStore = new CallEdgeListStore(artifactRoot, undefined, io);
     await callStore.load();
     callStore.removeByFolder(targetPath);
     await callStore.save();

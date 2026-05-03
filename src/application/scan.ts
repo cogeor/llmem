@@ -15,10 +15,15 @@
  * Error discipline: per-file failures are surfaced through
  * ScanResult.errors. The scan does not throw on individual file errors —
  * it only throws when the input folder/file does not exist.
+ *
+ * Loop 24: every read-side `fs.*` site is replaced with `WorkspaceIO`
+ * calls. The `io: WorkspaceIO` field is REQUIRED on the option types so
+ * realpath-strong containment is enforced uniformly (and the cheap
+ * textual containment check from `WorkspaceIO.resolve` rejects
+ * `../escape` / absolute paths outside the workspace at the boundary).
  */
 
 import * as path from 'path';
-import * as fs from 'fs';
 import type { WorkspaceRoot } from '../core/paths';
 import type { Logger } from '../core/logger';
 import { NoopLogger } from '../core/logger';
@@ -27,6 +32,7 @@ import { artifactToEdgeList } from '../graph/artifact-converter';
 import { countFolderLines } from '../parser/line-counter';
 import { IGNORED_FOLDERS } from '../parser/config';
 import { ParserRegistry } from '../parser/registry';
+import { WorkspaceIO } from '../workspace/workspace-io';
 
 /**
  * A per-file failure surfaced to the caller. The scan continues past these
@@ -47,6 +53,8 @@ export interface ScanFolderOptions {
     folderPath: string;
     /** Absolute path to the artifact directory (.artifacts). */
     artifactDir: string;
+    /** Required (L24): realpath-strong I/O surface anchored on the workspace root. */
+    io: WorkspaceIO;
     /** Optional logger. Defaults to a no-op. */
     logger?: Logger;
 }
@@ -57,6 +65,8 @@ export interface ScanFileOptions {
     filePath: string;
     /** Absolute path to the artifact directory (.artifacts). */
     artifactDir: string;
+    /** Required (L24): realpath-strong I/O surface anchored on the workspace root. */
+    io: WorkspaceIO;
     /** Optional logger. Defaults to a no-op. */
     logger?: Logger;
 }
@@ -80,18 +90,26 @@ export interface ScanResult {
 
 /** Scan a single file and append edges. */
 export async function scanFile(opts: ScanFileOptions): Promise<ScanResult> {
-    const { workspaceRoot, filePath, artifactDir } = opts;
+    const { workspaceRoot, filePath, artifactDir, io } = opts;
     const logger = opts.logger ?? NoopLogger;
 
-    const absoluteFile = path.join(workspaceRoot, filePath);
-
-    if (!fs.existsSync(absoluteFile)) {
+    // L24: io.exists performs textual + realpath containment checks.
+    // PathEscapeError surfaces to the caller for `../escape`-style inputs.
+    if (!(await io.exists(filePath))) {
         throw new Error(`File not found: ${filePath}`);
     }
 
-    // Load existing edge lists
-    const callStore = new CallEdgeListStore(artifactDir);
-    const importStore = new ImportEdgeListStore(artifactDir);
+    // The parser API takes an absolute path; materialize the canonical
+    // realpath form via getRealRoot() + filePath now that containment has
+    // been validated.
+    const absoluteFile = path.join(io.getRealRoot(), filePath);
+
+    // Load existing edge lists. L24: pass `io` for realpath-strong load/save;
+    // the edge-list stores' own logger is created internally (their `Logger`
+    // shape is `common/logger`'s, not the boundary `core/logger.Logger`
+    // accepted by ScanFileOptions / ScanFolderOptions, so we omit it).
+    const callStore = new CallEdgeListStore(artifactDir, undefined, io);
+    const importStore = new ImportEdgeListStore(artifactDir, undefined, io);
     await callStore.load();
     await importStore.load();
     const existingCallEdgeCount = callStore.getStats().edges;
@@ -167,18 +185,20 @@ export async function scanFile(opts: ScanFileOptions): Promise<ScanResult> {
 
 /** Scan one folder (immediate children only) and append edges. */
 export async function scanFolder(opts: ScanFolderOptions): Promise<ScanResult> {
-    const { workspaceRoot, folderPath, artifactDir } = opts;
+    const { workspaceRoot, folderPath, artifactDir, io } = opts;
     const logger = opts.logger ?? NoopLogger;
 
-    const absoluteFolder = path.join(workspaceRoot, folderPath);
-
-    if (!fs.existsSync(absoluteFolder)) {
+    if (!(await io.exists(folderPath))) {
         throw new Error(`Folder not found: ${folderPath}`);
     }
 
-    // Load existing edge lists
-    const callStore = new CallEdgeListStore(artifactDir);
-    const importStore = new ImportEdgeListStore(artifactDir);
+    const absoluteFolder = path.join(io.getRealRoot(), folderPath);
+
+    // Load existing edge lists. L24: see note in scanFile — `io` is threaded;
+    // the boundary logger's shape is incompatible with the edge-list store's,
+    // so the stores fall back to their internal `createLogger`.
+    const callStore = new CallEdgeListStore(artifactDir, undefined, io);
+    const importStore = new ImportEdgeListStore(artifactDir, undefined, io);
     await callStore.load();
     await importStore.load();
     const existingCallEdgeCount = callStore.getStats().edges;
@@ -194,16 +214,18 @@ export async function scanFolder(opts: ScanFolderOptions): Promise<ScanResult> {
     // Get parser registry (language-agnostic)
     const registry = ParserRegistry.getInstance();
 
-    // Find all supported files in the folder (not recursive, only direct children)
-    const entries = fs.readdirSync(absoluteFolder);
+    // Find all supported files in the folder (not recursive, only direct children).
+    // L24: io.readDir realpath-validates the directory; io.stat does the same
+    // for each entry. The parser API needs an absolute path, so we
+    // materialize from getRealRoot() after the realpath check has succeeded.
+    const entries = await io.readDir(folderPath);
     const sourceFiles: string[] = [];
 
     for (const entry of entries) {
-        const entryPath = path.join(absoluteFolder, entry);
-        const stat = fs.statSync(entryPath);
-
+        const childRel = path.join(folderPath, entry).replace(/\\/g, '/');
+        const stat = await io.stat(childRel);
         if (stat.isFile() && registry.isSupported(entry)) {
-            sourceFiles.push(entryPath);
+            sourceFiles.push(path.join(io.getRealRoot(), childRel));
         }
     }
 
@@ -292,11 +314,9 @@ export async function scanFolder(opts: ScanFolderOptions): Promise<ScanResult> {
 
 /** Scan a folder and all its non-IGNORED subfolders recursively. */
 export async function scanFolderRecursive(opts: ScanFolderOptions): Promise<ScanResult> {
-    const { workspaceRoot, folderPath } = opts;
+    const { folderPath, io } = opts;
 
-    const absoluteFolder = path.join(workspaceRoot, folderPath);
-
-    if (!fs.existsSync(absoluteFolder)) {
+    if (!(await io.exists(folderPath))) {
         throw new Error(`Folder not found: ${folderPath}`);
     }
 
@@ -304,17 +324,18 @@ export async function scanFolderRecursive(opts: ScanFolderOptions): Promise<Scan
     const folderResult = await scanFolder(opts);
     let acc: ScanResult = folderResult;
 
-    // Find subfolders
-    const entries = fs.readdirSync(absoluteFolder);
+    // Find subfolders. L24: io.readDir + io.stat replace fs.readdirSync +
+    // fs.statSync so each child is realpath-validated.
+    const entries = await io.readDir(folderPath);
     for (const entry of entries) {
         if (IGNORED_FOLDERS.has(entry)) continue;
 
-        const entryPath = path.join(absoluteFolder, entry);
-        if (fs.statSync(entryPath).isDirectory()) {
-            const subFolderPath = path.join(folderPath, entry).replace(/\\/g, '/');
+        const subRel = path.join(folderPath, entry).replace(/\\/g, '/');
+        const st = await io.stat(subRel);
+        if (st.isDirectory()) {
             const subResult = await scanFolderRecursive({
                 ...opts,
-                folderPath: subFolderPath,
+                folderPath: subRel,
             });
             acc = {
                 filesProcessed: acc.filesProcessed + subResult.filesProcessed,

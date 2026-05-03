@@ -11,6 +11,7 @@ import { asWorkspaceRoot, asAbsPath, asRelPath } from '../core/paths';
 import { parseGraphId } from '../core/ids';
 import type { DesignDoc } from '../webview/design-docs';
 import { renderMarkdown } from '../webview/markdown-renderer';
+import { WorkspaceIO } from '../workspace/workspace-io';
 
 const log = createLogger('panel');
 
@@ -222,11 +223,17 @@ export class LLMemPanel {
         log.debug('Loading nodes for folder', { folderPath });
 
         try {
+            // L24: WorkspaceIO threaded into every scan invocation. Constructed
+            // per-method here; L27's AppContext will hoist this to a single
+            // workspace-scoped instance.
+            const io = await WorkspaceIO.create(asWorkspaceRoot(workspaceRoot));
+
             // Generate edges for the folder (this also creates nodes)
             const result = await scanFolderRecursive({
                 workspaceRoot: asWorkspaceRoot(workspaceRoot),
                 folderPath,
                 artifactDir: artifactRoot,
+                io,
                 logger: this._panelLogger(),
             });
 
@@ -373,12 +380,16 @@ export class LLMemPanel {
 
             // Regenerate edges for changed files
             const logger = this._panelLogger();
+            // L24: WorkspaceIO realpath-strong I/O surface, threaded into
+            // every scanFile invocation.
+            const io = await WorkspaceIO.create(asWorkspaceRoot(workspaceRoot));
             for (const filePath of changedFiles) {
                 try {
                     await scanFile({
                         workspaceRoot: asWorkspaceRoot(workspaceRoot),
                         filePath,
                         artifactDir: artifactRoot,
+                        io,
                         logger,
                     });
                 } catch (e) {

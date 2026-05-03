@@ -15,6 +15,7 @@ import type { Logger } from '../../core/logger';
 import type { WebSocketService } from './websocket';
 import type { ArchFileEvent } from './arch-watcher';
 import { createLogger } from '../../common/logger';
+import type { WorkspaceIO } from '../../workspace/workspace-io';
 
 const log = createLogger('regenerator');
 
@@ -24,6 +25,12 @@ export interface RegenerateDeps {
     verbose: boolean;
     webSocket: WebSocketService;
     logger: Logger;
+    /**
+     * Loop 24 — realpath-strong I/O surface, constructed once at server
+     * start in `GraphServer.start()` and threaded through every per-call
+     * `regenDeps()` payload.
+     */
+    io: WorkspaceIO;
     /**
      * Loop 21 — optional explicit override for the webview asset directory,
      * threaded through from `ServerConfig.assetRoot`. When omitted, the
@@ -75,6 +82,7 @@ export async function rescanSourcesAndRegenerate(
             workspaceRoot: asWorkspaceRoot(deps.workspaceRoot),
             filePath: file,
             artifactDir,
+            io: deps.io,
             logger: deps.logger,
         });
     }

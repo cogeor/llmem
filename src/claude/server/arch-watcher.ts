@@ -4,18 +4,35 @@
  * Dedicated file watcher for .arch directory.
  * Watches markdown files and emits incremental updates via WebSocket.
  * Completely separated from source file watching for edge regeneration.
+ *
+ * Loop 24: every direct `fs.*` use site is replaced with `WorkspaceIO`
+ * (rooted on the *workspace*, not on `.arch`). The previous textual
+ * `assertInArchDir` containment check is retired in favor of:
+ *
+ *   1. an explicit `.arch/` prefix check on the workspace-relative path
+ *      (preserves the old "operates only inside .arch" contract), and
+ *   2. `WorkspaceIO`'s realpath layer (defeats symlink-target-outside-
+ *      workspace attacks).
+ *
+ * Chokidar is intentionally NOT routed through `WorkspaceIO` — it is the
+ * OS notification surface and needs absolute paths for its watch syscalls.
+ * The actual reads / writes triggered by chokidar events flow through
+ * `WorkspaceIO`.
  */
 
 import * as path from 'path';
-import * as fs from 'fs';
 import * as chokidar from 'chokidar';
 import { renderMarkdown } from '../../webview/markdown-renderer';
 import { createLogger } from '../../common/logger';
+import type { WorkspaceIO } from '../../workspace/workspace-io';
+import { PathEscapeError } from '../../core/errors';
 
 const log = createLogger('arch-watcher');
 
 export interface ArchWatcherConfig {
     workspaceRoot: string;
+    /** Required (L24): realpath-strong I/O surface anchored on the workspace root. */
+    io: WorkspaceIO;
     verbose?: boolean;
 }
 
@@ -39,6 +56,8 @@ export class ArchWatcherService {
     private watcher: chokidar.FSWatcher | null = null;
     private config: Required<ArchWatcherConfig>;
     private archDir: string;
+    /** `.arch` path expressed as a workspace-relative string. */
+    private archRel: string;
     private onEvent?: (event: ArchFileEvent) => void;
 
     // Debounce state per file
@@ -48,9 +67,11 @@ export class ArchWatcherService {
     constructor(config: ArchWatcherConfig) {
         this.config = {
             workspaceRoot: config.workspaceRoot,
+            io: config.io,
             verbose: config.verbose || false,
         };
         this.archDir = path.join(this.config.workspaceRoot, '.arch');
+        this.archRel = path.relative(this.config.io.getRealRoot(), this.archDir).replace(/\\/g, '/');
     }
 
     /**
@@ -60,10 +81,11 @@ export class ArchWatcherService {
     async setup(onEvent: (event: ArchFileEvent) => void): Promise<void> {
         this.onEvent = onEvent;
 
-        // Ensure .arch directory exists
-        if (!fs.existsSync(this.archDir)) {
+        // Ensure .arch directory exists. L24: io.mkdirRecursive realpath-
+        // validates the parent containment.
+        if (!(await this.config.io.exists(this.archRel))) {
             try {
-                fs.mkdirSync(this.archDir, { recursive: true });
+                await this.config.io.mkdirRecursive(this.archRel);
                 if (this.config.verbose) {
                     log.info('Created .arch directory');
                 }
@@ -161,11 +183,16 @@ export class ArchWatcherService {
             absolutePath,
         };
 
-        // For created/updated, read and convert the file
-        if (type !== 'deleted' && fs.existsSync(absolutePath)) {
+        // For created/updated, read and convert the file. L24: convert the
+        // chokidar absolute path to workspace-relative and route through
+        // WorkspaceIO so the read flows through realpath containment.
+        if (type !== 'deleted') {
+            const wsRel = path.relative(this.config.io.getRealRoot(), absolutePath).replace(/\\/g, '/');
             try {
-                event.markdown = fs.readFileSync(absolutePath, 'utf-8');
-                event.html = await renderMarkdown(event.markdown);
+                if (await this.config.io.exists(wsRel)) {
+                    event.markdown = await this.config.io.readFile(wsRel, 'utf-8');
+                    event.html = await renderMarkdown(event.markdown);
+                }
             } catch (e) {
                 log.error('Failed to read file', {
                     absolutePath,
@@ -180,15 +207,20 @@ export class ArchWatcherService {
     }
 
     /**
-     * Assert that absolutePath is contained within archDir to prevent directory traversal.
+     * Compute the workspace-relative path for a doc inside `.arch`. Throws
+     * `PathEscapeError` when `relativePath` traverses out of `.arch` —
+     * preserves the L23-and-prior contract that this surface only ever
+     * touches files under `.arch/` (the realpath layer in `WorkspaceIO`
+     * adds the symlink-escape protection on top).
      */
-    private assertInArchDir(absolutePath: string): void {
-        const base = path.resolve(this.archDir);
-        const target = path.resolve(absolutePath);
-        const sep = path.sep;
-        if (!target.startsWith(base + sep) && target !== base) {
-            throw new Error(`Path escapes .arch boundary: ${absolutePath}`);
+    private archDocWsRel(relativePath: string): string {
+        const mdPath = relativePath.endsWith('.md') ? relativePath : `${relativePath}.md`;
+        const wsRel = path.join(this.archRel, mdPath).replace(/\\/g, '/');
+        const archPrefix = this.archRel.endsWith('/') ? this.archRel : `${this.archRel}/`;
+        if (wsRel !== this.archRel && !wsRel.startsWith(archPrefix)) {
+            throw new PathEscapeError(this.archDir, relativePath);
         }
+        return wsRel;
     }
 
     /**
@@ -197,23 +229,27 @@ export class ArchWatcherService {
      * @returns DesignDoc or null if not found
      */
     async readDoc(relativePath: string): Promise<{ markdown: string; html: string } | null> {
-        // Ensure .md extension
-        const mdPath = relativePath.endsWith('.md') ? relativePath : `${relativePath}.md`;
-        const absolutePath = path.join(this.archDir, mdPath);
-
-        this.assertInArchDir(absolutePath);
-
-        if (!fs.existsSync(absolutePath)) {
-            return null;
+        let wsRel: string;
+        try {
+            wsRel = this.archDocWsRel(relativePath);
+        } catch (e) {
+            // PathEscapeError → propagate so HTTP route can render 400.
+            if (e instanceof Error && e.name === 'PathEscapeError') throw e;
+            throw e;
         }
 
         try {
-            const markdown = fs.readFileSync(absolutePath, 'utf-8');
+            if (!(await this.config.io.exists(wsRel))) {
+                return null;
+            }
+            const markdown = await this.config.io.readFile(wsRel, 'utf-8');
             const html = await renderMarkdown(markdown);
             return { markdown, html };
         } catch (e) {
+            // PathEscapeError must surface; other errors get logged + null.
+            if (e instanceof Error && e.name === 'PathEscapeError') throw e;
             log.error('Failed to read doc', {
-                absolutePath,
+                wsRel,
                 error: e instanceof Error ? e.message : String(e),
             });
             return null;
@@ -227,29 +263,25 @@ export class ArchWatcherService {
      * @returns Success status
      */
     async writeDoc(relativePath: string, markdown: string): Promise<boolean> {
-        // Ensure .md extension
-        const mdPath = relativePath.endsWith('.md') ? relativePath : `${relativePath}.md`;
-        const absolutePath = path.join(this.archDir, mdPath);
-
-        this.assertInArchDir(absolutePath);
+        const wsRel = this.archDocWsRel(relativePath);
 
         try {
-            // Ensure directory exists
-            const dir = path.dirname(absolutePath);
-            if (!fs.existsSync(dir)) {
-                fs.mkdirSync(dir, { recursive: true });
-            }
-
-            fs.writeFileSync(absolutePath, markdown, 'utf-8');
+            // Ensure directory exists. L24: io.mkdirRecursive does the
+            // realpath check on the parent.
+            const dirRel = path.dirname(wsRel);
+            await this.config.io.mkdirRecursive(dirRel);
+            await this.config.io.writeFile(wsRel, markdown);
 
             if (this.config.verbose) {
-                log.debug('Wrote doc', { mdPath });
+                log.debug('Wrote doc', { wsRel });
             }
 
             return true;
         } catch (e) {
+            // PathEscapeError must surface; other errors get logged + false.
+            if (e instanceof Error && e.name === 'PathEscapeError') throw e;
             log.error('Failed to write doc', {
-                absolutePath,
+                wsRel,
                 error: e instanceof Error ? e.message : String(e),
             });
             return false;
@@ -257,10 +289,13 @@ export class ArchWatcherService {
     }
 
     /**
-     * Check if .arch directory exists
+     * Check if .arch directory exists.
+     *
+     * L24: returns Promise<boolean> (was synchronous boolean) because
+     * realpath-strong existence checking requires async fs.realpath.
      */
-    hasArchDir(): boolean {
-        return fs.existsSync(this.archDir);
+    async hasArchDir(): Promise<boolean> {
+        return this.config.io.exists(this.archRel);
     }
 
     /**

@@ -1,8 +1,8 @@
-import * as fs from 'fs';
 import { Graph, Node, Edge } from '../types';
 import { getHtmlTemplate } from './template';
 import { ColorGenerator } from '../utils';
 import { createLogger } from '../../common/logger';
+import type { WorkspaceIO } from '../../workspace/workspace-io';
 
 const log = createLogger('plot-generator');
 
@@ -61,8 +61,21 @@ export function generatePlotHtml<N extends Node, E extends Edge>(graph: Graph<N,
     return getHtmlTemplate(JSON.stringify(data), title);
 }
 
-export function savePlot<N extends Node, E extends Edge>(graph: Graph<N, E>, title: string, outputPath: string) {
+/**
+ * Persist a generated plot HTML to disk.
+ *
+ * Loop 24: signature flipped from `(graph, title, outputPath)` to
+ * `(graph, title, io, outputRel)`. Writes go through `WorkspaceIO` so the
+ * destination is realpath-validated against the workspace root. The
+ * `outputRel` argument is workspace-relative (forward slashes preferred).
+ */
+export async function savePlot<N extends Node, E extends Edge>(
+    graph: Graph<N, E>,
+    title: string,
+    io: WorkspaceIO,
+    outputRel: string,
+): Promise<void> {
     const html = generatePlotHtml(graph, title);
-    fs.writeFileSync(outputPath, html, 'utf-8');
-    log.info('Plot saved', { outputPath });
+    await io.writeFile(outputRel, html);
+    log.info('Plot saved', { outputRel });
 }

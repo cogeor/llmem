@@ -48,7 +48,22 @@ async function handleGetArch(
         return;
     }
 
-    const doc = await ctx.archWatcher.readDoc(docPath);
+    let doc: { markdown: string; html: string } | null;
+    try {
+        doc = await ctx.archWatcher.readDoc(docPath);
+    } catch (err) {
+        // L24: arch-watcher surfaces PathEscapeError up to the HTTP layer
+        // when the requested path tries to escape `.arch/` (textual) or
+        // its realpath escapes the workspace (symlink attack).
+        if (err instanceof Error && err.name === 'PathEscapeError') {
+            ctx.httpHandler.sendJson(res, 400, {
+                success: false,
+                message: `Invalid path: ${docPath}`,
+            });
+            return;
+        }
+        throw err;
+    }
     if (doc) {
         ctx.httpHandler.sendJson(res, 200, {
             success: true,
@@ -112,7 +127,20 @@ async function handlePostArch(
         return;
     }
 
-    const success = await ctx.archWatcher.writeDoc(docPath, markdown);
+    let success: boolean;
+    try {
+        success = await ctx.archWatcher.writeDoc(docPath, markdown);
+    } catch (err) {
+        // L24: writeDoc throws PathEscapeError on textual / realpath escape.
+        if (err instanceof Error && err.name === 'PathEscapeError') {
+            ctx.httpHandler.sendJson(res, 400, {
+                success: false,
+                message: `Invalid path: ${docPath}`,
+            });
+            return;
+        }
+        throw err;
+    }
     if (success) {
         // The file watcher will detect the change and broadcast update
         ctx.httpHandler.sendJson(res, 200, {

@@ -7,6 +7,7 @@ import { scanFile } from '../application/scan';
 import type { Logger as BoundaryLogger } from '../core/logger';
 import { createLogger } from '../common/logger';
 import { asWorkspaceRoot, asAbsPath } from '../core/paths';
+import { WorkspaceIO } from '../workspace/workspace-io';
 import type { DesignDoc } from '../webview/design-docs';
 import { renderMarkdown } from '../webview/markdown-renderer';
 import type { WebviewGraphData } from '../graph/webview-data';
@@ -47,6 +48,13 @@ export class HotReloadService {
     private artifactRoot: string;
     private projectRoot: string;
     private archRoot: string;
+
+    /**
+     * L24: realpath-strong I/O surface, lazily constructed on first scan.
+     * `WorkspaceIO.create` is async (it realpaths the root once), so we
+     * cannot build it eagerly in the synchronous constructor / `start()`.
+     */
+    private _io: WorkspaceIO | null = null;
 
     private onUpdate: (data: WebviewData) => void;
 
@@ -161,6 +169,17 @@ export class HotReloadService {
     }
 
     /**
+     * Lazily construct (and cache) the workspace-scoped I/O surface.
+     * L24: `WorkspaceIO.create` realpaths the workspace root once.
+     */
+    private async getIO(): Promise<WorkspaceIO> {
+        if (!this._io) {
+            this._io = await WorkspaceIO.create(asWorkspaceRoot(this.projectRoot));
+        }
+        return this._io;
+    }
+
+    /**
      * Add a path to the watched set.
      */
     public addWatchedPath(relativePath: string) {
@@ -204,11 +223,13 @@ export class HotReloadService {
 
             log.info('Watched files changed, regenerating edges', { watchedChangedFiles });
             try {
+                const io = await this.getIO();
                 for (const file of watchedChangedFiles) {
                     await scanFile({
                         workspaceRoot: asWorkspaceRoot(this.projectRoot),
                         filePath: file,
                         artifactDir: this.artifactRoot,
+                        io,
                         logger: this._scanLogger,
                     });
                 }

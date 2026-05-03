@@ -143,7 +143,10 @@ describe('ArchWatcherService', () => {
 
     test('readDoc returns null for non-existent file', async () => {
         const { ArchWatcherService } = await import('../../src/claude/server/arch-watcher');
-        const watcher = new ArchWatcherService({ workspaceRoot: TEST_WORKSPACE });
+        const { WorkspaceIO } = await import('../../src/workspace/workspace-io');
+        const { asWorkspaceRoot } = await import('../../src/core/paths');
+        const io = await WorkspaceIO.create(asWorkspaceRoot(TEST_WORKSPACE));
+        const watcher = new ArchWatcherService({ workspaceRoot: TEST_WORKSPACE, io });
 
         const result = await watcher.readDoc('non-existent');
         assert.equal(result, null);
@@ -151,7 +154,10 @@ describe('ArchWatcherService', () => {
 
     test('writeDoc creates file and readDoc retrieves it', async () => {
         const { ArchWatcherService } = await import('../../src/claude/server/arch-watcher');
-        const watcher = new ArchWatcherService({ workspaceRoot: TEST_WORKSPACE });
+        const { WorkspaceIO } = await import('../../src/workspace/workspace-io');
+        const { asWorkspaceRoot } = await import('../../src/core/paths');
+        const io = await WorkspaceIO.create(asWorkspaceRoot(TEST_WORKSPACE));
+        const watcher = new ArchWatcherService({ workspaceRoot: TEST_WORKSPACE, io });
 
         const testMarkdown = '# Test\n\nThis is a test.';
         const success = await watcher.writeDoc('test-write', testMarkdown);
@@ -170,7 +176,10 @@ describe('ArchWatcherService', () => {
 
     test('writeDoc creates nested directories', async () => {
         const { ArchWatcherService } = await import('../../src/claude/server/arch-watcher');
-        const watcher = new ArchWatcherService({ workspaceRoot: TEST_WORKSPACE });
+        const { WorkspaceIO } = await import('../../src/workspace/workspace-io');
+        const { asWorkspaceRoot } = await import('../../src/core/paths');
+        const io = await WorkspaceIO.create(asWorkspaceRoot(TEST_WORKSPACE));
+        const watcher = new ArchWatcherService({ workspaceRoot: TEST_WORKSPACE, io });
 
         const success = await watcher.writeDoc('nested/deep/path/file', '# Nested');
         assert.equal(success, true);
@@ -181,16 +190,43 @@ describe('ArchWatcherService', () => {
 
     test('hasArchDir returns true when .arch exists', async () => {
         const { ArchWatcherService } = await import('../../src/claude/server/arch-watcher');
-        const watcher = new ArchWatcherService({ workspaceRoot: TEST_WORKSPACE });
+        const { WorkspaceIO } = await import('../../src/workspace/workspace-io');
+        const { asWorkspaceRoot } = await import('../../src/core/paths');
+        const io = await WorkspaceIO.create(asWorkspaceRoot(TEST_WORKSPACE));
+        const watcher = new ArchWatcherService({ workspaceRoot: TEST_WORKSPACE, io });
 
-        assert.equal(watcher.hasArchDir(), true);
+        // L24: hasArchDir returns Promise<boolean> (was synchronous boolean).
+        assert.equal(await watcher.hasArchDir(), true);
     });
 
     test('getArchDir returns correct path', async () => {
         const { ArchWatcherService } = await import('../../src/claude/server/arch-watcher');
-        const watcher = new ArchWatcherService({ workspaceRoot: TEST_WORKSPACE });
+        const { WorkspaceIO } = await import('../../src/workspace/workspace-io');
+        const { asWorkspaceRoot } = await import('../../src/core/paths');
+        const io = await WorkspaceIO.create(asWorkspaceRoot(TEST_WORKSPACE));
+        const watcher = new ArchWatcherService({ workspaceRoot: TEST_WORKSPACE, io });
 
         assert.equal(watcher.getArchDir(), TEST_ARCH_DIR);
+    });
+
+    test('writeDoc rejects paths that escape .arch', async () => {
+        // L24: previously the textual `assertInArchDir` would have thrown
+        // with a non-typed Error. Now the migration routes the call through
+        // WorkspaceIO + an explicit `.arch/` prefix check; both flavors of
+        // attack — textual `..` traversal and (POSIX) symlink-target-
+        // outside-workspace — surface as PathEscapeError with code
+        // PATH_ESCAPE.
+        const { ArchWatcherService } = await import('../../src/claude/server/arch-watcher');
+        const { WorkspaceIO } = await import('../../src/workspace/workspace-io');
+        const { asWorkspaceRoot } = await import('../../src/core/paths');
+        const io = await WorkspaceIO.create(asWorkspaceRoot(TEST_WORKSPACE));
+        const watcher = new ArchWatcherService({ workspaceRoot: TEST_WORKSPACE, io });
+
+        await assert.rejects(
+            watcher.writeDoc('../escape', '# pwn'),
+            (err: Error & { code?: string }) =>
+                err.name === 'PathEscapeError' && err.code === 'PATH_ESCAPE',
+        );
     });
 });
 

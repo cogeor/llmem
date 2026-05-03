@@ -6,16 +6,18 @@
  */
 
 import * as path from 'path';
-import * as fs from 'fs';
 import * as chokidar from 'chokidar';
 import { WatchService } from '../../graph/worktree-state';
 import { createLogger } from '../../common/logger';
+import type { WorkspaceIO } from '../../workspace/workspace-io';
 
 const log = createLogger('file-watcher');
 
 export interface FileWatcherConfig {
     workspaceRoot: string;
     artifactRoot: string;
+    /** Required (L24): realpath-strong I/O surface anchored on the workspace root. */
+    io: WorkspaceIO;
     verbose?: boolean;
 }
 
@@ -47,6 +49,7 @@ export class FileWatcherService {
         this.config = {
             workspaceRoot: config.workspaceRoot,
             artifactRoot: config.artifactRoot,
+            io: config.io,
             verbose: config.verbose || false,
         };
     }
@@ -65,7 +68,7 @@ export class FileWatcherService {
         const artifactDir = path.join(this.config.workspaceRoot, this.config.artifactRoot);
 
         // Load watched files from WatchService
-        const watchService = new WatchService(artifactDir, this.config.workspaceRoot);
+        const watchService = new WatchService(artifactDir, this.config.workspaceRoot, this.config.io);
         await watchService.load();
         const watchedFiles = watchService.getWatchedFiles();
 
@@ -86,8 +89,23 @@ export class FileWatcherService {
             ...watchedSourcePaths,
         ];
 
-        // Filter valid paths
-        const existingPaths = watchPaths.filter(p => fs.existsSync(p));
+        // L24: Filter valid paths through the realpath-strong I/O surface.
+        // Each path is workspace-rooted by construction; we convert to
+        // workspace-relative form, ask `io.exists`, and skip on
+        // PathEscapeError (defensive — should not happen since the paths
+        // were built from inside-workspace sources).
+        const existingPaths: string[] = [];
+        for (const p of watchPaths) {
+            const rel = path.relative(this.config.io.getRealRoot(), p);
+            try {
+                if (await this.config.io.exists(rel)) existingPaths.push(p);
+            } catch (err) {
+                log.warn('Watch path escapes workspace; skipping', {
+                    path: p,
+                    error: err instanceof Error ? err.message : String(err),
+                });
+            }
+        }
 
         if (existingPaths.length === 0) {
             if (this.config.verbose) {
