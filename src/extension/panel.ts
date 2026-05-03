@@ -1,12 +1,12 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import * as fs from 'fs';
 import { HotReloadService } from './hot-reload';
 import { getConfig } from './config';
 import { collectViewerData, type ViewerData } from '../application/viewer-data';
 import { scanFile, scanFolderRecursive } from '../application/scan';
+import { addWatchedPath, removeWatchedPath } from '../application/toggle-watch';
 import type { Logger } from '../core/logger';
-import { asWorkspaceRoot, asAbsPath } from '../core/paths';
+import { asWorkspaceRoot, asAbsPath, asRelPath } from '../core/paths';
 import { parseGraphId } from '../core/ids';
 import type { DesignDoc } from '../webview/design-docs';
 
@@ -193,9 +193,6 @@ export class LLMemPanel {
             case 'webview:ready':
                 await this._startHotReloadAndSendInitialData();
                 break;
-            case 'regenerateEdges':
-                await this._regenerateEdges(message.path);
-                break;
             case 'loadFolderNodes':
                 await this._loadFolderNodes(message.folderPath);
                 break;
@@ -288,176 +285,50 @@ export class LLMemPanel {
     }
 
     /**
-     * Regenerate edges for a specific path (file or folder) and refresh the webview data.
-     */
-    private async _regenerateEdges(targetPath: string) {
-        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        if (!workspaceRoot) {
-            vscode.window.showErrorMessage('No workspace folder open');
-            return;
-        }
-
-        const config = getConfig();
-        const artifactRoot = path.join(workspaceRoot, config.artifactRoot);
-        const absolutePath = path.join(workspaceRoot, targetPath);
-
-        // Detect if path is file or folder
-        const isFile = fs.existsSync(absolutePath) && fs.statSync(absolutePath).isFile();
-
-        console.log(`[LLMemPanel] Regenerating edges for: ${targetPath} (isFile: ${isFile})`);
-
-        // IMPORTANT: Must return the promise to allow caller to await edge generation
-        return vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: `Generating edges for ${targetPath}...`,
-            cancellable: false
-        }, async () => {
-            try {
-                let result;
-                if (isFile) {
-                    result = await scanFile({
-                        workspaceRoot: asWorkspaceRoot(workspaceRoot),
-                        filePath: targetPath,
-                        artifactDir: artifactRoot,
-                        logger: this._panelLogger(),
-                    });
-                } else {
-                    result = await scanFolderRecursive({
-                        workspaceRoot: asWorkspaceRoot(workspaceRoot),
-                        folderPath: targetPath,
-                        artifactDir: artifactRoot,
-                        logger: this._panelLogger(),
-                    });
-                }
-                vscode.window.showInformationMessage(`Added ${result.newEdges} new edges. Total: ${result.totalEdges}`);
-
-                // Refresh webview data
-                const raw = await collectViewerData({
-                    workspaceRoot: asWorkspaceRoot(workspaceRoot),
-                    artifactRoot: asAbsPath(artifactRoot),
-                    logger: this._panelLogger(),
-                });
-                const rendered = await toRenderedViewerData(raw);
-                this._panel.webview.postMessage({
-                    type: 'data:refresh',
-                    data: rendered
-                });
-            } catch (e: any) {
-                vscode.window.showErrorMessage(`Failed to generate edges: ${e.message}`);
-            }
-        });
-    }
-
-    /**
-     * Handle toggle watch message - manage watched files using WatchService.
+     * Handle toggle-watch message. Loop 09 lifted the workflow into
+     * `application/toggle-watch.ts`; this handler is a thin wrapper that
+     * dispatches the result back to the webview and into hot-reload.
      */
     private async _handleToggleWatch(targetPath: string, watched: boolean) {
         const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        if (!workspaceRoot) {
-            return;
-        }
-
-        const config = getConfig();
-        const artifactRoot = path.join(workspaceRoot, config.artifactRoot);
-
+        if (!workspaceRoot) return;
+        const artifactRoot = path.join(workspaceRoot, getConfig().artifactRoot);
+        const req = {
+            workspaceRoot: asWorkspaceRoot(workspaceRoot),
+            artifactRoot: asAbsPath(artifactRoot),
+            targetPath: asRelPath(targetPath),
+            logger: this._panelLogger(),
+        };
         console.log(`[LLMemPanel] Toggle watch: ${targetPath} -> ${watched}`);
-
-        // Use centralized WatchService
-        const { WatchService } = await import('../graph/worktree-state');
-        const watchService = new WatchService(artifactRoot, workspaceRoot);
-        await watchService.load();
-
-        const absolutePath = path.join(workspaceRoot, targetPath);
-        const isDir = fs.existsSync(absolutePath) && fs.statSync(absolutePath).isDirectory();
-
-        if (watched) {
-            // When turning ON: add files and regenerate edges
-            let addedFiles: string[];
-            if (isDir) {
-                addedFiles = await watchService.addFolder(targetPath);
+        try {
+            if (watched) {
+                const result = await addWatchedPath(req);
+                for (const f of result.addedFiles) this._hotReload?.addWatchedPath(f);
+                this._panel.webview.postMessage({
+                    type: 'state:watchedPaths',
+                    paths: result.watchedFiles,
+                    addedFiles: result.addedFiles,
+                });
+                if (!result.success && result.message) vscode.window.showWarningMessage(result.message);
             } else {
-                await watchService.addFile(targetPath);
-                addedFiles = [targetPath];
+                const result = await removeWatchedPath(req);
+                for (const f of result.removedFiles) this._hotReload?.removeWatchedPath(f);
+                this._panel.webview.postMessage({
+                    type: 'state:watchedPaths',
+                    paths: result.watchedFiles,
+                    removedFiles: result.removedFiles,
+                });
             }
-
-            // Add files to hot reload
-            for (const f of addedFiles) {
-                this._hotReload?.addWatchedPath(f);
-            }
-
-            // Regenerate edges
-            await this._regenerateEdges(targetPath);
-            await watchService.save();
-
-            // Send updated watched files to webview (include addedFiles for UI state update)
-            this._panel.webview.postMessage({
-                type: 'state:watchedPaths',
-                paths: watchService.getWatchedFiles(),
-                addedFiles: addedFiles
-            });
-
-            console.log(`[LLMemPanel] Added ${addedFiles.length} files to watch`);
-        } else {
-            // When turning OFF: remove files
-            let removedFiles: string[];
-            if (isDir) {
-                removedFiles = watchService.removeFolder(targetPath);
-            } else {
-                watchService.removeFile(targetPath);
-                removedFiles = [targetPath];
-            }
-
-            // Remove from hot reload
-            for (const f of removedFiles) {
-                this._hotReload?.removeWatchedPath(f);
-            }
-
-            // Delete edges
-            await this._deleteEdgesForPath(targetPath, artifactRoot);
-            await watchService.save();
-
-            // Send updated watched files to webview (include removedFiles for UI state update)
-            this._panel.webview.postMessage({
-                type: 'state:watchedPaths',
-                paths: watchService.getWatchedFiles(),
-                removedFiles: removedFiles
-            });
-
-            // Refresh webview data
             const raw = await collectViewerData({
-                workspaceRoot: asWorkspaceRoot(workspaceRoot),
-                artifactRoot: asAbsPath(artifactRoot),
-                logger: this._panelLogger(),
+                workspaceRoot: req.workspaceRoot,
+                artifactRoot: req.artifactRoot,
+                logger: req.logger,
             });
             const rendered = await toRenderedViewerData(raw);
-            this._panel.webview.postMessage({
-                type: 'data:refresh',
-                data: rendered
-            });
-
-            console.log(`[LLMemPanel] Removed ${removedFiles.length} files from watch`);
+            this._panel.webview.postMessage({ type: 'data:refresh', data: rendered });
+        } catch (e: any) {
+            vscode.window.showErrorMessage(`Toggle watch failed: ${e?.message ?? String(e)}`);
         }
-    }
-
-    /**
-     * Delete edges for a given path from both import and call edge lists.
-     */
-    private async _deleteEdgesForPath(targetPath: string, artifactRoot: string) {
-        const { ImportEdgeListStore, CallEdgeListStore } = await import('../graph/edgelist');
-
-        // Delete from import edge list
-        const importStore = new ImportEdgeListStore(artifactRoot);
-        await importStore.load();
-        importStore.removeByFolder(targetPath);
-        await importStore.save();
-
-        // Delete from call edge list
-        const callStore = new CallEdgeListStore(artifactRoot);
-        await callStore.load();
-        callStore.removeByFolder(targetPath);
-        await callStore.save();
-
-        console.log(`[LLMemPanel] Deleted edges for: ${targetPath}`);
     }
 
     private async _startHotReloadAndSendInitialData() {

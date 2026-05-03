@@ -14,9 +14,10 @@ import { FileWatcherService } from './file-watcher';
 import { HttpRequestHandler } from './http-handler';
 import { WatchManager } from './watch-manager';
 import { ArchWatcherService, ArchFileEvent } from './arch-watcher';
+import { addWatchedPath, removeWatchedPath } from '../../application/toggle-watch';
 import { scanFile } from '../../application/scan';
 import type { Logger } from '../../core/logger';
-import { asWorkspaceRoot } from '../../core/paths';
+import { asWorkspaceRoot, asAbsPath, asRelPath } from '../../core/paths';
 
 /**
  * Server configuration
@@ -226,51 +227,30 @@ export class GraphServer {
                 return;
             }
 
-            // Route based on HTTP method
+            // Loop 09: route to the unified toggle-watch workflow. The
+            // edge-store mutations and file/folder dispatch live in the
+            // application function; the server is a thin HTTP wrapper.
+            const artifactDir = path.join(this.config.workspaceRoot, this.config.artifactRoot);
+            const toggleReq = {
+                workspaceRoot: asWorkspaceRoot(this.config.workspaceRoot),
+                artifactRoot: asAbsPath(artifactDir),
+                targetPath: asRelPath(relativePath),
+                logger: this.serverLogger,
+            };
+
             if (req.method === 'POST') {
-                // Add to watched
-                const result = await this.watchManager.addToWatch(relativePath);
-
+                const result = await addWatchedPath(toggleReq);
                 if (result.success) {
-                    // Regenerate edges for newly watched files
-                    const artifactDir = path.join(this.config.workspaceRoot, this.config.artifactRoot);
-                    const logger = this.serverLogger;
-
-                    for (const file of result.addedFiles) {
-                        await scanFile({
-                            workspaceRoot: asWorkspaceRoot(this.config.workspaceRoot),
-                            filePath: file,
-                            artifactDir,
-                            logger,
-                        });
-                    }
-
+                    await this.watchManager.refresh();
                     await this.regenerateWebview();
                 }
-
                 this.httpHandler.sendJson(res, result.success ? 200 : 400, result);
             } else if (req.method === 'DELETE') {
-                // Remove from watched
-                const result = await this.watchManager.removeFromWatch(relativePath);
-
+                const result = await removeWatchedPath(toggleReq);
                 if (result.success) {
-                    // Delete edges for unwatched files
-                    const artifactDir = path.join(this.config.workspaceRoot, this.config.artifactRoot);
-                    const { ImportEdgeListStore, CallEdgeListStore } = await import('../../graph/edgelist');
-
-                    const importStore = new ImportEdgeListStore(artifactDir);
-                    await importStore.load();
-                    importStore.removeByFolder(relativePath);
-                    await importStore.save();
-
-                    const callStore = new CallEdgeListStore(artifactDir);
-                    await callStore.load();
-                    callStore.removeByFolder(relativePath);
-                    await callStore.save();
-
+                    await this.watchManager.refresh();
                     await this.regenerateWebview();
                 }
-
                 this.httpHandler.sendJson(res, result.success ? 200 : 400, result);
             } else {
                 this.httpHandler.sendJson(res, 405, {
