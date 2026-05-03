@@ -74,3 +74,41 @@ Per `ARCHITECTURE.md`:
 - What does the viewer look like when a graph mixes "hard" (TS Compiler / SCIP) and "soft" (Tier 1 regex) edges? See `design/02_folder_view.md` — soft edges should render visibly different.
 - How do we ship indexer binaries? Probably "we don't" — point users to `brew install scip-python` etc., and the platform pre-installs them in the worker image.
 - Should `llmem index` write into `.artifacts/` or `.llmem/`? Consolidate around `.llmem/` for human-edited config and `.artifacts/` for generated state, per `ARCHITECTURE.md`.
+
+## Alternatives to revisit later
+
+Captured for when this gets promoted to a full plan. Not committing to any yet.
+
+### Stack Graphs (`tree-sitter-stack-graphs`)
+
+The "tree-sitter done right" answer. GitHub's precise code-nav uses this — name resolution is a path-finding problem over a per-file graph that gets stitched at query time. Indexes are per-file, so incremental updates are cheap, which is exactly what broke our first tree-sitter attempt (we wrote the resolver ourselves and it didn't scale). Existing definitions for Python, Java, JavaScript/TypeScript; community ones for others. Directly addresses "resolution was the slow part, not the parse."
+
+### cscope / GNU GLOBAL (gtags)
+
+Decades-old, designed for huge C codebases on 80s hardware. Sub-second cross-reference on millions of LOC. cscope is C/C++; gtags covers C/C++/Java/PHP/Python via plugins. Gives "callers of foo" / "callees of foo" directly. Narrow language coverage but absurdly fast where it applies. Could slot in as a C/C++-specific Tier-1.5, before reaching for SCIP.
+
+### LLM-at-scan-time, parallelized + content-hashed
+
+Originally rejected as "doesn't scale to the whole graph," but the cost model has changed. Haiku-class models at ~$0.0001/file × 5k Python files ≈ $0.50, and calls parallelize. Hash-keyed cache means only changed files re-cost. Becomes a credible Tier-2 *alternative* to SCIP on the platform side: SCIP wins on determinism, LLM wins on language coverage (works for R, weird DSLs, languages no SCIP indexer covers). Worth modeling LLM cost vs SCIP-runner-minutes before dismissing.
+
+### Hybrid: LLM seeds, ctags chases
+
+LLM identifies entry points / public APIs / "interesting" functions per file (one call per file, cheap). A deterministic ctags/regex pass then walks calls from those seeds. Caps LLM cost at O(files); gets most of the precision benefit at the heads of the graph where it matters most.
+
+### IDE-LSP scraping
+
+Don't run our own LSP; piggyback on the one the user already has warm in VS Code/Antigravity. The extension is already running in-process. Call `vscode.executeReferenceProvider` / `executeCallHierarchyProvider` and ingest. Free precision, zero infra. Only works inside the IDE — useless for the CLI/platform path — but for the in-IDE viewer it could be a Tier-2 that costs nothing.
+
+### Rejected after consideration
+
+- **Joern / Code Property Graph** — accurate but JVM-heavy, slow startup, busts the laptop budget.
+- **Build-system hooks (`clang -fcallgraph-info`, cargo MIR dumps)** — requires the user's repo to actually build cleanly. Too large an ask for a tool that should work on arbitrary clones.
+- **Runtime tracing (coverage.py, `sys.settrace`)** — requires running user code; security and resource non-starter for the platform path.
+- **Sourcetrail-style per-language wrappers** — that is essentially what SCIP already is, no advantage to rolling our own.
+
+### Restructured menu (sketch)
+
+Tier shape (0/1/2) doesn't have to change. What changes is the menu at each tier:
+
+- **Tier 1**: regex *or* stack-graphs where definitions exist *or* cscope/gtags for C/C++.
+- **Tier 2**: SCIP *or* LLM-at-scan-time *or* IDE-LSP-scraping, picked by deployment context (platform = SCIP/LLM, IDE = LSP scrape, CLI = SCIP).
