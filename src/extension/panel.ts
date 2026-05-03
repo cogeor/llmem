@@ -9,6 +9,7 @@ import type { Logger } from '../core/logger';
 import { asWorkspaceRoot, asAbsPath, asRelPath } from '../core/paths';
 import { parseGraphId } from '../core/ids';
 import type { DesignDoc } from '../webview/design-docs';
+import { renderMarkdown } from '../webview/markdown-renderer';
 
 /**
  * Renderer shape produced from a `ViewerData`'s raw markdown by the panel
@@ -23,30 +24,20 @@ interface ViewerDataRendered {
 }
 
 /**
- * Render raw markdown into the legacy `DesignDoc` shape using `marked`.
+ * Render raw markdown into the legacy `DesignDoc` shape.
  *
  * Application-layer `collectViewerData` returns raw markdown only; the
  * panel renders here so presentation stays out of the application layer.
- * (Loop 06 deliberate split.) Consolidating with `webview/design-docs.ts`
- * is Loop 12 territory.
- *
- * Uses dynamic import for ESM-only `marked` — same workaround
- * `DesignDocManager.getAllDocsAsync` uses.
+ * (Loop 06 deliberate split.) Loop 19 routes the rendering through the
+ * centralized `renderMarkdown` helper (`src/webview/markdown-renderer.ts`),
+ * which owns the ESM dynamic-import of `marked` plus a server-side
+ * DOMPurify pass.
  */
 async function renderViewerDocs(raw: Record<string, string>): Promise<Record<string, DesignDoc>> {
     const out: Record<string, DesignDoc> = {};
-    const dynamicImport = new Function('specifier', 'return import(specifier)');
-    let marked: any;
-    try {
-        const mod = await dynamicImport('marked');
-        marked = mod.marked;
-    } catch (e) {
-        console.error('[LLMemPanel] Failed to import marked:', e);
-        return out;
-    }
     for (const [key, markdown] of Object.entries(raw)) {
         try {
-            const html = await marked.parse(markdown);
+            const html = await renderMarkdown(markdown);
             out[key] = { markdown, html };
         } catch (e) {
             console.error(`[LLMemPanel] Failed to render design doc: ${key}`, e);

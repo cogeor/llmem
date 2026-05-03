@@ -9,6 +9,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import * as chokidar from 'chokidar';
+import { renderMarkdown } from '../../webview/markdown-renderer';
 
 export interface ArchWatcherConfig {
     workspaceRoot: string;
@@ -41,9 +42,6 @@ export class ArchWatcherService {
     private pendingEvents: Map<string, NodeJS.Timeout> = new Map();
     private debounceDelay = 300; // ms
 
-    // Marked module (dynamically imported)
-    private marked: any = null;
-
     constructor(config: ArchWatcherConfig) {
         this.config = {
             workspaceRoot: config.workspaceRoot,
@@ -58,13 +56,6 @@ export class ArchWatcherService {
      */
     async setup(onEvent: (event: ArchFileEvent) => void): Promise<void> {
         this.onEvent = onEvent;
-
-        // Load marked for markdown conversion
-        await this.loadMarked();
-
-        if (!this.marked) {
-            console.warn('[ArchWatcher] marked module not available - HTML rendering disabled. Install the "marked" npm package.');
-        }
 
         // Ensure .arch directory exists
         if (!fs.existsSync(this.archDir)) {
@@ -125,22 +116,6 @@ export class ArchWatcherService {
     }
 
     /**
-     * Load marked module dynamically (ESM module)
-     */
-    private async loadMarked(): Promise<void> {
-        try {
-            const dynamicImport = new Function('specifier', 'return import(specifier)');
-            const module = await dynamicImport('marked');
-            this.marked = module.marked;
-            if (this.config.verbose) {
-                console.log('[ArchWatcher] Loaded marked module');
-            }
-        } catch (e) {
-            console.error('[ArchWatcher] Failed to load marked:', e);
-        }
-    }
-
-    /**
      * Handle file event with debouncing
      */
     private handleEvent(type: 'created' | 'updated' | 'deleted', absolutePath: string): void {
@@ -182,9 +157,7 @@ export class ArchWatcherService {
         if (type !== 'deleted' && fs.existsSync(absolutePath)) {
             try {
                 event.markdown = fs.readFileSync(absolutePath, 'utf-8');
-                if (this.marked) {
-                    event.html = await this.marked.parse(event.markdown);
-                }
+                event.html = await renderMarkdown(event.markdown);
             } catch (e) {
                 console.error(`[ArchWatcher] Failed to read file: ${absolutePath}`, e);
             }
@@ -213,11 +186,6 @@ export class ArchWatcherService {
      * @returns DesignDoc or null if not found
      */
     async readDoc(relativePath: string): Promise<{ markdown: string; html: string } | null> {
-        // Ensure marked is loaded
-        if (!this.marked) {
-            await this.loadMarked();
-        }
-
         // Ensure .md extension
         const mdPath = relativePath.endsWith('.md') ? relativePath : `${relativePath}.md`;
         const absolutePath = path.join(this.archDir, mdPath);
@@ -230,10 +198,7 @@ export class ArchWatcherService {
 
         try {
             const markdown = fs.readFileSync(absolutePath, 'utf-8');
-            let html = '';
-            if (this.marked) {
-                html = await this.marked.parse(markdown);
-            }
+            const html = await renderMarkdown(markdown);
             return { markdown, html };
         } catch (e) {
             console.error(`[ArchWatcher] Failed to read doc: ${absolutePath}`, e);

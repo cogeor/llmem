@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getArchRoot, getDesignDocKey } from '../docs/arch-store';
 import { asWorkspaceRoot, asAbsPath } from '../core/paths';
+import { renderMarkdown } from './markdown-renderer';
 
 /**
  * Design document with both markdown source and rendered HTML
@@ -41,19 +42,9 @@ export class DesignDocManager {
 
     public async getAllDocsAsync(): Promise<Record<string, DesignDoc>> {
         console.log('[DesignDocManager] Starting getAllDocsAsync');
-        // Dynamic import for ESM module support in CommonJS
-        // TSC compiles import() to require() when module is commonjs, which fails for ESM-only packages like marked.
-        const dynamicImport = new Function('specifier', 'return import(specifier)');
-        let marked: any;
-        try {
-            const module = await dynamicImport('marked');
-            marked = module.marked;
-            console.log('[DesignDocManager] marked imported successfully');
-        } catch (e) {
-            console.error('[DesignDocManager] Failed to import marked:', e);
-            return {};
-        }
-
+        // Loop 19: markdown rendering goes through the centralized
+        // `renderMarkdown` helper, which owns the ESM dynamic-import shim
+        // and the server-side DOMPurify pass.
         const docs: Record<string, DesignDoc> = {};
 
         console.log(`[DesignDocManager] archRoot: ${this.archRoot}`);
@@ -74,7 +65,7 @@ export class DesignDocManager {
             if (filePath.endsWith('.md')) {
                 try {
                     const markdown = fs.readFileSync(filePath, 'utf-8');
-                    const html = await marked.parse(markdown);
+                    const html = await renderMarkdown(markdown);
 
                     // Key mapping is owned by src/docs/arch-store.ts (Loop 04).
                     const key = getDesignDocKey(asAbsPath(this.archRoot), asAbsPath(filePath));

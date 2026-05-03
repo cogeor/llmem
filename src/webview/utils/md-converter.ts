@@ -1,10 +1,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { renderMarkdown } from '../markdown-renderer';
 
 export async function convertMarkdownFile(filePath: string): Promise<void> {
-    const { marked } = await import('marked');
     const content = fs.readFileSync(filePath, 'utf8');
-    const htmlContent = await marked.parse(content);
+    // Loop 19: route through the centralized renderer. The output `.html`
+    // is therefore already DOMPurify-sanitized; the webview's browser-side
+    // sanitize pass at injection time is the second line of defense.
+    const htmlContent = await renderMarkdown(content);
 
     // Just write the HTML fragment. The webview will inject it into the shadow DOM where styles are applied.
     fs.writeFileSync(filePath.replace('.md', '.html'), htmlContent, 'utf8');

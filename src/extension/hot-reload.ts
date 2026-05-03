@@ -7,6 +7,7 @@ import { scanFile } from '../application/scan';
 import type { Logger } from '../core/logger';
 import { asWorkspaceRoot, asAbsPath } from '../core/paths';
 import type { DesignDoc } from '../webview/design-docs';
+import { renderMarkdown } from '../webview/markdown-renderer';
 import type { WebviewGraphData } from '../graph/webview-data';
 import type { ITreeNode } from '../webview/worktree';
 
@@ -276,24 +277,14 @@ export class HotReloadService {
 
 /**
  * Render raw markdown into `DesignDoc` shape. Mirrors the panel-side
- * helper in `panel.ts`; kept here to avoid a cross-file import for a
- * 20-line helper. Both helpers consolidate into `webview/design-docs.ts`
- * in Loop 12 (web-viewer-isolate).
+ * helper in `panel.ts`. Loop 19 routes both helpers through the
+ * centralized `renderMarkdown` (`src/webview/markdown-renderer.ts`).
  */
 async function renderRawDesignDocs(raw: Record<string, string>): Promise<Record<string, DesignDoc>> {
     const out: Record<string, DesignDoc> = {};
-    const dynamicImport = new Function('specifier', 'return import(specifier)');
-    let marked: any;
-    try {
-        const mod = await dynamicImport('marked');
-        marked = mod.marked;
-    } catch (e) {
-        console.error('[HotReload] Failed to import marked:', e);
-        return out;
-    }
     for (const [key, markdown] of Object.entries(raw)) {
         try {
-            const html = await marked.parse(markdown);
+            const html = await renderMarkdown(markdown);
             out[key] = { markdown, html };
         } catch (e) {
             console.error(`[HotReload] Failed to render design doc: ${key}`, e);
