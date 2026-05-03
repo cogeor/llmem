@@ -10,9 +10,11 @@
  *   - `processFolderInfoReport`   (writes the LLM-enriched README)
  *
  * Boundary discipline (mirrors Loop 07):
- *   - Every entry point takes a branded `WorkspaceRoot`. No call into
- *     `getWorkspaceRoot()` or `process.cwd()` from inside this module.
- *   - All filesystem access goes through `workspace/safe-fs`.
+ *   - Every entry point takes a branded `WorkspaceRoot` AND a
+ *     `WorkspaceIO` constructed from it. No call into `getWorkspaceRoot()`
+ *     or `process.cwd()` from inside this module.
+ *   - All filesystem access goes through `workspace/workspace-io`
+ *     (realpath-strong containment; L25). No direct `fs` imports.
  *   - No imports from `src/artifact/` (deprecated; Loop 17 retires it).
  *   - The README "Known Issue" workaround that used to live in the
  *     legacy folder prompt template (a final "post-save" instruction
@@ -27,15 +29,13 @@
  */
 
 import * as path from 'path';
-import * as fs from 'fs';
 import { ImportEdgeListStore, CallEdgeListStore, NodeEntry, EdgeEntry } from '../graph/edgelist';
 import { getImportEdges, getCallEdges, filterImportEdges, getEdgesForModule } from '../info/filter';
 import { parseGraphId } from '../core/ids';
 import type { WorkspaceRoot, AbsPath, RelPath } from '../core/paths';
 import type { Logger } from '../core/logger';
-import { safeReadFile, safeWriteFile } from '../workspace/safe-fs';
+import { WorkspaceIO } from '../workspace/workspace-io';
 import { getFolderArchPath } from '../docs/arch-store';
-import { asRelPath } from '../core/paths';
 
 // ============================================================================
 // Public types
@@ -64,6 +64,8 @@ export interface EnrichedFolderData {
 export interface DocumentFolderRequest {
     workspaceRoot: WorkspaceRoot;
     folderPath: RelPath;
+    /** Required (L25): realpath-strong I/O surface anchored on workspaceRoot. */
+    io: WorkspaceIO;
     logger?: Logger;
 }
 
@@ -97,6 +99,8 @@ export interface ReportFolderInfoRequest {
     outputs?: string;
     keyFiles: EnrichedFolderKeyFile[];
     architecture: string;
+    /** Required (L25): realpath-strong I/O surface anchored on workspaceRoot. */
+    io: WorkspaceIO;
     logger?: Logger;
 }
 
@@ -121,21 +125,26 @@ export interface ReportFolderInfoResult {
 export async function buildDocumentFolderPrompt(
     req: DocumentFolderRequest,
 ): Promise<DocumentFolderData> {
-    const { workspaceRoot, folderPath } = req;
+    const { workspaceRoot, folderPath, io } = req;
 
-    // Confirm the folder exists. safe-fs has no `safeStat` (folders
-    // aren't files), so we use a single read-only `fs.existsSync` here.
-    // No write-mutating fs methods are used in this module — the
-    // WRITE_ALLOWLIST scanner is unaffected.
-    const absoluteFolderPath = path.join(workspaceRoot, folderPath);
-    if (!fs.existsSync(absoluteFolderPath)) {
+    // Confirm the folder exists. WorkspaceIO.exists returns false on
+    // ENOENT/ENOTDIR but throws PathEscapeError on textual escape, so
+    // path-traversal attempts surface rather than silently returning false.
+    if (!(await io.exists(folderPath))) {
         throw new Error(`Folder not found: ${folderPath}`);
     }
 
     // Load existing .arch/<folder>/README.md if present.
     const readmePath = getFolderArchPath(workspaceRoot, folderPath);
-    const readmeRel = path.relative(workspaceRoot, readmePath).replace(/\\/g, '/');
-    const existingDocs = await safeReadFile(workspaceRoot, asRelPath(readmeRel));
+    const readmeRel = path.relative(io.getRealRoot(), readmePath).replace(/\\/g, '/');
+    let existingDocs: string | null = null;
+    try {
+        existingDocs = await io.readFile(readmeRel);
+    } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code !== 'ENOENT') throw err;
+        // ENOENT → leave existingDocs null (the prompt template handles it).
+    }
 
     // Load graphs from .artifacts (split stores). The artifact directory
     // currently lives at the conventional `.artifacts` location relative
@@ -144,7 +153,8 @@ export async function buildDocumentFolderPrompt(
     // boundary (Loop 10 will refactor that). For Loop 08 we preserve the
     // legacy default to minimize behavior drift.
     const artifactDir = path.join(workspaceRoot, '.artifacts');
-    if (!fs.existsSync(artifactDir)) {
+    const artifactRel = path.relative(io.getRealRoot(), artifactDir).replace(/\\/g, '/');
+    if (!(await io.exists(artifactRel))) {
         throw new Error(
             `Artifacts directory not found at ${artifactDir}. ` +
             `Please run 'npm run scan' first.`,
@@ -228,7 +238,7 @@ export async function buildDocumentFolderPrompt(
 export async function processFolderInfoReport(
     req: ReportFolderInfoRequest,
 ): Promise<ReportFolderInfoResult> {
-    const { workspaceRoot, folderPath, overview, inputs, outputs, keyFiles, architecture } = req;
+    const { workspaceRoot, folderPath, overview, inputs, outputs, keyFiles, architecture, io } = req;
 
     const designDocument = renderFolderReadme({
         folderPath,
@@ -241,11 +251,12 @@ export async function processFolderInfoReport(
 
     const readmePath = getFolderArchPath(workspaceRoot, folderPath);
 
-    // Compute the workspace-relative path for safeWriteFile. readmePath
-    // is always inside workspaceRoot by construction; convert once at
-    // the call site to satisfy the RelPath brand.
-    const readmeRel = path.relative(workspaceRoot, readmePath).replace(/\\/g, '/');
-    await safeWriteFile(workspaceRoot, asRelPath(readmeRel), designDocument);
+    // Compute the workspace-relative path against the realpath of the
+    // workspace root. WorkspaceIO.writeFile does NOT auto-mkdir, so we
+    // explicitly mkdir-recursive the parent first.
+    const readmeRel = path.relative(io.getRealRoot(), readmePath).replace(/\\/g, '/');
+    await io.mkdirRecursive(path.dirname(readmeRel));
+    await io.writeFile(readmeRel, designDocument);
 
     return {
         readmePath,

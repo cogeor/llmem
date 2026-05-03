@@ -296,16 +296,6 @@ The MCP server determines the workspace root in this priority order:
 }
 ```
 
-## Known Issues
-
-### report_file_info and report_folder_info save to wrong path
-
-When running as a standalone MCP server (Claude Code / Claude Desktop), `report_file_info` and `report_folder_info` may save the generated `.arch/` files to the application data directory instead of your project workspace.
-
-**Workaround:** After calling `report_file_info` or `report_folder_info`, copy the generated content manually to the correct `.arch/` path in your workspace.
-
-This is a known limitation of the standalone MCP server mode and will be fixed in a future release.
-
 ## 📄 License
 
 This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.

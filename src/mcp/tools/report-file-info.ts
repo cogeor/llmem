@@ -19,6 +19,7 @@ import {
 } from '../path-utils';
 import { processFileInfoReport } from '../../application/document-file';
 import { asWorkspaceRoot, asRelPath } from '../../core/paths';
+import { WorkspaceIO } from '../../workspace/workspace-io';
 import { assertWorkspaceRootMatch } from './shared';
 
 export const ReportFileInfoSchema = z.object({
@@ -50,6 +51,7 @@ async function handleReportFileInfoImpl(
     assertWorkspaceRootMatch(workspaceRoot);
     validateWorkspacePath(workspaceRoot, relativePath);
 
+    const io = await WorkspaceIO.create(asWorkspaceRoot(workspaceRoot));
     const result = await processFileInfoReport({
         workspaceRoot: asWorkspaceRoot(workspaceRoot),
         filePath: asRelPath(relativePath),
@@ -57,6 +59,7 @@ async function handleReportFileInfoImpl(
         inputs,
         outputs,
         functions,
+        io,
     });
 
     return formatSuccess({

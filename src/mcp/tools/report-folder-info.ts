@@ -20,6 +20,7 @@ import {
 } from '../path-utils';
 import { processFolderInfoReport } from '../../application/document-folder';
 import { asWorkspaceRoot, asRelPath } from '../../core/paths';
+import { WorkspaceIO } from '../../workspace/workspace-io';
 import { assertWorkspaceRootMatch } from './shared';
 
 export const ReportFolderInfoSchema = z.object({
@@ -51,6 +52,7 @@ async function handleReportFolderInfoImpl(
     assertWorkspaceRootMatch(workspaceRoot);
     validateWorkspacePath(workspaceRoot, folderPath);
 
+    const io = await WorkspaceIO.create(asWorkspaceRoot(workspaceRoot));
     const result = await processFolderInfoReport({
         workspaceRoot: asWorkspaceRoot(workspaceRoot),
         folderPath: asRelPath(folderPath),
@@ -59,6 +61,7 @@ async function handleReportFolderInfoImpl(
         outputs,
         keyFiles: key_files,
         architecture,
+        io,
     });
 
     return formatSuccess({

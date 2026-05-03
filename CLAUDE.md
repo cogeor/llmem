@@ -195,10 +195,6 @@ Priority order:
 - Edge computation happens on-demand when files are "watched" in the UI
 - Reduces activation time and resource usage for large codebases
 
-### MCP Tool Workspace Root Issue
-
-Known issue (see tools.ts:550, tools.ts:562): `report_file_info` and `report_folder_info` may save to incorrect location (Antigravity AppData) instead of user workspace. After calling these tools, manually copy the generated content to the correct `.arch/` location in the workspace.
-
 ## Configuration
 
 Extension settings (in config.ts):

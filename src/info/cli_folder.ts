@@ -13,6 +13,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { buildDocumentFolderPrompt } from '../application/document-folder';
 import { asWorkspaceRoot, asRelPath } from '../core/paths';
+import { WorkspaceIO } from '../workspace/workspace-io';
 
 // Configuration
 const SEMANTIC_MODE = process.argv.includes('--semantic');
@@ -37,9 +38,11 @@ async function main() {
     }
 
     try {
+        const io = await WorkspaceIO.create(asWorkspaceRoot(root));
         const data = await buildDocumentFolderPrompt({
             workspaceRoot: asWorkspaceRoot(root),
             folderPath: asRelPath(relativePath),
+            io,
         });
 
         // Semantic mode: output just the prompt to stdout (for LLM consumption)

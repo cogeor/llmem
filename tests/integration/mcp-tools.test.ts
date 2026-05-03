@@ -270,6 +270,130 @@ describe('MCP Tools Integration', () => {
         assert.ok(content.includes('add'), 'Should document add function');
     });
 
+    test('report_file_info: workspaceRoot wins over process.cwd() (L25 regression)', async () => {
+        const { handleReportFileInfo } = await import('../../src/mcp/tools');
+
+        // Use an isolated workspace + fake "AppData" to simulate the
+        // legacy bug condition. A future refactor that constructs
+        // WorkspaceIO from process.cwd() instead of the validated
+        // workspaceRoot makes this test fail.
+        const ws = createTestWorkspace();
+        const fakeAppData = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-fake-appdata-'));
+        const originalCwd = process.cwd();
+
+        // Pin the server's stored root so assertWorkspaceRootMatch passes
+        // (the existing describe-level fixture doesn't set this).
+        setStoredWorkspaceRoot(ws.root);
+        process.chdir(fakeAppData);
+
+        try {
+            const response = await handleReportFileInfo({
+                workspaceRoot: ws.root,
+                path: 'src/sample.ts',
+                overview: 'L25 regression overview',
+                functions: [
+                    { name: 'greet', purpose: 'greets', implementation: '- step 1' },
+                ],
+            });
+
+            assert.equal(
+                response.status,
+                'success',
+                `Expected success: ${JSON.stringify(response)}`,
+            );
+            assert.ok(response.data, 'Response should have data');
+
+            // The artifact must land inside the workspace, not inside process.cwd().
+            const wsResolved = fs.realpathSync(ws.root);
+            const cwdResolved = fs.realpathSync(fakeAppData);
+            const archResolved = fs.realpathSync(
+                (response.data as { artifactPath: string }).artifactPath,
+            );
+
+            assert.ok(
+                archResolved.startsWith(wsResolved),
+                `archPath ${archResolved} must start with workspaceRoot ${wsResolved}`,
+            );
+            assert.ok(
+                !archResolved.startsWith(cwdResolved),
+                `archPath ${archResolved} must NOT start with fakeAppData ${cwdResolved}`,
+            );
+
+            // Concretely: <workspaceRoot>/.arch/src/sample.ts.md
+            const expected = path.join(ws.root, '.arch', 'src', 'sample.ts.md');
+            assert.equal(
+                path.resolve((response.data as { artifactPath: string }).artifactPath),
+                path.resolve(expected),
+            );
+        } finally {
+            process.chdir(originalCwd);
+            // Other tests in this describe block don't depend on the stored
+            // root being set; clear it back to null.
+            setStoredWorkspaceRoot(null);
+            ws.cleanup();
+            fs.rmSync(fakeAppData, { recursive: true, force: true });
+        }
+    });
+
+    test('report_folder_info: workspaceRoot wins over process.cwd() (L25 regression)', async () => {
+        const { handleReportFolderInfo } = await import('../../src/mcp/tools');
+
+        // The writer (processFolderInfoReport) does NOT read .artifacts —
+        // that's the prompt-builder's job. So no edge-list fixture is needed.
+        const ws = createTestWorkspace();
+        const fakeAppData = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-fake-appdata-folder-'));
+        const originalCwd = process.cwd();
+
+        setStoredWorkspaceRoot(ws.root);
+        process.chdir(fakeAppData);
+
+        try {
+            const response = await handleReportFolderInfo({
+                workspaceRoot: ws.root,
+                path: 'src',
+                overview: 'L25 regression folder overview',
+                key_files: [
+                    { name: 'sample.ts', summary: 'Sample utilities' },
+                ],
+                architecture: 'Flat module layout.',
+            });
+
+            assert.equal(
+                response.status,
+                'success',
+                `Expected success: ${JSON.stringify(response)}`,
+            );
+            assert.ok(response.data, 'Response should have data');
+
+            const wsResolved = fs.realpathSync(ws.root);
+            const cwdResolved = fs.realpathSync(fakeAppData);
+            const readmeResolved = fs.realpathSync(
+                (response.data as { artifactPath: string }).artifactPath,
+            );
+
+            assert.ok(
+                readmeResolved.startsWith(wsResolved),
+                `readmePath ${readmeResolved} must start with workspaceRoot ${wsResolved}`,
+            );
+            assert.ok(
+                !readmeResolved.startsWith(cwdResolved),
+                `readmePath ${readmeResolved} must NOT start with fakeAppData ${cwdResolved}`,
+            );
+
+            // Concretely: <workspaceRoot>/.arch/src/README.md
+            const expected = path.join(ws.root, '.arch', 'src', 'README.md');
+            assert.equal(
+                path.resolve((response.data as { artifactPath: string }).artifactPath),
+                path.resolve(expected),
+            );
+        } finally {
+            process.chdir(originalCwd);
+            setStoredWorkspaceRoot(null);
+            ws.cleanup();
+            fs.rmSync(fakeAppData, { recursive: true, force: true });
+        }
+    });
+
     test('report_folder_info creates README in .arch/<folder>/', async () => {
         const { handleReportFolderInfo } = await import('../../src/mcp/tools');
 

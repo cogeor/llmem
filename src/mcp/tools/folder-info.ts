@@ -20,6 +20,7 @@ import {
 } from '../path-utils';
 import { buildDocumentFolderPrompt } from '../../application/document-folder';
 import { asWorkspaceRoot, asRelPath } from '../../core/paths';
+import { WorkspaceIO } from '../../workspace/workspace-io';
 import { assertWorkspaceRootMatch } from './shared';
 
 export const FolderInfoSchema = z.object({
@@ -43,9 +44,11 @@ async function handleFolderInfoImpl(
     assertWorkspaceRootMatch(workspaceRoot);
     validateWorkspacePath(workspaceRoot, folderPath);
 
+    const io = await WorkspaceIO.create(asWorkspaceRoot(workspaceRoot));
     const data = await buildDocumentFolderPrompt({
         workspaceRoot: asWorkspaceRoot(workspaceRoot),
         folderPath: asRelPath(folderPath),
+        io,
     });
 
     return formatPromptResponse(

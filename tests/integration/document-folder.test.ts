@@ -28,6 +28,7 @@ import {
     processFolderInfoReport,
 } from '../../src/application/document-folder';
 import { asWorkspaceRoot, asRelPath } from '../../src/core/paths';
+import { WorkspaceIO } from '../../src/workspace/workspace-io';
 
 function makeTmp(prefix: string): string {
     return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -42,6 +43,7 @@ test('processFolderInfoReport writes to workspaceRoot/.arch, never elsewhere', a
     const originalCwd = process.cwd();
     process.chdir(fakeAppData);
     try {
+        const io = await WorkspaceIO.create(asWorkspaceRoot(tmpRoot));
         const result = await processFolderInfoReport({
             workspaceRoot: asWorkspaceRoot(tmpRoot),
             folderPath: asRelPath('src/info'),
@@ -52,6 +54,7 @@ test('processFolderInfoReport writes to workspaceRoot/.arch, never elsewhere', a
                 { name: 'extractor.ts', summary: 'Extracts file structure' },
             ],
             architecture: 'Composes parser output and rendering',
+            io,
         });
 
         // The readmePath must be inside tmpRoot, not in process.cwd() (fakeAppData).
@@ -103,12 +106,14 @@ test('processFolderInfoReport writes to workspaceRoot/.arch, never elsewhere', a
 test('processFolderInfoReport bytesWritten matches utf-8 byte length', async () => {
     const tmpRoot = makeTmp('llmem-doc-folder-bytes-');
     try {
+        const io = await WorkspaceIO.create(asWorkspaceRoot(tmpRoot));
         const result = await processFolderInfoReport({
             workspaceRoot: asWorkspaceRoot(tmpRoot),
             folderPath: asRelPath('a/b'),
             overview: 'overview',
             keyFiles: [],
             architecture: 'arch',
+            io,
         });
         const stat = fs.statSync(result.readmePath);
         assert.equal(result.bytesWritten, stat.size);
@@ -120,6 +125,7 @@ test('processFolderInfoReport bytesWritten matches utf-8 byte length', async () 
 test('processFolderInfoReport refuses path-escape (../../..) via PathEscapeError', async () => {
     const tmpRoot = makeTmp('llmem-doc-folder-escape-');
     try {
+        const io = await WorkspaceIO.create(asWorkspaceRoot(tmpRoot));
         // Use a deep ../ chain so even after concatenating
         // ".arch/<folderPath>/README.md" the resolved path lands outside
         // tmpRoot.
@@ -130,6 +136,7 @@ test('processFolderInfoReport refuses path-escape (../../..) via PathEscapeError
                 overview: 'overview',
                 keyFiles: [],
                 architecture: 'arch',
+                io,
             }),
             (err: Error) => err.name === 'PathEscapeError',
             'A folder path that escapes the workspace must throw PathEscapeError',

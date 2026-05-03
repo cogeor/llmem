@@ -9,9 +9,11 @@
  *   - `processFileInfoReport`   (writes the LLM-enriched markdown)
  *
  * Boundary discipline:
- *   - Every entry point takes a branded `WorkspaceRoot`. No call into
- *     `getWorkspaceRoot()` or `process.cwd()` from inside this module.
- *   - All filesystem access goes through `workspace/safe-fs`.
+ *   - Every entry point takes a branded `WorkspaceRoot` AND a
+ *     `WorkspaceIO` constructed from it. No call into `getWorkspaceRoot()`
+ *     or `process.cwd()` from inside this module.
+ *   - All filesystem access goes through `workspace/workspace-io`
+ *     (realpath-strong containment; L25).
  *   - No imports from `src/artifact/` (deprecated; Loop 17 retires it).
  *   - The README "Known Issue" workaround that used to live in the
  *     legacy prompt template (a final section telling the agent to copy
@@ -26,9 +28,8 @@ import { getLanguageFromPath } from '../parser/config';
 import { parseGraphId } from '../core/ids';
 import type { WorkspaceRoot, AbsPath, RelPath } from '../core/paths';
 import type { Logger } from '../core/logger';
-import { safeReadFile, safeWriteFile } from '../workspace/safe-fs';
+import { WorkspaceIO } from '../workspace/workspace-io';
 import { getFileArchPath } from '../docs/arch-store';
-import { asRelPath } from '../core/paths';
 import { extractFileInfo } from '../info/extractor';
 import { getImportEdges, getCallEdges, filterImportEdges } from '../info/filter';
 import type { FileInfo } from '../info/types';
@@ -60,6 +61,8 @@ export interface EnrichedFileData {
 export interface DocumentFileRequest {
     workspaceRoot: WorkspaceRoot;
     filePath: RelPath;
+    /** Required (L25): realpath-strong I/O surface anchored on workspaceRoot. */
+    io: WorkspaceIO;
     logger?: Logger;
 }
 
@@ -87,6 +90,8 @@ export interface ReportFileInfoRequest {
     inputs?: string;
     outputs?: string;
     functions: EnrichedFunction[];
+    /** Required (L25): realpath-strong I/O surface anchored on workspaceRoot. */
+    io: WorkspaceIO;
     logger?: Logger;
 }
 
@@ -111,16 +116,24 @@ export interface ReportFileInfoResult {
 export async function buildDocumentFilePrompt(
     req: DocumentFileRequest,
 ): Promise<DocumentFileData> {
-    const { workspaceRoot, filePath } = req;
+    const { workspaceRoot, filePath, io } = req;
 
-    // Read source via safe-fs (textual containment + ENOENT-aware).
-    const sourceCode = await safeReadFile(workspaceRoot, filePath);
-    if (sourceCode === null) {
-        throw new Error(`File not found: ${filePath}`);
+    // Read source via WorkspaceIO (realpath-strong containment).
+    // WorkspaceIO.readFile does NOT swallow ENOENT — translate it
+    // explicitly to preserve the original error message.
+    let sourceCode: string;
+    try {
+        sourceCode = await io.readFile(filePath);
+    } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === 'ENOENT') {
+            throw new Error(`File not found: ${filePath}`);
+        }
+        throw err;
     }
 
     // Resolve absolute path for parser-side reads. The parser API takes
-    // an absolute path; safeReadFile already verified the file exists.
+    // an absolute path; the read above already verified the file exists.
     const absolutePath = path.join(workspaceRoot, filePath);
 
     const registry = ParserRegistry.getInstance();
@@ -229,7 +242,7 @@ export async function buildDocumentFilePrompt(
 export async function processFileInfoReport(
     req: ReportFileInfoRequest,
 ): Promise<ReportFileInfoResult> {
-    const { workspaceRoot, filePath, overview, inputs, outputs, functions } = req;
+    const { workspaceRoot, filePath, overview, inputs, outputs, functions, io } = req;
 
     const designDocument = renderDesignDocument({
         filePath,
@@ -241,11 +254,13 @@ export async function processFileInfoReport(
 
     const archPath = getFileArchPath(workspaceRoot, filePath);
 
-    // Compute the workspace-relative path for safeWriteFile. archPath is
-    // always inside workspaceRoot by construction; convert once at the
-    // call site to satisfy the RelPath brand.
-    const archRel = path.relative(workspaceRoot, archPath).replace(/\\/g, '/');
-    await safeWriteFile(workspaceRoot, asRelPath(archRel), designDocument);
+    // Compute the workspace-relative path against the realpath of the
+    // workspace root (handles macOS /var → /private/var, Windows short
+    // paths, etc). WorkspaceIO.writeFile does NOT auto-mkdir, so we
+    // explicitly mkdir-recursive the parent first.
+    const archRel = path.relative(io.getRealRoot(), archPath).replace(/\\/g, '/');
+    await io.mkdirRecursive(path.dirname(archRel));
+    await io.writeFile(archRel, designDocument);
 
     return {
         archPath,
