@@ -13,12 +13,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
-import { ImportEdgeListStore, CallEdgeListStore } from './edgelist';
-import { buildGraphsFromSplitEdgeLists } from './index';
-import { prepareWebviewDataFromSplitEdgeLists } from './webview-data';
-import { artifactToEdgeList } from './artifact-converter';
-import { TypeScriptService } from '../parser/ts-service';
-import { TypeScriptExtractor } from '../parser/ts-extractor';
+import { ImportEdgeListStore, CallEdgeListStore } from '../../src/graph/edgelist';
+import { buildGraphsFromSplitEdgeLists } from '../../src/graph/index';
+import { prepareWebviewDataFromSplitEdgeLists } from '../../src/graph/webview-data';
+import { artifactToEdgeList } from '../../src/graph/artifact-converter';
+import { TypeScriptService } from '../../src/parser/ts-service';
+import { TypeScriptExtractor } from '../../src/parser/ts-extractor';
 
 // ============================================================================
 // Test Fixtures

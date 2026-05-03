@@ -10,10 +10,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
-import { TypeScriptService } from './ts-service';
-import { TypeScriptExtractor } from './ts-extractor';
-import { ParserRegistry } from './registry';
-import { isSupportedExtension, isSupportedFile, getLanguageFromPath } from './config';
+import { TypeScriptService } from '../../src/parser/ts-service';
+import { TypeScriptExtractor } from '../../src/parser/ts-extractor';
+import { ParserRegistry } from '../../src/parser/registry';
+import { isSupportedExtension, isSupportedFile, getLanguageFromPath } from '../../src/parser/config';
 
 // ============================================================================
 // Test Fixtures

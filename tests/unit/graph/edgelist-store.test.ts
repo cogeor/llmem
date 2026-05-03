@@ -9,8 +9,8 @@ import { test, describe } from 'node:test';
 // Loop 16: types are imported from the schema module so the mock cannot
 // drift from the persisted shape. Edges are typed as `any[]` here because
 // this mock only exercises node-bucketing logic.
-import type { NodeEntry, EdgeListData } from './edgelist-schema';
-import { createEmptyEdgeList } from './edgelist-schema';
+import type { NodeEntry, EdgeListData } from '../../../src/graph/edgelist-schema';
+import { createEmptyEdgeList } from '../../../src/graph/edgelist-schema';
 
 /**
  * In-memory mock of BaseEdgeListStore for testing.

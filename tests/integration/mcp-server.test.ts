@@ -47,15 +47,18 @@ function createTestWorkspace(): TestWorkspace {
  * Get the CLI path - handles both vscode and claude build output structures
  *
  * Build structures:
- * - vscode build: dist/mcp/server.test.js, cli at dist/claude/claude/cli.js
- * - claude build: dist/claude/mcp/server.test.js, cli at dist/claude/claude/cli.js
+ * - vscode build: dist/mcp/, cli at dist/claude/claude/cli.js
+ * - claude build: dist/claude/mcp/, cli at dist/claude/claude/cli.js
+ *
+ * After Loop 17, this test lives at tests/integration/mcp-server.test.ts so
+ * we resolve the dist tree relative to the repo root (two levels up from
+ * __dirname when run via ts-node).
  */
 function getCliPath(): string | null {
+    const repoRoot = path.resolve(__dirname, '..', '..');
     const candidates = [
-        // From dist/mcp/ when both builds ran: ../claude/claude/cli.js
-        path.join(__dirname, '../claude/claude/cli.js'),
-        // From dist/claude/mcp/: ../claude/cli.js
-        path.join(__dirname, '../claude/cli.js'),
+        path.join(repoRoot, 'dist', 'claude', 'claude', 'cli.js'),
+        path.join(repoRoot, 'dist', 'claude', 'cli.js'),
     ];
 
     for (const candidate of candidates) {
@@ -418,7 +421,11 @@ describe('MCP Server Error Handling', { skip: skipReason }, () => {
         const workspace = createTestWorkspace();
 
         try {
-            const cliPath = path.join(__dirname, '../../claude/claude/cli.js');
+            const cliPathLocal = getCliPath();
+            if (!cliPathLocal) {
+                return; // skip if CLI not built
+            }
+            const cliPath = cliPathLocal;
 
             const result = await new Promise<{ stdout: string; stderr: string }>((resolve) => {
                 const child = spawn('node', [cliPath, 'mcp'], {

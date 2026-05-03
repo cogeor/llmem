@@ -105,8 +105,8 @@
     "watch:claude": "tsc -watch -p ./tsconfig.claude.json",
     "lint": "eslint src --ext ts",
     "test": "npm run test:unit && npm run test:arch && npm run test:integration",
-    "test:unit": "node --test dist/**/*.test.js",
-    "test:arch": "node --require ts-node/register --test \"tests/arch/*.test.ts\" \"tests/unit/**/*.test.ts\"",
+    "test:unit": "node --require ts-node/register --test \"tests/unit/**/*.test.ts\" \"tests/contracts/*.test.ts\"",
+    "test:arch": "node --require ts-node/register --test \"tests/arch/*.test.ts\"",
     "test:integration": "node --require ts-node/register --test \"tests/integration/*.test.ts\"",
     "verify": "npm ci --dry-run && npm run compile",
     "prepare": "node scripts/install-hooks.js",
@@ -129,8 +129,7 @@
     "graph": "node dist/claude/cli.js generate",
     "graph:stats": "node dist/claude/cli.js stats",
     "package": "vsce package",
-    "package:claude": "echo 'Claude package - copy dist/claude/* to deployment location'",
-    "test:arch-watcher": "npx ts-node src/scripts/test-arch-watcher.ts"
+    "package:claude": "echo 'Claude package - copy dist/claude/* to deployment location'"
   },
   "devDependencies": {
     "@types/fs-extra": "^11.0.4",

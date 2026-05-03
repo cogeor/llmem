@@ -493,6 +493,36 @@ Acceptance:
 - no hidden test scripts are required to verify core behavior
 - architecture tests prevent the original boundary leaks from returning
 
+**Done (Loop 17):**
+
+- Every colocated `src/**/*.test.ts` moved into `tests/{unit,integration}/`
+  via `git mv` (history preserved).
+- Legacy `src/test/verify_*.ts` and `src/test/test_*.ts`: useful ones
+  promoted to `node:test` files under `tests/`; the rest deleted.
+- Root `test/test-*.ts` series: useful ones merged into
+  `tests/integration/python-imports.test.ts`; the rest deleted.
+  `test/fixtures/sample.py` moved to `tests/fixtures/python/sample.py`.
+- `src/scripts/test-arch-watcher.ts` and the `npm run test:arch-watcher`
+  script removed (duplicate of `tests/integration/arch-watcher.test.ts`).
+- New contract test surface under `tests/contracts/`:
+  `mcp-tool-schemas.test.ts` pins every MCP tool's Zod schema;
+  `http-route-dtos.test.ts` pins request/response DTOs for every HTTP
+  route.
+- Architecture-rule audit (Phases 0-6): every rule confirmed enforced by
+  at least one failing-on-violation test. See Loop 17 IMPLEMENTATION.md
+  for the full table.
+- `tests/arch/{dependencies,graph-ids,workspace-paths}.test.ts` lost
+  their `src/test/` exclusion branches.
+- `package.json` test scripts consolidated:
+  `test:unit` now discovers `tests/unit/**/*.test.ts` plus
+  `tests/contracts/*.test.ts` via ts-node;
+  `test:arch` discovers `tests/arch/*.test.ts` only;
+  `test:integration` is unchanged.
+
+The static-review-excellence stream is complete after Loop 17. The
+seven-phase plan landed in 17 loops, matching the upper end of the
+estimated range (TASK.md: 15-17 loops).
+
 ## Immediate Priority Order
 
 1. Remove generated `src` artifacts and root built artifacts.
@@ -521,3 +551,5 @@ The refactor is successful when:
 - app layers contain wiring, not workflows
 - `.arch` paths, graph IDs, workspace roots, and viewer DTOs are validated contracts
 - the existing memos either match the implemented structure or are updated in the same change
+
+**Stream complete (Loop 17).** The seven-phase plan is fully landed.

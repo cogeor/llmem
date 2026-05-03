@@ -18,10 +18,10 @@ import {
     FolderInfoSchema,
     ReportFolderInfoSchema,
     handleInspectSourceImpl,
-} from './tools';
+} from '../../src/mcp/tools';
 
-import { validateRequest, formatSuccess, formatError, formatPromptResponse } from './handlers';
-import { setStoredWorkspaceRoot } from './server';
+import { validateRequest, formatSuccess, formatError, formatPromptResponse } from '../../src/mcp/handlers';
+import { setStoredWorkspaceRoot } from '../../src/mcp/server';
 
 // ============================================================================
 // Test Fixtures
@@ -230,7 +230,7 @@ describe('MCP Tools Integration', () => {
 
     test('report_file_info creates design document in .arch/', async () => {
         // Import the handler
-        const { handleReportFileInfo } = await import('./tools');
+        const { handleReportFileInfo } = await import('../../src/mcp/tools');
 
         // Simulate what LLM would send after processing file_info prompt
         const response = await handleReportFileInfo({
@@ -271,7 +271,7 @@ describe('MCP Tools Integration', () => {
     });
 
     test('report_folder_info creates README in .arch/<folder>/', async () => {
-        const { handleReportFolderInfo } = await import('./tools');
+        const { handleReportFolderInfo } = await import('../../src/mcp/tools');
 
         const response = await handleReportFolderInfo({
             workspaceRoot: workspace.root,
@@ -299,7 +299,7 @@ describe('MCP Tools Integration', () => {
     });
 
     test('file_info returns prompt_ready response', async () => {
-        const { handleFileInfo } = await import('./tools');
+        const { handleFileInfo } = await import('../../src/mcp/tools');
 
         const response = await handleFileInfo({
             workspaceRoot: workspace.root,
@@ -314,7 +314,7 @@ describe('MCP Tools Integration', () => {
     });
 
     test('handles non-existent file gracefully', async () => {
-        const { handleFileInfo } = await import('./tools');
+        const { handleFileInfo } = await import('../../src/mcp/tools');
 
         // Handler throws for non-existent files - this is expected behavior
         // The error is caught by the observer and logged
@@ -331,7 +331,7 @@ describe('MCP Tools Integration', () => {
     });
 
     test('rejects path traversal attempts', async () => {
-        const { handleFileInfo } = await import('./tools');
+        const { handleFileInfo } = await import('../../src/mcp/tools');
 
         // Handler throws for path traversal attempts
         try {
@@ -368,7 +368,7 @@ describe('MCP End-to-End Workflow', () => {
     });
 
     test('full workflow: file_info → report_file_info → verify', async () => {
-        const { handleFileInfo, handleReportFileInfo } = await import('./tools');
+        const { handleFileInfo, handleReportFileInfo } = await import('../../src/mcp/tools');
 
         // Step 1: Call file_info to get prompt
         const infoResponse = await handleFileInfo({

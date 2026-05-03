@@ -169,9 +169,6 @@ interface WriteCallSite {
 
 // Production files allowed to call write-mutating fs methods. Anything
 // outside this list will fail the scan.
-//
-// `src/test/` is excluded from the scan entirely (legacy verification
-// scripts; Loop 17 handles them). See pre-flight notes in IMPLEMENTATION.md.
 const WRITE_ALLOWLIST: ReadonlySet<string> = new Set([
   'src/artifact/storage.ts',
   'src/claude/server/arch-watcher.ts',
@@ -180,7 +177,6 @@ const WRITE_ALLOWLIST: ReadonlySet<string> = new Set([
   'src/graph/worktree-state.ts',
   'src/scripts/generate_edgelist.ts',
   'src/scripts/scan_codebase.ts',
-  'src/scripts/test-arch-watcher.ts',
   'src/webview/generator.ts',
   'src/webview/utils/md-converter.ts',
   'src/workspace/safe-fs.ts',
@@ -203,8 +199,7 @@ function shouldSkipDir(name: string): boolean {
     name === 'node_modules' ||
     name === 'dist' ||
     name === '.artifacts' ||
-    name === '.arch' ||
-    name === 'test' // src/test/: legacy verification scripts; Loop 17 cleans up.
+    name === '.arch'
   );
 }
 

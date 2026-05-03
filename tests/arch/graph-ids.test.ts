@@ -148,8 +148,7 @@ function shouldSkipDir(name: string): boolean {
     name === 'node_modules' ||
     name === 'dist' ||
     name === '.artifacts' ||
-    name === '.arch' ||
-    name === 'test' // src/test/: legacy verification scripts; Loop 17 cleans up.
+    name === '.arch'
   );
 }
 

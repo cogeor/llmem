@@ -21,9 +21,6 @@
 //     under `src/`. Bare specifiers (`vscode`, `fs`, ...) are out of scope —
 //     they are the browser-purity scanner's job (browser-purity.test.ts).
 //   - Paths are forward-slash and relative to repo root.
-//   - `src/test/` is excluded — it contains legacy verification scripts that
-//     Loop 17 (test consolidation) will delete or migrate. Including them
-//     here would catalogue throwaway code.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -117,8 +114,7 @@ function shouldSkipDir(name: string): boolean {
     name === 'node_modules' ||
     name === 'dist' ||
     name === '.artifacts' ||
-    name === '.arch' ||
-    name === 'test' // src/test/: legacy verification scripts; Loop 17 cleans up.
+    name === '.arch'
   );
 }
 
