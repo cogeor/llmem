@@ -17,6 +17,7 @@
  * an in-test scan. Loop 03 introduces zero-config so a future test could
  * run against a tmp dir, but in loop 02 we accept the workspace coupling
  * to keep this test's scope tight (port fallback is its only assertion).
+ * Loop 03 also adds --no-open so default-on browser-open does not fire in CI.
  *
  * Cross-platform notes:
  * - `spawn('node', [BIN, ...])` rather than `spawn(BIN, ...)`. On Windows
@@ -104,7 +105,7 @@ test('serve picks the next free port when the default is taken', async () => {
     // prior runs. (Loop 03 lifts this constraint with zero-config; in
     // loop 02 we still need pre-existing edge lists.)
     const blocker = await holdPort(3000);
-    const child = spawn('node', [BIN, 'serve', '--workspace', REPO_ROOT], {
+    const child = spawn('node', [BIN, 'serve', '--no-open', '--workspace', REPO_ROOT], {
         cwd: REPO_ROOT,
         env: { ...process.env, FORCE_COLOR: '0' },
         stdio: ['ignore', 'pipe', 'pipe'],

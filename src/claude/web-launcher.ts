@@ -32,12 +32,11 @@ export interface GraphGenerationOptions {
      * launcher discovers it via `<workspaceRoot>/dist/webview` →
      * repo-root probe (walk up from `process.cwd()` looking for a
      * `package.json` whose `name === 'llmem'`) → `<repoRoot>/dist/webview`
-     * → `<repoRoot>/src/webview` (development fallback).
-     *
-     * Loop 21 — replaces the previous compile-relative resolution,
-     * which broke under ts-node because the script's directory differs
-     * between `src/claude/web-launcher.ts` and the compiled
-     * `dist/claude/claude/web-launcher.js`.
+     * → install-root probe (walk up from this file's `__dirname` looking
+     * for the same `package.json`) → `<installedRoot>/dist/webview` →
+     * `<repoRoot>/src/webview` (development fallback). The install-root
+     * step is what makes a global `npm i -g llmem` install work without
+     * `LLMEM_ASSET_ROOT` set.
      */
     assetRoot?: string;
 }
@@ -51,7 +50,51 @@ export interface GraphGenerationOptions {
  * `assetRoot` nor a `<workspaceRoot>/dist/webview` is available.
  */
 export function findRepoRoot(): string | null {
-    let current = process.cwd();
+    return findLlmemPackageRoot(process.cwd());
+}
+
+/**
+ * Walk up from this file's directory looking for a `package.json` whose
+ * `name === 'llmem'`. Reliably finds the install root when llmem is run
+ * from a global npm install (where cwd is the user's repo, not ours).
+ *
+ * In dev (ts-node) this resolves `<repo>/src/claude` → `<repo>`.
+ * In compiled CommonJS this resolves `<install>/dist/claude` → `<install>`.
+ * For global npm installs `<install>` is e.g.
+ * `<global>/lib/node_modules/llmem`, whose `package.json` carries
+ * `name === 'llmem'` so the walk-up matches.
+ *
+ * Returns null if the walk hits the filesystem root without finding it.
+ */
+export function findInstalledPackageRoot(): string | null {
+    // CommonJS — `__dirname` is universal. (tsconfig.base.json sets
+    // `module: commonjs`.) If the project ever switches to ESM, swap to
+    // `path.dirname(fileURLToPath(import.meta.url))`.
+    return findLlmemPackageRoot(__dirname);
+}
+
+/**
+ * Test seam: `resolveAssetRoot` calls through these references rather
+ * than the exported helpers directly so unit tests can override either
+ * walk-up. Setting both to functions returning `null` lets tests
+ * exercise the "nothing resolves" failure path even when running from
+ * inside the real llmem checkout (where `__dirname` would otherwise
+ * always find a valid `dist/webview`).
+ *
+ * Production code should never touch these — use the exported helpers.
+ */
+export const __testHooks = {
+    findRepoRoot: (): string | null => findRepoRoot(),
+    findInstalledPackageRoot: (): string | null => findInstalledPackageRoot(),
+};
+
+/**
+ * Shared walk-up: starting from `from`, climb the directory tree looking
+ * for a `package.json` whose `name === 'llmem'`. Returns the first
+ * match's directory or `null` on filesystem-root miss.
+ */
+function findLlmemPackageRoot(from: string): string | null {
+    let current = from;
     const root = path.parse(current).root;
 
     while (current !== root) {
@@ -76,11 +119,16 @@ export function findRepoRoot(): string | null {
 /**
  * Resolve the directory containing webview assets.
  *
- * Priority order (Loop 21):
+ * Priority order:
  *   1. `options.assetRoot` if set and `<assetRoot>/index.html` exists.
  *   2. `<options.workspaceRoot>/dist/webview/index.html`.
- *   3. `<repoRoot>/dist/webview/index.html` (repo found via cwd walk-up).
- *   4. `<repoRoot>/src/webview/index.html` (development fallback; warns).
+ *   3. `<repoRoot>/dist/webview/index.html` (repo found via cwd walk-up;
+ *      canonical path for dev workflows where the user is editing llmem
+ *      itself, so cwd-relative resolution stays primary).
+ *   4. `<installedRoot>/dist/webview/index.html` (install dir found via
+ *      `__dirname` walk-up; this is the global-npm-install path — cwd is
+ *      the user's repo, not ours, so the cwd walk in (3) misses).
+ *   5. `<repoRoot>/src/webview/index.html` (development fallback; warns).
  *
  * Throws "Webview assets not found" listing every probed path if none
  * resolved. The error deliberately omits any compile-time directory
@@ -108,8 +156,9 @@ export function resolveAssetRoot(options: GraphGenerationOptions): string {
         }
     }
 
-    // 3. Repo-root walk-up from cwd → dist/webview.
-    const repoRoot = findRepoRoot();
+    // 3. Repo-root walk-up from cwd → dist/webview. Canonical path for
+    // dev (running llmem from its own checkout).
+    const repoRoot = __testHooks.findRepoRoot();
     if (repoRoot) {
         const repoDist = path.join(repoRoot, 'dist', 'webview');
         const repoDistIndex = path.join(repoDist, 'index.html');
@@ -117,10 +166,29 @@ export function resolveAssetRoot(options: GraphGenerationOptions): string {
         if (fs.existsSync(repoDistIndex)) {
             return repoDist;
         }
+    } else {
+        probed.push('repoRoot: <not found> (no package.json with name="llmem" walking up from process.cwd())');
+    }
 
-        // 4. Development fallback: src/webview (no index.html check —
-        // the webview generator can render directly from source). Warn
-        // because this means the dev hasn't run `npm run build:webview`.
+    // 4. Install-root walk-up from `__dirname` → dist/webview. Catches
+    // the global-npm-install case: cwd is the user's repo, but our
+    // compiled `web-launcher.js` lives under the install dir.
+    const installedRoot = __testHooks.findInstalledPackageRoot();
+    if (installedRoot) {
+        const installDist = path.join(installedRoot, 'dist', 'webview');
+        const installDistIndex = path.join(installDist, 'index.html');
+        probed.push(`installedRoot/dist: ${installDistIndex}`);
+        if (fs.existsSync(installDistIndex)) {
+            return installDist;
+        }
+    } else {
+        probed.push('installedRoot: <not found> (no package.json with name="llmem" walking up from this module\'s install location)');
+    }
+
+    // 5. Development fallback: src/webview (no index.html check —
+    // the webview generator can render directly from source). Warn
+    // because this means the dev hasn't run `npm run build:webview`.
+    if (repoRoot) {
         const repoSrc = path.join(repoRoot, 'src', 'webview');
         probed.push(`repoRoot/src: ${repoSrc}`);
         if (fs.existsSync(repoSrc)) {
@@ -130,8 +198,6 @@ export function resolveAssetRoot(options: GraphGenerationOptions): string {
             );
             return repoSrc;
         }
-    } else {
-        probed.push('repoRoot: <not found> (no package.json with name="llmem" walking up from process.cwd())');
     }
 
     throw new Error(

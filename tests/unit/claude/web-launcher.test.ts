@@ -9,6 +9,16 @@
 // chain (workspaceRoot → cwd-walk-up to find `package.json` with
 // `name === 'llmem'` → src/webview dev fallback).
 //
+// Followup — added a `__dirname`-based install-root walk-up so a
+// globally installed `llmem` (npm i -g) finds its bundled
+// `dist/webview` without `LLMEM_ASSET_ROOT`. The resolver now also
+// probes `<installedRoot>/dist/webview` between the cwd walk-up and
+// the src/webview dev fallback. The install-root walk uses
+// `__dirname` of `web-launcher.js`, so when running unit tests from
+// inside the real llmem checkout it would always succeed; tests that
+// want to exercise the "nothing resolves" path must override it via
+// `__testHooks`.
+//
 // These tests exercise the resolution-order logic by writing fixture
 // directories under `os.tmpdir()` and (where needed) stubbing
 // `process.cwd` so the cwd-walk-up lands inside the fixture rather
@@ -22,7 +32,12 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import { resolveAssetRoot, findRepoRoot } from '../../../src/claude/web-launcher';
+import {
+    resolveAssetRoot,
+    findRepoRoot,
+    findInstalledPackageRoot,
+    __testHooks,
+} from '../../../src/claude/web-launcher';
 
 /** Create a tmp dir and return its absolute path. */
 function mkTmp(): string {
@@ -127,6 +142,72 @@ test('resolveAssetRoot: repo-walk-up from cwd lands on <repoRoot>/dist/webview',
     }
 });
 
+/**
+ * Run `fn` with the install-root walk-up stubbed to return `installRoot`.
+ * Followup tests need this because `__dirname` of the real
+ * `web-launcher.ts` always lands inside the actual llmem repo, so the
+ * production walk-up cannot be made to fail in unit tests just by
+ * fiddling with `process.cwd`.
+ */
+function withInstalledRoot<T>(installRoot: string | null, fn: () => T): T {
+    const original = __testHooks.findInstalledPackageRoot;
+    __testHooks.findInstalledPackageRoot = () => installRoot;
+    try {
+        return fn();
+    } finally {
+        __testHooks.findInstalledPackageRoot = original;
+    }
+}
+
+test('resolveAssetRoot: install-root walk-up wins when cwd walk-up cannot find the repo', () => {
+    const tmp = mkTmp();
+    try {
+        // Construct a fake install dir: package.json with name="llmem"
+        // and a populated dist/webview. process.cwd points somewhere
+        // unrelated so the cwd-walk-up step (3) fails. The install-root
+        // walk-up (step 4) should pick up the fixture.
+        const installRoot = path.join(tmp, 'fake-install');
+        fs.mkdirSync(installRoot, { recursive: true });
+        fs.writeFileSync(
+            path.join(installRoot, 'package.json'),
+            JSON.stringify({ name: 'llmem', version: '0.0.0' }),
+        );
+        const installDist = path.join(installRoot, 'dist', 'webview');
+        writeIndex(installDist);
+
+        // cwd in an unrelated subtree — no llmem package.json above it.
+        const cwdSandbox = path.join(tmp, 'cwd-sandbox');
+        fs.mkdirSync(cwdSandbox, { recursive: true });
+
+        // Workspace exists but has no dist/webview, so step 2 fails.
+        const ws = path.join(tmp, 'workspace');
+        fs.mkdirSync(ws, { recursive: true });
+
+        const resolved = withCwd(cwdSandbox, () =>
+            withInstalledRoot(installRoot, () =>
+                resolveAssetRoot({ workspaceRoot: ws }),
+            ),
+        );
+        assert.equal(resolved, installDist);
+    } finally {
+        rm(tmp);
+    }
+});
+
+test('findInstalledPackageRoot: locates the real llmem repo when run from inside the checkout', () => {
+    // Sanity check: when this unit test file runs, `__dirname` of
+    // `web-launcher.ts` is somewhere under the real llmem checkout, so
+    // the walk-up should land on a directory whose package.json has
+    // `name === 'llmem'`. This pins the helper's contract end-to-end
+    // without leaning on filesystem fixtures.
+    const found = findInstalledPackageRoot();
+    assert.ok(found, 'findInstalledPackageRoot should locate the llmem checkout');
+    const pkg = JSON.parse(
+        fs.readFileSync(path.join(found!, 'package.json'), 'utf-8'),
+    );
+    assert.equal(pkg.name, 'llmem');
+});
+
 test('resolveAssetRoot: throws an error that does NOT mention __dirname when nothing resolves', () => {
     const tmp = mkTmp();
     try {
@@ -144,14 +225,22 @@ test('resolveAssetRoot: throws an error that does NOT mention __dirname when not
         const cwdSandbox = path.join(tmp, 'cwd-sandbox');
         fs.mkdirSync(cwdSandbox, { recursive: true });
 
-        const err = withCwd(cwdSandbox, () => {
-            try {
-                resolveAssetRoot({ workspaceRoot: ws, assetRoot: bogusAsset });
-                return null;
-            } catch (e) {
-                return e instanceof Error ? e : new Error(String(e));
-            }
-        });
+        // Stub the install-root walk-up to return null too — otherwise
+        // the real `__dirname` of `web-launcher.ts` would resolve to the
+        // actual llmem checkout and the resolver would succeed.
+        const err = withCwd(cwdSandbox, () =>
+            withInstalledRoot(null, () => {
+                try {
+                    resolveAssetRoot({
+                        workspaceRoot: ws,
+                        assetRoot: bogusAsset,
+                    });
+                    return null;
+                } catch (e) {
+                    return e instanceof Error ? e : new Error(String(e));
+                }
+            }),
+        );
 
         assert.ok(err, 'resolveAssetRoot should have thrown');
         assert.ok(
@@ -166,6 +255,11 @@ test('resolveAssetRoot: throws an error that does NOT mention __dirname when not
         assert.ok(
             err.message.includes('build:webview'),
             `error should hint at "npm run build:webview"; got: ${err.message}`,
+        );
+        // The new install-root step should be listed in the probe trace.
+        assert.ok(
+            err.message.includes('installedRoot'),
+            `error should mention the install-root walk-up; got: ${err.message}`,
         );
     } finally {
         rm(tmp);

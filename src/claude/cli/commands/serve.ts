@@ -2,10 +2,11 @@
  * `llmem serve` — start HTTP webview server.
  *
  * Body lifted near-mechanically from src/claude/cli.ts:commandServe.
- * Loop 01 contract: NO behavior change.
- *  - port defaults to 3000, hard-fail if occupied (port-fallback is loop 02).
- *  - `--open` defaults to false (opt-in; flips to default-on in loop 03).
- *  - hard-fails when no edge lists exist (auto-scan is loop 03).
+ *  - port defaults to 3000, walks up to 3009 on EADDRINUSE (loop 02).
+ *  - `--open` defaults to true; pass `--no-open` for headless/CI (loop 03).
+ *  - zero-config: when no edge lists exist, scans the workspace via
+ *    `application/scan.ts:scanFolderRecursive` and continues. Never
+ *    hard-fails on a missing index (loop 03).
  */
 
 import * as path from 'path';
@@ -14,6 +15,9 @@ import { z } from 'zod';
 
 import { GraphServer } from '../../server';
 import { hasEdgeLists, generateGraph } from '../../web-launcher';
+import { scanFolderRecursive } from '../../../application/scan';
+import { WorkspaceIO } from '../../../workspace/workspace-io';
+import { asWorkspaceRoot } from '../../../core/paths';
 import type { CommandSpec } from '../registry';
 
 // Loop 21 — optional explicit override for the webview asset directory.
@@ -60,7 +64,7 @@ const serveArgs = z.object({
     port: z.number().int().min(0).max(65535).default(3000),
     workspace: z.string().optional(),
     regenerate: z.boolean().default(false),
-    open: z.boolean().default(false),     // OPT-IN — loop 03 flips to default(true)
+    open: z.boolean().default(true),      // Loop 03: default-on per design/06.
     verbose: z.boolean().default(false),
 });
 
@@ -73,16 +77,23 @@ export const serveCommand: CommandSpec<typeof serveArgs> = {
 
         console.log(`Workspace: ${workspace}`);
 
-        // Check if edge lists exist
+        // Loop 03: zero-config. If no edge lists exist, run the canonical
+        // application-layer scan over the workspace root. We never abort the
+        // user's `serve` invocation for a missing index — they get one for free.
         if (!hasEdgeLists(workspace)) {
-            console.error('');
-            console.error('Error: No edge lists found in workspace.');
-            console.error('');
-            console.error('Please scan your workspace first:');
-            console.error('  1. Use the VSCode extension to toggle files/folders');
-            console.error('  2. Or ask Claude to analyze your codebase');
-            console.error('');
-            process.exit(1);
+            console.log('Indexing workspace... (first run)');
+            const io = await WorkspaceIO.create(asWorkspaceRoot(workspace));
+            const artifactDir = path.join(workspace, '.artifacts');
+            const result = await scanFolderRecursive({
+                workspaceRoot: asWorkspaceRoot(workspace),
+                folderPath: '.',
+                artifactDir,
+                io,
+            });
+            console.log(
+                `Indexed ${result.filesProcessed} files ` +
+                `(${result.filesSkipped} skipped, ${result.errors.length} errors).`,
+            );
         }
 
         // Regenerate if requested or if webview doesn't exist
