@@ -34,6 +34,33 @@ import {
 const log = createLogger('graph-server');
 
 /**
+ * Promisified single-attempt `httpServer.listen`. Resolves on `listening`,
+ * rejects on the first `error` event. Exactly one error/listening listener
+ * is attached per call so repeated invocations on the same server do not
+ * leak listeners.
+ *
+ * Loop 02: required because `http.Server` is reusable after a failed
+ * `listen` — `GraphServer.start()` retries the same instance against
+ * `port`, `port+1`, ... up to 10 times on `EADDRINUSE`, and stale
+ * listeners would otherwise fire on subsequent attempts.
+ */
+function listenOnce(server: http.Server, port: number, host: string): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+        const onError = (err: Error) => {
+            server.removeListener('listening', onListening);
+            reject(err);
+        };
+        const onListening = () => {
+            server.removeListener('error', onError);
+            resolve();
+        };
+        server.once('error', onError);
+        server.once('listening', onListening);
+        server.listen(port, host);
+    });
+}
+
+/**
  * Server configuration
  */
 export interface ServerConfig {
@@ -138,7 +165,14 @@ export class GraphServer {
         this.httpServer = http.createServer((req, res) => {
             this.httpHandler.handle(req, res);
         });
-        this.webSocket.setup(this.httpServer);
+        // Loop 02: WebSocketServer attaches a permanent `error` listener on
+        // the http server that re-emits as an uncaught error on the
+        // WebSocketServer instance (see ws/lib/websocket-server.js
+        // addListeners). With auto-port-fallback, EADDRINUSE on the first
+        // bind would crash the process before the retry could run. Defer
+        // WS setup until after the listen loop succeeds — connection/
+        // upgrade events only matter once the http server is actually
+        // listening, so the move is behavior-preserving.
 
         // Loop 11: replaces inline setupApiEndpoints.
         registerRoutes(this.buildContext());
@@ -154,23 +188,34 @@ export class GraphServer {
         );
         log.info('ArchWatcher setup complete');
 
-        await new Promise<void>((resolve, reject) => {
-            this.httpServer!.listen(this.config.port, '127.0.0.1', () => {
-                this.printServerInfo();
-                resolve();
-            });
-            this.httpServer!.on('error', (error: any) => {
-                if (error.code === 'EADDRINUSE') {
-                    log.error('Port already in use', { port: this.config.port });
-                    log.error('Try a different port with --port <number>');
-                } else {
-                    log.error('Server error', {
-                        error: error instanceof Error ? error.message : String(error),
-                    });
+        // Loop 02: auto-port-fallback. Walk startPort, startPort+1, ...,
+        // up to 10 attempts on EADDRINUSE. Non-EADDRINUSE errors throw
+        // immediately (no retry). After 10 failed binds, throw with the
+        // full list of attempted ports. Silent fallback by default — the
+        // bound port is announced once via `printServerInfo()` below.
+        const startPort = this.config.port;
+        const tried: number[] = [];
+        let bound = false;
+        for (let attempt = 0; attempt < 10 && !bound; attempt++) {
+            const candidatePort = startPort + attempt;
+            tried.push(candidatePort);
+            try {
+                await listenOnce(this.httpServer!, candidatePort, '127.0.0.1');
+                this.config.port = candidatePort;
+                bound = true;
+            } catch (err: any) {
+                if (err && err.code === 'EADDRINUSE') {
+                    continue;
                 }
-                reject(error);
-            });
-        });
+                throw err;
+            }
+        }
+        if (!bound) {
+            throw new Error(`All ports ${tried.join(', ')} are in use.`);
+        }
+        // Loop 02: deferred from before the listen loop — see comment above.
+        this.webSocket.setup(this.httpServer!);
+        this.printServerInfo();
 
         if (this.config.openBrowser) {
             openBrowser(`http://127.0.0.1:${this.getPort()}`);
