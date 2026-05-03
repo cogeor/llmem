@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { isSupportedFile } from '../parser/config';
 
 /**
  * Graph computation status for a folder.
@@ -20,6 +21,14 @@ export interface ITreeNode {
     // Graph status tracking (directories only)
     importStatus?: GraphStatus;  // Status of import edges for this folder
     callStatus?: GraphStatus;    // Status of call edges for this folder
+
+    // Loop 12: Whether this file's extension is parsable (supported by the
+    // parser registry). Computed Node-side from isSupportedFile so the
+    // browser-side worktree component does not import parser/config. Only
+    // meaningful for files; directories leave it undefined. Optional so
+    // older serialized tree blobs still parse — the browser defaults to
+    // false (file is rendered, just not toggleable for watching).
+    isSupported?: boolean;
 }
 
 // Always ignored folders (regardless of .gitignore)
@@ -166,7 +175,8 @@ export async function generateWorkTree(
             path: relativePath,
             type: 'file',
             size,
-            lineCount
+            lineCount,
+            isSupported: isSupportedFile(name)
         };
     } else if (stats.isDirectory()) {
         const children: ITreeNode[] = [];

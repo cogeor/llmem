@@ -39,6 +39,14 @@ export interface FileNode {
     lineCount: number;
     importStatus?: GraphStatus;  // Status of import edges for this file
     callStatus?: GraphStatus;    // Status of call edges for this file
+    /**
+     * Loop 12: Whether this file's extension is parsable (computed server-side
+     * from the parser registry). The browser must not import parser/config to
+     * derive this — the Node-side worktree generator attaches the flag here.
+     * Optional so older serialized worktrees still parse; consumers default
+     * to `false` if missing.
+     */
+    isSupported?: boolean;
 }
 
 export interface DirectoryNode {

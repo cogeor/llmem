@@ -1,7 +1,6 @@
 
 import { DataProvider } from '../services/dataProvider';
-import { WorkTreeNode, DirectoryNode, AppState, GraphStatus } from '../types';
-import { isSupportedFile } from '../../../parser/config';
+import { WorkTreeNode, FileNode, DirectoryNode, AppState, GraphStatus } from '../types';
 import { folder, file, chevronRight } from '../icons';
 
 // VS Code webview API type declaration
@@ -79,10 +78,15 @@ export class Worktree {
     }
 
     /**
-     * Check if a file is parsable based on extension.
+     * Check if a file node is parsable.
+     *
+     * Loop 12: reads the precomputed `isSupported` flag attached server-side
+     * by `src/webview/worktree.ts::generateWorkTree`. Falls back to `false`
+     * if the field is missing (e.g. older cached worktree blobs) — such
+     * files are still rendered, just not toggleable.
      */
-    isParsableFile(filename: string): boolean {
-        return isSupportedFile(filename);
+    isParsableFile(node: FileNode): boolean {
+        return (node as FileNode & { isSupported?: boolean }).isSupported === true;
     }
 
     /**
@@ -90,7 +94,7 @@ export class Worktree {
      */
     hasAnyParsableFiles(dirNode: WorkTreeNode): boolean {
         if (dirNode.type === 'file') {
-            return this.isParsableFile(dirNode.name);
+            return this.isParsableFile(dirNode as FileNode);
         }
 
         if (dirNode.type === 'directory' && (dirNode as DirectoryNode).children) {
@@ -112,7 +116,7 @@ export class Worktree {
         // - For dirs: only if contains parsable files (recursively)
         const showToggle = isDir
             ? this.hasAnyParsableFiles(node)
-            : this.isParsableFile(node.name);
+            : this.isParsableFile(node as FileNode);
         const statusTitle = showToggle
             ? `Click to toggle file watching for this ${isDir ? 'folder' : 'file'}.`
             : '';

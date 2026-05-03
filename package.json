@@ -95,10 +95,11 @@
     }
   },
   "scripts": {
-    "compile": "npm run compile:vscode",
+    "compile": "npm run compile:vscode && npm run compile:webview-types",
     "compile:vscode": "tsc -p ./tsconfig.vscode.json",
+    "compile:webview-types": "tsc --noEmit -p ./src/webview/ui/tsconfig.json",
     "compile:claude": "tsc -p ./tsconfig.claude.json",
-    "compile:all": "npm run compile:vscode && npm run compile:claude",
+    "compile:all": "npm run compile:vscode && npm run compile:webview-types && npm run compile:claude",
     "watch": "tsc -watch -p ./tsconfig.vscode.json",
     "watch:vscode": "tsc -watch -p ./tsconfig.vscode.json",
     "watch:claude": "tsc -watch -p ./tsconfig.claude.json",
@@ -111,7 +112,7 @@
     "prepare": "node scripts/install-hooks.js",
     "build:webview": "npx ts-node src/scripts/build_webview.ts",
     "build": "npm run build:vscode",
-    "build:vscode": "npm run compile:vscode && npm run build:webview",
+    "build:vscode": "npm run compile:vscode && npm run compile:webview-types && npm run build:webview",
     "build:claude": "npm run compile:claude",
     "build:all": "npm run compile:all && npm run build:webview",
     "pretest": "npm run compile",

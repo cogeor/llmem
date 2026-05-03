@@ -71,12 +71,11 @@ const FORBIDDEN_RELATIVE_PREFIXES: readonly string[] = [
 ];
 
 const KNOWN_VIOLATIONS: readonly BrowserViolation[] = [
-  {
-    from: 'src/webview/ui/components/Worktree.ts',
-    to: 'src/parser/config.ts',
-    reason:
-      'isSupportedFile pulled from parser; Loop 12 (web-viewer-isolate) replaces with DataProvider capability',
-  },
+  // Loop 12 cleared the Worktree.ts -> parser/config violation: the
+  // parsability bit (`isSupported`) is now precomputed server-side in
+  // `src/webview/worktree.ts::generateWorkTree` and travels with each file
+  // node in the worktree JSON. Browser code reads `node.isSupported` and
+  // never imports parser/config.
 ];
 
 function toRepoRel(absPath: string): string {
