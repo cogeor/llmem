@@ -22,7 +22,7 @@ import { asAbsPath } from '../core/paths';
 import { PathEscapeError } from '../core/errors';
 
 export type { WorkspaceRoot, AbsPath, RelPath } from '../core/paths';
-export { asWorkspaceRoot, asAbsPath, asRelPath } from '../core/paths';
+export { asWorkspaceRoot, asAbsPath, asRelPath, toAbs, toRel, assertContained } from '../core/paths';
 export { PathEscapeError } from '../core/errors';
 
 /**
