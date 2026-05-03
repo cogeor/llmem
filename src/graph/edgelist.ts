@@ -21,6 +21,7 @@ import {
     loadEdgeListData,
 } from './edgelist-schema';
 import { createLogger, type Logger } from '../common/logger';
+import { WorkspaceIO } from '../workspace/workspace-io';
 
 // ============================================================================
 // Re-exports — the schema module is the single source of truth for these
@@ -48,12 +49,22 @@ abstract class BaseEdgeListStore {
     protected dirty: boolean = false;
     protected readonly edgeKind: 'import' | 'call';
     protected readonly log: Logger;
+    /**
+     * L23: optional realpath-strong I/O surface. When provided, `load` /
+     * `save` route through it; otherwise the legacy direct-`fs.*` path
+     * runs. L24 will thread this through every caller, at which point
+     * the back-compat fallback can be removed.
+     */
+    protected readonly io: WorkspaceIO | null;
+    /** Edge-list filename relative to the workspace root (only meaningful when `io` is set). */
+    protected readonly relPath: string;
 
     constructor(
         artifactRoot: string,
         filename: string,
         edgeKind: 'import' | 'call',
         logger?: Logger,
+        io?: WorkspaceIO,
     ) {
         this.filePath = path.join(artifactRoot, filename);
         this.edgeKind = edgeKind;
@@ -62,6 +73,13 @@ abstract class BaseEdgeListStore {
         // CallEdgeListStore). The factory default keeps this internal so
         // call-sites don't need to thread a logger through.
         this.log = logger ?? createLogger(this.constructor.name);
+        this.io = io ?? null;
+        // When an `io` is provided, derive the workspace-relative form of
+        // `filePath`. Without `io`, leave it empty — the legacy branches
+        // never read it.
+        this.relPath = this.io
+            ? path.relative(this.io.getRealRoot(), this.filePath)
+            : '';
     }
 
     protected createEmpty(): EdgeListData {
@@ -73,6 +91,32 @@ abstract class BaseEdgeListStore {
     // ========================================================================
 
     async load(): Promise<void> {
+        // L23: prefer the realpath-strong I/O surface when one was threaded
+        // through the constructor; fall through to the legacy direct-`fs.*`
+        // path otherwise (back-compat for callers that haven't migrated).
+        if (this.io) {
+            if (!(await this.io.exists(this.relPath))) {
+                this.data = createEmptyEdgeList();
+                this.dirty = false;
+                return;
+            }
+            let raw: unknown;
+            try {
+                const content = await this.io.readFile(this.relPath, 'utf-8');
+                raw = JSON.parse(content);
+            } catch (e) {
+                throw new EdgeListLoadError(
+                    this.filePath,
+                    'parse-error',
+                    `JSON.parse failed: ${(e as Error).message}`,
+                    e,
+                );
+            }
+            this.data = loadEdgeListData(raw, this.filePath);
+            this.dirty = false;
+            return;
+        }
+
         if (!fsSync.existsSync(this.filePath)) {
             this.data = createEmptyEdgeList();
             this.dirty = false;
@@ -106,14 +150,22 @@ abstract class BaseEdgeListStore {
         }
 
         try {
-            const dir = path.dirname(this.filePath);
-            if (!fsSync.existsSync(dir)) {
-                await fs.mkdir(dir, { recursive: true });
-            }
-
             this.data.timestamp = new Date().toISOString();
             const content = JSON.stringify(this.data, null, 2);
-            await fs.writeFile(this.filePath, content, 'utf-8');
+
+            if (this.io) {
+                // mkdirRecursive is idempotent when the parent already exists,
+                // so the `existsSync` pre-check is unnecessary on this path.
+                await this.io.mkdirRecursive(path.dirname(this.relPath));
+                await this.io.writeFile(this.relPath, content);
+            } else {
+                const dir = path.dirname(this.filePath);
+                if (!fsSync.existsSync(dir)) {
+                    await fs.mkdir(dir, { recursive: true });
+                }
+                await fs.writeFile(this.filePath, content, 'utf-8');
+            }
+
             this.log.debug('Saved edge list', {
                 nodes: this.data.nodes.length,
                 edges: this.data.edges.length,
@@ -306,8 +358,8 @@ abstract class BaseEdgeListStore {
  * ```
  */
 export class ImportEdgeListStore extends BaseEdgeListStore {
-    constructor(artifactRoot: string, logger?: Logger) {
-        super(artifactRoot, IMPORT_EDGELIST_FILENAME, 'import', logger);
+    constructor(artifactRoot: string, logger?: Logger, io?: WorkspaceIO) {
+        super(artifactRoot, IMPORT_EDGELIST_FILENAME, 'import', logger, io);
     }
 }
 
@@ -338,8 +390,8 @@ export class ImportEdgeListStore extends BaseEdgeListStore {
  * ```
  */
 export class CallEdgeListStore extends BaseEdgeListStore {
-    constructor(artifactRoot: string, logger?: Logger) {
-        super(artifactRoot, CALL_EDGELIST_FILENAME, 'call', logger);
+    constructor(artifactRoot: string, logger?: Logger, io?: WorkspaceIO) {
+        super(artifactRoot, CALL_EDGELIST_FILENAME, 'call', logger, io);
     }
 }
 

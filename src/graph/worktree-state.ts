@@ -14,6 +14,7 @@ import * as fsSync from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { createLogger } from '../common/logger';
+import { WorkspaceIO } from '../workspace/workspace-io';
 
 const log = createLogger('watch-service');
 
@@ -59,10 +60,22 @@ export class WatchService {
     private fileHashes = new Map<string, string>();
     private artifactRoot: string;
     private workspaceRoot: string;
+    /**
+     * L23: optional realpath-strong I/O surface. When set, all read /
+     * write / list operations flow through it; the legacy direct-`fs.*`
+     * branch is preserved for callers that haven't migrated.
+     */
+    private readonly io: WorkspaceIO | null;
+    /** State file path relative to the workspace root (only meaningful when `io` is set). */
+    private readonly stateRelPath: string;
 
-    constructor(artifactRoot: string, workspaceRoot: string) {
+    constructor(artifactRoot: string, workspaceRoot: string, io?: WorkspaceIO) {
         this.artifactRoot = artifactRoot;
         this.workspaceRoot = workspaceRoot;
+        this.io = io ?? null;
+        this.stateRelPath = this.io
+            ? path.relative(this.io.getRealRoot(), path.join(artifactRoot, STATE_FILENAME))
+            : '';
     }
 
     // ========================================================================
@@ -76,8 +89,14 @@ export class WatchService {
         const filePath = path.join(this.artifactRoot, STATE_FILENAME);
 
         try {
-            if (fsSync.existsSync(filePath)) {
-                const content = await fs.readFile(filePath, 'utf-8');
+            // L23: prefer the realpath-strong path when an `io` was supplied.
+            const fileExists = this.io
+                ? await this.io.exists(this.stateRelPath)
+                : fsSync.existsSync(filePath);
+            if (fileExists) {
+                const content = this.io
+                    ? await this.io.readFile(this.stateRelPath, 'utf-8')
+                    : await fs.readFile(filePath, 'utf-8');
                 const rawState = JSON.parse(content);
 
                 if (typeof rawState !== 'object' || rawState === null) {
@@ -118,8 +137,13 @@ export class WatchService {
             } else {
                 // Directory: expand to all files underneath
                 const absolutePath = path.join(this.workspaceRoot, entry.path);
-                if (fsSync.existsSync(absolutePath)) {
-                    const files = await listParsableFiles(absolutePath);
+                const dirExists = this.io
+                    ? await this.io.exists(entry.path)
+                    : fsSync.existsSync(absolutePath);
+                if (dirExists) {
+                    const files = this.io
+                        ? await listParsableFilesIO(this.io, entry.path)
+                        : await listParsableFiles(absolutePath);
                     for (const f of files) {
                         const relativePath = path.relative(this.workspaceRoot, f).replace(/\\/g, '/');
                         this.watchedFiles.add(relativePath);
@@ -147,19 +171,26 @@ export class WatchService {
         const filePath = path.join(this.artifactRoot, STATE_FILENAME);
 
         try {
-            const dir = path.dirname(filePath);
-            if (!fsSync.existsSync(dir)) {
-                await fs.mkdir(dir, { recursive: true });
-            }
-
             const state: WatchStateV2 = {
                 version: STATE_VERSION,
                 timestamp: new Date().toISOString(),
                 watchedFiles: Array.from(this.watchedFiles).sort(),
                 fileHashes: Object.fromEntries(this.fileHashes)
             };
+            const content = JSON.stringify(state, null, 2);
 
-            await fs.writeFile(filePath, JSON.stringify(state, null, 2), 'utf-8');
+            if (this.io) {
+                // mkdirRecursive is idempotent, so the legacy `existsSync`
+                // pre-check is unnecessary on this path.
+                await this.io.mkdirRecursive(path.dirname(this.stateRelPath));
+                await this.io.writeFile(this.stateRelPath, content);
+            } else {
+                const dir = path.dirname(filePath);
+                if (!fsSync.existsSync(dir)) {
+                    await fs.mkdir(dir, { recursive: true });
+                }
+                await fs.writeFile(filePath, content, 'utf-8');
+            }
             log.debug('Saved watched files', { count: this.watchedFiles.size });
         } catch (e) {
             log.error('Failed to save state', {
@@ -195,7 +226,13 @@ export class WatchService {
 
         // Compute and store hash
         const absolutePath = path.join(this.workspaceRoot, relativePath);
-        if (fsSync.existsSync(absolutePath)) {
+        if (this.io) {
+            if (await this.io.exists(relativePath)) {
+                const buf = await this.io.readFile(relativePath, null);
+                const hash = crypto.createHash('sha256').update(buf).digest('hex');
+                this.fileHashes.set(relativePath, hash);
+            }
+        } else if (fsSync.existsSync(absolutePath)) {
             const hash = await hashFile(absolutePath);
             this.fileHashes.set(relativePath, hash);
         }
@@ -219,7 +256,9 @@ export class WatchService {
      */
     async addFolder(folderPath: string): Promise<string[]> {
         const absolutePath = path.join(this.workspaceRoot, folderPath);
-        const files = await listParsableFiles(absolutePath);
+        const files = this.io
+            ? await listParsableFilesIO(this.io, folderPath)
+            : await listParsableFiles(absolutePath);
         const addedFiles: string[] = [];
 
         for (const absoluteFilePath of files) {
@@ -294,12 +333,22 @@ export class WatchService {
         for (const filePath of this.watchedFiles) {
             const absolutePath = path.join(this.workspaceRoot, filePath);
 
-            if (!fsSync.existsSync(absolutePath)) {
-                log.warn('File no longer exists', { filePath });
-                continue;
+            let currentHash: string;
+            if (this.io) {
+                if (!(await this.io.exists(filePath))) {
+                    log.warn('File no longer exists', { filePath });
+                    continue;
+                }
+                const buf = await this.io.readFile(filePath, null);
+                currentHash = crypto.createHash('sha256').update(buf).digest('hex');
+            } else {
+                if (!fsSync.existsSync(absolutePath)) {
+                    log.warn('File no longer exists', { filePath });
+                    continue;
+                }
+                currentHash = await hashFile(absolutePath);
             }
 
-            const currentHash = await hashFile(absolutePath);
             const savedHash = this.fileHashes.get(filePath);
 
             if (currentHash !== savedHash) {
@@ -336,6 +385,9 @@ export function isParsableFile(filename: string): boolean {
 
 /**
  * List all parsable files in a directory (recursive).
+ *
+ * Legacy signature: takes an absolute path and walks via raw `fs.readdir`.
+ * Preserved for callers that haven't migrated to `WorkspaceIO`.
  */
 export async function listParsableFiles(absolutePath: string): Promise<string[]> {
     const files: string[] = [];
@@ -365,5 +417,49 @@ export async function listParsableFiles(absolutePath: string): Promise<string[]>
     }
 
     await walkDir(absolutePath);
+    return files.sort();
+}
+
+/**
+ * L23: realpath-strong variant of `listParsableFiles`. Walks the
+ * workspace-relative `startRel` via `WorkspaceIO.readDir` + `lstat`,
+ * returning absolute paths (anchored on `io.getRealRoot()`). Symlinks
+ * are deliberately skipped via `lstat` to avoid double-counting and to
+ * stop the walk at symlink boundaries; targets pointing outside the
+ * workspace would be rejected by `readDir`'s realpath check anyway.
+ */
+export async function listParsableFilesIO(
+    io: WorkspaceIO,
+    startRel: string,
+): Promise<string[]> {
+    const files: string[] = [];
+    const root = io.getRealRoot();
+
+    async function walkDir(rel: string) {
+        let entries: string[];
+        try {
+            entries = await io.readDir(rel);
+        } catch {
+            return;
+        }
+        for (const name of entries) {
+            if (name.startsWith('.') || name === 'node_modules') continue;
+            const childRel = rel === '' || rel === '.' ? name : path.join(rel, name);
+            let st;
+            try {
+                st = await io.lstat(childRel);
+            } catch {
+                continue;
+            }
+            if (st.isSymbolicLink()) continue;
+            if (st.isDirectory()) {
+                await walkDir(childRel);
+            } else if (st.isFile() && isParsableFile(name)) {
+                files.push(path.join(root, childRel));
+            }
+        }
+    }
+
+    await walkDir(startRel);
     return files.sort();
 }

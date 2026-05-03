@@ -1,6 +1,6 @@
 // tests/arch/workspace-paths.test.ts
 //
-// Two parts:
+// Three parts:
 //
 //   Part A — `safe-fs` containment rules. Test-only stub helpers that pin
 //   the contract Loop 04 will move into src/workspace/safe-fs.ts. Any
@@ -11,13 +11,26 @@
 //   and flags any production file (outside WRITE_ALLOWLIST) that calls a
 //   write-mutating fs method. The goal: keep workspace mutation centralized
 //   so Loop 04 can wrap it all in safe-fs.
+//
+//   Part C — `WorkspaceIO` realpath-containment contract (Loop 23). The
+//   class layers `fs.realpath` on top of textual containment to defeat
+//   symlink-target-outside-root attacks. Mirrors Part A's symlink case
+//   but asserts the BLOCK rather than documenting the gap.
+//
+//   Part D — AST-based fs.<write*|mkdir*|unlink*|rm*> scan over
+//   `src/{graph,info,artifact}/` (Loop 23). Mirrors the AST pattern from
+//   `tests/arch/console-discipline.test.ts` (Loop 20). New write-side
+//   `fs.*` introductions in those subtrees fail the test unless the file
+//   is in `KNOWN_WRITE_VIOLATIONS` (back-compat fallbacks) or under the
+//   subtree allow-list (`src/workspace/`, `src/core/`).
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { resolveInsideWorkspace } from '../../src/workspace/safe-fs';
+import * as ts from 'typescript';
+import { resolveInsideWorkspace, WorkspaceIO } from '../../src/workspace/safe-fs';
 import { asWorkspaceRoot } from '../../src/core/paths';
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
@@ -180,6 +193,7 @@ const WRITE_ALLOWLIST: ReadonlySet<string> = new Set([
   'src/webview/generator.ts',
   'src/webview/utils/md-converter.ts',
   'src/workspace/safe-fs.ts',
+  'src/workspace/workspace-io.ts',
 ]);
 
 // Heuristic regex on raw source — documented per PLAN. Matches:
@@ -283,5 +297,275 @@ test('write-allowlist: every WRITE_ALLOWLIST entry is still observed (no STALE r
       );
     }
     assert.fail(`${stale.length} stale WRITE_ALLOWLIST entry/entries detected.`);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Part C — WorkspaceIO realpath containment (Loop 23)
+//
+// Layered on top of textual containment: a symlink inside the workspace
+// pointing OUTSIDE the workspace must not let a child path through the
+// `WorkspaceIO` surface. The unit test in
+// `tests/unit/workspace/workspace-io.test.ts` pins the implementation;
+// this arch-level test pins the contract from the outside.
+// ---------------------------------------------------------------------------
+
+test('arch: WorkspaceIO blocks symlink escape via realpath containment', async (t) => {
+  if (process.platform === 'win32') {
+    t.skip(
+      'Symlink test skipped on Windows (requires admin / Developer Mode); ' +
+        'POSIX CI runs cover the realpath-containment contract.'
+    );
+    return;
+  }
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-arch-io-'));
+  try {
+    const root = path.join(parent, 'workspace');
+    const outside = path.join(parent, 'outside');
+    fs.mkdirSync(root, { recursive: true });
+    fs.mkdirSync(outside, { recursive: true });
+    fs.writeFileSync(path.join(outside, 'secret.txt'), 'secret');
+    try {
+      fs.symlinkSync(outside, path.join(root, 'leak'), 'dir');
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'EPERM' || code === 'EACCES') {
+        t.skip(
+          `Symlink creation failed (${code}; likely insufficient privileges). ` +
+            'POSIX CI covers this case.'
+        );
+        return;
+      }
+      throw err;
+    }
+    const io = await WorkspaceIO.create(asWorkspaceRoot(root));
+    await assert.rejects(
+      io.readFile('leak/secret.txt'),
+      (err: Error & { code?: string }) =>
+        err.name === 'PathEscapeError' && err.code === 'PATH_ESCAPE',
+      'WorkspaceIO must block symlink-target-outside-workspace via realpath.'
+    );
+  } finally {
+    fs.rmSync(parent, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Part D — AST-based fs.<write*|mkdir*|unlink*|rm*> scan over
+// `src/{graph,info,artifact}/` (Loop 23).
+//
+// Mirrors the AST pattern from `tests/arch/console-discipline.test.ts`.
+// Detects calls via the TypeScript Compiler API so substring matches in
+// strings/comments cannot produce false positives.
+//
+// Reads (`fs.readFile`, `fs.readdir`, `fs.access`, `fs.stat`) are
+// tolerated for now (Finding 9 is mostly about WRITES; reads will fall
+// out of scope as L24/L25/L26 thread `WorkspaceIO` through every caller).
+//
+// Files in the SUBTREE_ALLOWLIST (`src/workspace/`, `src/core/`) are
+// allowed to call write-side `fs.*` directly — those subtrees own the
+// containment surface itself.
+//
+// Loop 23 does NOT remove any back-compat fallback paths, so the
+// `KNOWN_WRITE_VIOLATIONS` list documents each call site that still
+// flows through raw `fs.*`. L24/L25/L26 each remove their share.
+// ---------------------------------------------------------------------------
+
+interface FsWriteCallSite {
+  readonly rel: string;
+  readonly line: number;
+  readonly method: string;
+}
+
+interface KnownFsWriteViolation {
+  readonly rel: string;
+  readonly method: string;
+  readonly reason: string;
+}
+
+const SUBTREES_TO_SCAN = ['src/graph', 'src/info', 'src/artifact'];
+
+const SUBTREE_ALLOWLIST: readonly string[] = [
+  'src/workspace/',
+  'src/core/',
+];
+
+const FS_WRITE_METHODS = new Set([
+  'writeFile',
+  'writeFileSync',
+  'mkdir',
+  'mkdirSync',
+  'unlink',
+  'unlinkSync',
+  'rm',
+  'rmSync',
+]);
+
+// Documented back-compat fallback paths in the L23-migrated files. L24
+// will thread WorkspaceIO through every caller and remove these entries.
+// `graph/plot/generator.ts` is owned by L24 (callers in src/scripts/).
+const KNOWN_WRITE_VIOLATIONS: readonly KnownFsWriteViolation[] = [
+  {
+    rel: 'src/graph/edgelist.ts',
+    method: 'mkdir',
+    reason: 'L23 back-compat fallback in BaseEdgeListStore.save when no `io` is passed (legacy callers); L24 removes once `io` is required.',
+  },
+  {
+    rel: 'src/graph/edgelist.ts',
+    method: 'writeFile',
+    reason: 'L23 back-compat fallback in BaseEdgeListStore.save when no `io` is passed; L24 removes once `io` is required.',
+  },
+  {
+    rel: 'src/graph/worktree-state.ts',
+    method: 'mkdir',
+    reason: 'L23 back-compat fallback in WatchService.save when no `io` is passed; L24 removes once `io` is required.',
+  },
+  {
+    rel: 'src/graph/worktree-state.ts',
+    method: 'writeFile',
+    reason: 'L23 back-compat fallback in WatchService.save when no `io` is passed; L24 removes once `io` is required.',
+  },
+  {
+    rel: 'src/artifact/storage.ts',
+    method: 'mkdir',
+    reason: 'L23 leaves the legacy free-function `writeFile` raw per PLAN §23.2.c fallback option; live writers use the new ArtifactStorage class instead.',
+  },
+  {
+    rel: 'src/artifact/storage.ts',
+    method: 'writeFile',
+    reason: 'L23 leaves the legacy free-function `writeFile` raw per PLAN §23.2.c fallback option; live writers use the new ArtifactStorage class instead.',
+  },
+  {
+    rel: 'src/artifact/storage.ts',
+    method: 'unlink',
+    reason: 'L23 leaves the legacy free-function `deleteFile` raw per PLAN §23.2.c fallback option; live writers use the new ArtifactStorage class instead.',
+  },
+  {
+    rel: 'src/graph/plot/generator.ts',
+    method: 'writeFileSync',
+    reason: 'L23 deferred per PLAN — `savePlot` is only used by `src/scripts/` entry points, both owned by L24.',
+  },
+];
+
+function isUnderAnySubtree(rel: string): boolean {
+  return SUBTREES_TO_SCAN.some((s) => rel === s || rel.startsWith(`${s}/`));
+}
+
+function isInSubtreeAllowlist(rel: string): boolean {
+  return SUBTREE_ALLOWLIST.some((s) => rel.startsWith(s));
+}
+
+/**
+ * AST-walk a file and return every `fs.<method>` / `fsSync.<method>` /
+ * `fs.promises.<method>` call where `<method>` is in `FS_WRITE_METHODS`.
+ * Detects property-access expressions on identifiers `fs`, `fsSync`,
+ * `fsp`, `fsPromises`, plus the `fs.promises.<method>` chain shape.
+ */
+function collectFsWriteCallSitesInFile(filePath: string): FsWriteCallSite[] {
+  const source = fs.readFileSync(filePath, 'utf-8');
+  const sf = ts.createSourceFile(
+    filePath,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const rel = toRepoRel(filePath);
+  const sites: FsWriteCallSite[] = [];
+
+  function isFsRoot(expr: ts.Expression): boolean {
+    if (ts.isIdentifier(expr)) {
+      return expr.text === 'fs' || expr.text === 'fsSync' ||
+        expr.text === 'fsp' || expr.text === 'fsPromises';
+    }
+    // `fs.promises` chain shape
+    if (
+      ts.isPropertyAccessExpression(expr) &&
+      ts.isIdentifier(expr.expression) &&
+      expr.expression.text === 'fs' &&
+      ts.isIdentifier(expr.name) &&
+      expr.name.text === 'promises'
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  function visit(node: ts.Node): void {
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      ts.isIdentifier(node.name) &&
+      FS_WRITE_METHODS.has(node.name.text) &&
+      isFsRoot(node.expression)
+    ) {
+      const { line } = sf.getLineAndCharacterOfPosition(node.getStart(sf));
+      sites.push({ rel, line: line + 1, method: node.name.text });
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sf);
+  return sites;
+}
+
+function collectFsWriteCallSitesInSubtrees(): FsWriteCallSite[] {
+  const sources = walkSrc(SRC_ROOT);
+  const all: FsWriteCallSite[] = [];
+  for (const file of sources) {
+    const rel = toRepoRel(file);
+    if (!isUnderAnySubtree(rel)) continue;
+    if (isInSubtreeAllowlist(rel)) continue;
+    all.push(...collectFsWriteCallSitesInFile(file));
+  }
+  return all;
+}
+
+function fileMethodKey(s: { rel: string; method: string }): string {
+  return `${s.rel}::${s.method}`;
+}
+
+test('fs-write-discipline: src/{graph,info,artifact}/ has no undocumented direct fs.<write*|mkdir*|unlink*|rm*>', () => {
+  const sites = collectFsWriteCallSitesInSubtrees();
+  const known = new Set(KNOWN_WRITE_VIOLATIONS.map(fileMethodKey));
+
+  // Group observed sites by (file, method) so multiple call sites for the
+  // same method in the same file count as one entry — matches console-
+  // discipline's per-file-per-level grouping spirit.
+  const observedKeys = new Set(sites.map(fileMethodKey));
+  const undocumented: FsWriteCallSite[] = [];
+  for (const site of sites) {
+    if (!known.has(fileMethodKey(site))) undocumented.push(site);
+  }
+
+  if (undocumented.length > 0) {
+    for (const site of undocumented) {
+      console.error(
+        `FS-WRITE-DISCIPLINE  ${site.rel}:${site.line} calls fs.${site.method}\n  ` +
+          `Route this through WorkspaceIO (src/workspace/workspace-io.ts) for ` +
+          `realpath-strong containment. If this is a transitional back-compat ` +
+          `path, add an entry to KNOWN_WRITE_VIOLATIONS in ` +
+          `tests/arch/workspace-paths.test.ts with a one-line reason.`
+      );
+    }
+    assert.fail(
+      `${undocumented.length} undocumented direct fs.<write*|mkdir*|unlink*|rm*> ` +
+        `call(s) in src/{graph,info,artifact}/.`
+    );
+  }
+
+  // Also flag stale KNOWN_WRITE_VIOLATIONS entries — once L24/L25/L26
+  // remove the back-compat path the entry must come off.
+  const stale = KNOWN_WRITE_VIOLATIONS.filter(
+    (v) => !observedKeys.has(fileMethodKey(v)),
+  );
+  if (stale.length > 0) {
+    for (const v of stale) {
+      console.error(
+        `STALE  KNOWN_WRITE_VIOLATIONS entry ${v.rel}::fs.${v.method} no longer ` +
+          `observed; remove from tests/arch/workspace-paths.test.ts.\n  reason was: ${v.reason}`
+      );
+    }
+    assert.fail(
+      `${stale.length} stale KNOWN_WRITE_VIOLATIONS entry/entries detected.`
+    );
   }
 });

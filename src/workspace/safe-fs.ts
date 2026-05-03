@@ -82,3 +82,8 @@ export async function safeMkdir(
     const target = resolveInsideWorkspace(root, relPath);
     await fs.mkdir(target, { recursive: true });
 }
+
+// L23: realpath-strong containment surface. Re-exported from this module
+// so callers that already import from `workspace/safe-fs` reach the new
+// class via a single import path.
+export { WorkspaceIO, createWorkspaceIO } from './workspace-io';
