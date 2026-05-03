@@ -197,7 +197,10 @@ export class LLMemPanel {
                 await this._loadFolderNodes(message.folderPath);
                 break;
             case 'toggleWatch':
-                await this._handleToggleWatch(message.path, message.watched);
+                // Loop 14: pass through the webview-supplied requestId so
+                // the response message can be matched back to the right
+                // pending promise in `VSCodeDataProvider.toggleWatch`.
+                await this._handleToggleWatch(message.path, message.watched, message.requestId);
                 break;
         }
     }
@@ -288,8 +291,14 @@ export class LLMemPanel {
      * Handle toggle-watch message. Loop 09 lifted the workflow into
      * `application/toggle-watch.ts`; this handler is a thin wrapper that
      * dispatches the result back to the webview and into hot-reload.
+     *
+     * Loop 14: the webview includes a `requestId` so concurrent toggles
+     * map to their own pending promise. We echo it back unchanged in the
+     * `state:watchedPaths` response. Older (pre-14) webviews omit the id;
+     * we forward `undefined` and the browser side falls back to oldest-
+     * pending resolution.
      */
-    private async _handleToggleWatch(targetPath: string, watched: boolean) {
+    private async _handleToggleWatch(targetPath: string, watched: boolean, requestId?: string) {
         const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!workspaceRoot) return;
         const artifactRoot = path.join(workspaceRoot, getConfig().artifactRoot);
@@ -306,6 +315,7 @@ export class LLMemPanel {
                 for (const f of result.addedFiles) this._hotReload?.addWatchedPath(f);
                 this._panel.webview.postMessage({
                     type: 'state:watchedPaths',
+                    requestId,
                     paths: result.watchedFiles,
                     addedFiles: result.addedFiles,
                 });
@@ -315,6 +325,7 @@ export class LLMemPanel {
                 for (const f of result.removedFiles) this._hotReload?.removeWatchedPath(f);
                 this._panel.webview.postMessage({
                     type: 'state:watchedPaths',
+                    requestId,
                     paths: result.watchedFiles,
                     removedFiles: result.removedFiles,
                 });

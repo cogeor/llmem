@@ -8,19 +8,20 @@
 
 import { GraphRenderer } from "../graph/GraphRenderer";
 import { DataProvider } from "../services/dataProvider";
+import { State } from "../state";
 import { AppState, GraphData, WorkTreeNode, DirectoryNode } from "../types";
 import { parseGraphId } from "../../../core/ids";
 import { escape } from "../utils/escape";
 
 interface Props {
     el: HTMLElement;
-    state: any;
+    state: State;
     dataProvider: DataProvider;
 }
 
 export class GraphView {
     public el: HTMLElement;
-    private state: any;
+    private state: State;
     private dataProvider: DataProvider;
     private graphRenderer: GraphRenderer | null = null;
     private data: GraphData | null = null;

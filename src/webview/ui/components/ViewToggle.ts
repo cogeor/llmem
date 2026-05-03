@@ -1,14 +1,15 @@
 
 import { AppState } from '../types';
+import { State } from '../state';
 
 interface Props {
     el: HTMLElement;
-    state: any;
+    state: State;
 }
 
 export class ViewToggle {
     private el: HTMLElement;
-    private state: any;
+    private state: State;
     private unsubscribe?: () => void;
 
     constructor({ el, state }: Props) {
@@ -21,7 +22,12 @@ export class ViewToggle {
             const target = e.target as HTMLElement;
             const btn = target.closest('[data-view]') as HTMLElement;
             if (!btn) return;
-            this.state.set({ currentView: btn.dataset.view });
+            // Loop 14: validate the dataset value rather than passing the
+            // raw string into a typed state setter.
+            const next = btn.dataset.view;
+            if (next === 'design' || next === 'graph') {
+                this.state.set({ currentView: next });
+            }
         });
 
         this.unsubscribe = this.state.subscribe((s: AppState) => this.render(s));

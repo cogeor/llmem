@@ -12,7 +12,7 @@ export const initialState: AppState = {
     callGraphAvailable: true,  // Will be updated when graph data loads
 };
 
-class State {
+export class State {
     private data: AppState;
     private listeners: Set<(state: AppState) => void>;
 

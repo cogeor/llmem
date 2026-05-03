@@ -1,15 +1,13 @@
 
 import { DataProvider } from '../services/dataProvider';
+import { State } from '../state';
 import { WorkTreeNode, FileNode, DirectoryNode, AppState, GraphStatus } from '../types';
 import { folder, file, chevronRight } from '../icons';
 import { escape } from '../utils/escape';
 
-// VS Code webview API type declaration
-declare function acquireVsCodeApi(): { postMessage: (message: any) => void };
-
 interface Props {
     el: HTMLElement;
-    state: any; // State class
+    state: State;
     dataProvider: DataProvider;
 }
 
@@ -41,7 +39,7 @@ function getCombinedStatus(importStatus?: GraphStatus, callStatus?: GraphStatus)
  */
 export class Worktree {
     private el: HTMLElement;
-    private state: any;
+    private state: State;
     private dataProvider: DataProvider;
     private tree: WorkTreeNode | null = null;
     private unsubscribe?: () => void;
@@ -187,7 +185,12 @@ export class Worktree {
 
         const nodeEl = item.parentElement as HTMLElement;
         const path = nodeEl.dataset.path;
-        const type = nodeEl.dataset.type;
+        const rawType = nodeEl.dataset.type;
+        // Loop 14: tighten — `data-type` is rendered by `renderNode` from
+        // a controlled union, but `dataset.*` is `string | undefined` at
+        // the type system. Narrow by check.
+        const type: 'file' | 'directory' | null =
+            rawType === 'file' || rawType === 'directory' ? rawType : null;
 
         if (type === 'directory') {
             // Toggle expansion
@@ -205,7 +208,7 @@ export class Worktree {
 
         // Update selection state
         this.state.set({
-            selectedPath: path,
+            selectedPath: path ?? null,
             selectedType: type,
             selectionSource: 'explorer'
         });
@@ -215,8 +218,10 @@ export class Worktree {
      * Save current tree expansion state to localStorage (HTTP mode only).
      */
     private saveExpansionState(): void {
-        // Only save in HTTP mode (not VSCode) - VS Code handles state differently
-        if (this.dataProvider.getVscodeApi()) return;
+        // Only save in HTTP (browser) mode — VS Code persists panel state
+        // separately, and the static review forbids components from
+        // reaching into the host API directly (Loop 14).
+        if (this.dataProvider.hostKind === 'vscode') return;
 
         const expandedPaths: string[] = [];
         const expandedElements = this.el.querySelectorAll('.tree-children.is-expanded');
@@ -236,8 +241,9 @@ export class Worktree {
      * Restore tree expansion state from localStorage (HTTP mode only).
      */
     private restoreExpansionState(): void {
-        // Only restore in HTTP mode (not VSCode) - VS Code handles state differently
-        if (this.dataProvider.getVscodeApi()) return;
+        // Mirror of `saveExpansionState`: only the browser host stores
+        // expansion state in localStorage.
+        if (this.dataProvider.hostKind === 'vscode') return;
 
         try {
             const saved = localStorage.getItem('llmem:expandedPaths');

@@ -6,18 +6,19 @@
  * Placed in the design pane header toolbar.
  */
 
-import { DesignViewMode } from '../types';
+import { AppState, DesignViewMode } from '../types';
+import { State } from '../state';
 import { edit, eye } from '../icons';
 
 interface Props {
     el: HTMLElement;
-    state: any;
+    state: State;
     onSave?: () => void;
 }
 
 export class DesignModeToggle {
     private el: HTMLElement;
-    private state: any;
+    private state: State;
     private onSave?: () => void;
     private unsubscribe?: () => void;
 
@@ -29,7 +30,7 @@ export class DesignModeToggle {
 
     mount() {
         // Subscribe to state changes (will call callback immediately with current state)
-        this.unsubscribe = this.state.subscribe((s: any) => {
+        this.unsubscribe = this.state.subscribe((s: AppState) => {
             this.render(s.designViewMode);
         });
     }

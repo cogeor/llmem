@@ -12,6 +12,12 @@ export interface WatchToggleResult {
 }
 
 /**
+ * Identifies which environment hosts the webview UI.
+ * Components must read this instead of probing for VS Code APIs directly.
+ */
+export type HostKind = 'vscode' | 'browser';
+
+/**
  * DataProvider interface for loading webview data.
  * Used by components to fetch graph, worktree, and design doc data.
  *
@@ -20,6 +26,26 @@ export interface WatchToggleResult {
  * - VSCodeDataProvider: For VS Code extension mode (receives via postMessage)
  */
 export interface DataProvider {
+    /**
+     * Identifies the host environment. Components must read this instead of
+     * probing for `acquireVsCodeApi` or related globals — keeps environment
+     * coupling inside the DataProvider boundary (Loop 14).
+     */
+    readonly hostKind: HostKind;
+
+    /**
+     * Reveal a specific line range in the host editor (VS Code only — no-op
+     * in standalone browser mode). Implementations log a warning when the
+     * host cannot honor the request.
+     */
+    revealRange(filePath: string, line: number): void;
+
+    /**
+     * Open a URL externally (in VS Code: delegates to the extension host;
+     * in browser: opens a new window with `noopener`).
+     */
+    openExternal(url: string): void;
+
     /** Load graph data (import and call graphs) */
     loadGraphData(): Promise<GraphData>;
 
@@ -80,11 +106,4 @@ export interface DataProvider {
      * @returns Unsubscribe function
      */
     onDesignDocChange?(callback: (path: string, doc: DesignDoc | null) => void): () => void;
-
-    /**
-     * Get the VS Code API for sending messages (VS Code mode only).
-     * Returns null in standalone mode.
-     * @deprecated Use toggleWatch() and other abstracted methods instead of direct API access.
-     */
-    getVscodeApi(): any;
 }

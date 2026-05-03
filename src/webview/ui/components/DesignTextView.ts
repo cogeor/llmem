@@ -1,5 +1,6 @@
 
 import { DataProvider } from '../services/dataProvider';
+import { State } from '../state';
 import { AppState, DesignDoc, DesignViewMode } from '../types';
 import { DesignRender } from './DesignRender';
 import { escape } from '../utils/escape';
@@ -11,7 +12,7 @@ function normalizePath(path: string): string {
 
 interface DesignTextViewProps {
     el: HTMLElement;
-    state: any;
+    state: State;
     dataProvider: DataProvider;
 }
 
@@ -153,7 +154,7 @@ const DETAIL_STYLES = `
  */
 export class DesignTextView {
     public el: HTMLElement;
-    private state: any;
+    private state: State;
     private dataProvider: DataProvider;
     private shadow: ShadowRoot;
     private container: HTMLElement;

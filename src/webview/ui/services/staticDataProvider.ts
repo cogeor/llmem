@@ -1,5 +1,5 @@
 
-import { DataProvider, WatchToggleResult } from './dataProvider';
+import { DataProvider, HostKind, WatchToggleResult } from './dataProvider';
 import { GraphData, WorkTreeNode, DesignDoc } from '../types';
 import { WatchApiClient } from './watchApiClient';
 import { designDocCache } from './designDocCache';
@@ -11,6 +11,8 @@ import { liveReloadClient } from '../../live-reload';
  * Uses DesignDocCache for real-time design doc updates.
  */
 export class StaticDataProvider implements DataProvider {
+    public readonly hostKind: HostKind = 'browser';
+
     private watchApiClient: WatchApiClient;
     private refreshCallbacks: Set<() => void> = new Set();
     private designDocCallbacks: Set<(path: string, doc: DesignDoc | null) => void> = new Set();
@@ -123,7 +125,23 @@ export class StaticDataProvider implements DataProvider {
         }
     }
 
-    getVscodeApi(): any {
-        return null; // Not available in standalone mode
+    /**
+     * Standalone (browser) mode cannot reveal a range in an editor. Loop 14
+     * keeps the surface uniform across hosts so components don't branch on
+     * `hostKind` for behavioural calls — the no-op + warning is the
+     * contract.
+     */
+    revealRange(filePath: string, line: number): void {
+        console.warn(
+            `[StaticDataProvider] revealRange not supported in browser mode (path=${filePath}, line=${line})`
+        );
+    }
+
+    /**
+     * Open a URL in a new browser window. `noopener` so the popup cannot
+     * navigate the opener.
+     */
+    openExternal(url: string): void {
+        window.open(url, '_blank', 'noopener');
     }
 }

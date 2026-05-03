@@ -1,5 +1,6 @@
 
 import { AppState } from './types';
+import { State } from './state';
 import { escape } from './utils/escape';
 
 interface RouteComponent {
@@ -10,7 +11,7 @@ interface RouteComponent {
 }
 
 interface RouterProps {
-    state: any; // State class
+    state: State;
     container: HTMLElement;
 }
 
@@ -19,7 +20,7 @@ interface RouterProps {
  * Listens to state.currentView and switches the active component.
  */
 export class Router {
-    private state: any;
+    private state: State;
     private container: HTMLElement;
     private routes: Record<string, RouteComponent> = {};
     private unsubscribe?: () => void;

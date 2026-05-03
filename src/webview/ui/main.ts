@@ -29,8 +29,10 @@ const elExplorerPane = document.getElementById('explorer-pane') as HTMLElement;
 const elDesignPane = document.getElementById('design-pane') as HTMLElement;
 const elGraphPane = document.getElementById('graph-pane') as HTMLElement;
 
-// Helper to detect VS Code environment
-declare const acquireVsCodeApi: any;
+// Helper to detect VS Code environment. The full API surface is private to
+// `VSCodeDataProvider`; the global is only declared here so we can probe
+// for it (Loop 14: components must not call `acquireVsCodeApi` directly).
+declare const acquireVsCodeApi: () => { postMessage(msg: unknown): void };
 const isVsCode = typeof acquireVsCodeApi !== 'undefined';
 
 // Detect graph-only mode (no WORK_TREE means graph-only, but ONLY in standalone mode)

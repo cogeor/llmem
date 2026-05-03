@@ -1,14 +1,15 @@
 
 import { AppState } from '../types';
+import { State } from '../state';
 
 interface Props {
     el: HTMLElement;
-    state: any;
+    state: State;
 }
 
 export class GraphTypeToggle {
     private el: HTMLElement;
-    private state: any;
+    private state: State;
     private unsubscribe?: () => void;
 
     constructor({ el, state }: Props) {
@@ -21,7 +22,13 @@ export class GraphTypeToggle {
             const target = e.target as HTMLElement;
             const btn = target.closest("[data-graph-type]") as HTMLElement;
             if (!btn) return;
-            this.state.set({ graphType: btn.dataset.graphType }); // "import" | "call"
+            // Loop 14: tighten — `dataset.graphType` is `string | undefined`
+            // but the buttons in `render()` only emit "import" or "call".
+            // Validate before narrowing rather than blind-casting.
+            const next = btn.dataset.graphType;
+            if (next === 'import' || next === 'call') {
+                this.state.set({ graphType: next });
+            }
         });
 
         this.unsubscribe = this.state.subscribe((s: AppState) => this.render(s));
