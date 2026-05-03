@@ -17,7 +17,7 @@ import {
 import { z } from 'zod';
 import type { Config } from '../core/config-types';
 import { DEFAULT_CONFIG } from '../config-defaults';
-import { TOOLS } from './tools';
+import { toolDefinitions as TOOLS } from './tools';
 import { generateCorrelationId } from './handlers';
 
 // Use require to avoid TypeScript's deep type inference with zod-to-json-schema
@@ -64,6 +64,9 @@ let serverConfig: Config | null = null;
 /** Workspace root for lazy artifact initialization */
 let storedWorkspaceRoot: string | null = null;
 
+/** Stored config for tools that need configuration (artifact paths, etc.) */
+let storedConfig: Config | null = null;
+
 /**
  * Get the stored workspace root for lazy initialization
  */
@@ -75,10 +78,28 @@ export function getStoredWorkspaceRoot(): string {
 }
 
 /**
+ * Get the stored Config for tools (e.g. artifact root paths).
+ * Throws if the server has not been initialized.
+ */
+export function getStoredConfig(): Config {
+    if (!storedConfig) {
+        throw new Error('Config not set. Call startServer first.');
+    }
+    return storedConfig;
+}
+
+/**
  * Set the stored workspace root directly (for testing only)
  */
 export function setStoredWorkspaceRoot(root: string | null): void {
     storedWorkspaceRoot = root;
+}
+
+/**
+ * Set the stored config directly (for testing only)
+ */
+export function setStoredConfig(config: Config | null): void {
+    storedConfig = config;
 }
 
 // ============================================================================
@@ -99,6 +120,7 @@ export async function startServer(config: Config, workspaceRoot: string): Promis
     }
 
     serverConfig = config;
+    storedConfig = config;
     const correlationId = generateCorrelationId();
     console.error(`[${correlationId}] Starting MCP server...`);
 
@@ -213,6 +235,7 @@ export async function stopServer(): Promise<void> {
 
     transport = null;
     serverConfig = null;
+    storedConfig = null;
     storedWorkspaceRoot = null;
 
     console.error(`[${correlationId}] MCP server stopped`);
