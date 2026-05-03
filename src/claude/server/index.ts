@@ -47,6 +47,12 @@ export interface ServerConfig {
     verbose?: boolean;
     /** Optional Bearer token required for mutating endpoints. Empty = no auth. */
     apiToken?: string;
+    /**
+     * Loop 21 — optional explicit override for the webview asset directory.
+     * Threaded into `RegenerateDeps.assetRoot` so the launcher can skip its
+     * cwd-/repo-walk discovery when the embedder already knows the path.
+     */
+    assetRoot?: string;
 }
 
 /**
@@ -83,6 +89,10 @@ export class GraphServer {
             openBrowser: config.openBrowser || false,
             verbose: config.verbose || false,
             apiToken: config.apiToken || '',
+            // Loop 21 — empty string means "use the launcher's discovery
+            // chain". `regenDeps()` translates '' → undefined before
+            // forwarding so `Required<ServerConfig>` stays satisfied.
+            assetRoot: config.assetRoot || '',
         };
         const { workspaceRoot, artifactRoot, verbose } = this.config;
         this.webviewDir = path.join(workspaceRoot, artifactRoot, 'webview');
@@ -188,6 +198,9 @@ export class GraphServer {
             verbose: this.config.verbose,
             webSocket: this.webSocket,
             logger: this.serverLogger,
+            // '' (no override) is normalized to undefined so the launcher
+            // falls back to its discovery chain.
+            assetRoot: this.config.assetRoot || undefined,
         };
     }
 

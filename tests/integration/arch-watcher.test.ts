@@ -20,27 +20,23 @@ const TEST_WORKSPACE = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-arch-'));
 const TEST_ARCH_DIR = path.join(TEST_WORKSPACE, '.arch');
 const TEST_ARTIFACTS_DIR = path.join(TEST_WORKSPACE, '.artifacts');
 
-// The Server API + WebSocket suites boot the full GraphServer, which calls
-// into web-launcher.ts. The launcher resolves the webview folder relative
-// to its own __dirname using `path.resolve(__dirname, '..', '..', '..')`.
-// Under ts-node `__dirname` for src/claude/web-launcher.ts is `src/claude/`
-// so that resolves to `<repo-parent>/dist/webview/` — one level above the
-// repo root, where nothing exists. Under the compiled output (used by the
-// CLI in production) `__dirname` is `dist/claude/claude/` so it resolves
-// correctly to `<repo-root>/dist/webview/`.
+// Loop 21 — the Server API + WebSocket suites boot a real GraphServer,
+// which calls into web-launcher.ts. The launcher now resolves the webview
+// folder via an injected `assetRoot` option / cwd walk-up rather than
+// `__dirname` arithmetic, so a successful resolution only requires that
+// `dist/webview/index.html` exists somewhere on the resolution chain.
 //
-// Until that mismatch is fixed in production code, we probe the same
-// location web-launcher will probe and skip the affected suites if the
-// webview tree isn't there. This preserves the behavior the test had
-// before Loop 17 (it was never actually run in CI — the file lived under
-// `src/claude/server/` which `compile:vscode` excludes from `dist/**`,
-// so the legacy `node --test dist/**/*.test.js` glob never picked it up).
-const SRC_CLAUDE = path.resolve(__dirname, '..', '..', 'src', 'claude');
-const LAUNCHER_EXTENSION_ROOT = path.resolve(SRC_CLAUDE, '..', '..', '..');
-const LAUNCHER_DIST_WEBVIEW = path.join(LAUNCHER_EXTENSION_ROOT, 'dist', 'webview', 'index.html');
-const SERVER_SKIP_REASON = fs.existsSync(LAUNCHER_DIST_WEBVIEW)
+// `pretest` runs `npm run build:webview`, so under `npm run test:*` this
+// file is reliably present. Keep a defensive guard for ad-hoc runs (e.g.
+// invoking `node --test` directly without the prebuild) that skips the
+// three live-server suites with a clear instruction rather than failing
+// inside `regenerateWebview`.
+const REPO_ROOT = path.resolve(__dirname, '..', '..');
+const DIST_WEBVIEW_INDEX = path.join(REPO_ROOT, 'dist', 'webview', 'index.html');
+const SERVER_SKIP_REASON = fs.existsSync(DIST_WEBVIEW_INDEX)
     ? undefined
-    : `dist/webview/index.html not found at ${LAUNCHER_DIST_WEBVIEW} (web-launcher's __dirname-relative resolution under ts-node) — Server API tests skipped`;
+    : `dist/webview/index.html not found at ${DIST_WEBVIEW_INDEX}. ` +
+      `Run "npm run build:webview" first (or use "npm test", which now runs build:webview as part of pretest).`;
 
 /**
  * Helper to make HTTP requests

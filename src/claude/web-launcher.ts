@@ -26,6 +26,119 @@ export interface GraphGenerationOptions {
     artifactRoot?: string;
     /** Only generate graph assets (skip worktree, arch, design docs) */
     graphOnly?: boolean;
+    /**
+     * Absolute path to the directory containing webview assets
+     * (`index.html`, `main.js`, `styles/`, `libs/`). When omitted, the
+     * launcher discovers it via `<workspaceRoot>/dist/webview` →
+     * repo-root probe (walk up from `process.cwd()` looking for a
+     * `package.json` whose `name === 'llmem'`) → `<repoRoot>/dist/webview`
+     * → `<repoRoot>/src/webview` (development fallback).
+     *
+     * Loop 21 — replaces the previous compile-relative resolution,
+     * which broke under ts-node because the script's directory differs
+     * between `src/claude/web-launcher.ts` and the compiled
+     * `dist/claude/claude/web-launcher.js`.
+     */
+    assetRoot?: string;
+}
+
+/**
+ * Walk up from `process.cwd()` looking for a `package.json` whose
+ * `name === 'llmem'`. Returns the first match's directory or `null` if
+ * we hit the filesystem root without finding one.
+ *
+ * Used by `resolveAssetRoot` as a fallback when neither an explicit
+ * `assetRoot` nor a `<workspaceRoot>/dist/webview` is available.
+ */
+export function findRepoRoot(): string | null {
+    let current = process.cwd();
+    const root = path.parse(current).root;
+
+    while (current !== root) {
+        const pkgPath = path.join(current, 'package.json');
+        if (fs.existsSync(pkgPath)) {
+            try {
+                const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+                if (pkg && pkg.name === 'llmem') {
+                    return current;
+                }
+            } catch {
+                // ignore parse failures, keep walking
+            }
+        }
+        const parent = path.dirname(current);
+        if (parent === current) break;
+        current = parent;
+    }
+    return null;
+}
+
+/**
+ * Resolve the directory containing webview assets.
+ *
+ * Priority order (Loop 21):
+ *   1. `options.assetRoot` if set and `<assetRoot>/index.html` exists.
+ *   2. `<options.workspaceRoot>/dist/webview/index.html`.
+ *   3. `<repoRoot>/dist/webview/index.html` (repo found via cwd walk-up).
+ *   4. `<repoRoot>/src/webview/index.html` (development fallback; warns).
+ *
+ * Throws "Webview assets not found" listing every probed path if none
+ * resolved. The error deliberately omits any compile-time directory
+ * reference — that carries no diagnostic value under the new model.
+ */
+export function resolveAssetRoot(options: GraphGenerationOptions): string {
+    const probed: string[] = [];
+
+    // 1. Explicit assetRoot wins.
+    if (options.assetRoot) {
+        const indexPath = path.join(options.assetRoot, 'index.html');
+        probed.push(`assetRoot: ${indexPath}`);
+        if (fs.existsSync(indexPath)) {
+            return options.assetRoot;
+        }
+    }
+
+    // 2. Workspace-root-relative dist/webview.
+    if (options.workspaceRoot) {
+        const wsAssets = path.join(options.workspaceRoot, 'dist', 'webview');
+        const wsIndex = path.join(wsAssets, 'index.html');
+        probed.push(`workspaceRoot: ${wsIndex}`);
+        if (fs.existsSync(wsIndex)) {
+            return wsAssets;
+        }
+    }
+
+    // 3. Repo-root walk-up from cwd → dist/webview.
+    const repoRoot = findRepoRoot();
+    if (repoRoot) {
+        const repoDist = path.join(repoRoot, 'dist', 'webview');
+        const repoDistIndex = path.join(repoDist, 'index.html');
+        probed.push(`repoRoot/dist: ${repoDistIndex}`);
+        if (fs.existsSync(repoDistIndex)) {
+            return repoDist;
+        }
+
+        // 4. Development fallback: src/webview (no index.html check —
+        // the webview generator can render directly from source). Warn
+        // because this means the dev hasn't run `npm run build:webview`.
+        const repoSrc = path.join(repoRoot, 'src', 'webview');
+        probed.push(`repoRoot/src: ${repoSrc}`);
+        if (fs.existsSync(repoSrc)) {
+            log.warn(
+                'Using src/webview fallback (development only). Run "npm run build:webview" to generate dist/webview.',
+                { assetRoot: repoSrc },
+            );
+            return repoSrc;
+        }
+    } else {
+        probed.push('repoRoot: <not found> (no package.json with name="llmem" walking up from process.cwd())');
+    }
+
+    throw new Error(
+        `Webview assets not found. Probed (in order):\n` +
+        probed.map((p) => `  - ${p}`).join('\n') + '\n' +
+        `Pass an explicit \`assetRoot\` option or run "npm run build:webview" to generate dist/webview.`,
+    );
 }
 
 /**
@@ -101,31 +214,17 @@ export async function generateGraph(
     // Prepare graph data for visualization (filtered by watched files)
     const graphData = prepareWebviewDataFromSplitEdgeLists(importData, callData, watchedFiles);
 
-    // Determine extension root (where webview files are located)
-    // Priority: 1) dist/webview (portable), 2) src/webview (development)
-    // When running from dist/claude/claude/index.js, extension root is ../../../
-    const extensionRoot = path.resolve(__dirname, '..', '..', '..');
+    // Loop 21 — resolve webview asset root via injected option / cwd
+    // walk-up. Replaces the previous compile-time directory arithmetic.
+    const webviewRoot = resolveAssetRoot(options);
 
-    // Check for webview in dist/ first (portable CLI), then src/ (development)
-    const distWebview = path.join(extensionRoot, 'dist', 'webview');
-    const srcWebview = path.join(extensionRoot, 'src', 'webview');
-
-    let webviewRoot: string;
-    if (fs.existsSync(distWebview) && fs.existsSync(path.join(distWebview, 'index.html'))) {
-        // Use dist/webview for portable CLI
-        webviewRoot = distWebview;
-    } else if (fs.existsSync(srcWebview)) {
-        // Fall back to src/webview for development
-        webviewRoot = srcWebview;
-    } else {
-        throw new Error(
-            `Webview files not found. Checked:\n` +
-            `  - dist/webview at: ${distWebview}\n` +
-            `  - src/webview at: ${srcWebview}\n` +
-            `Current __dirname: ${__dirname}\n` +
-            `Run 'npm run build:webview' to generate dist/webview files.`
-        );
-    }
+    // `generateStaticWebview` accepts an `extensionRoot` and re-probes
+    // `<extensionRoot>/dist/webview` vs `<extensionRoot>/src/webview`
+    // internally. Our resolved `webviewRoot` is one of those two
+    // (or an explicit override), so the parent of its parent is the
+    // matching extension root. Keeping this derivation rather than
+    // changing the generator's signature stays inside Loop 21 scope.
+    const extensionRoot = path.resolve(webviewRoot, '..', '..');
 
     // Generate static webview
     const webviewDir = path.join(artifactDir, 'webview');

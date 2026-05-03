@@ -115,7 +115,7 @@
     "build:vscode": "npm run compile:vscode && npm run compile:webview-types && npm run build:webview",
     "build:claude": "npm run compile:claude",
     "build:all": "npm run compile:all && npm run build:webview",
-    "pretest": "npm run compile",
+    "pretest": "npm run compile && npm run build:webview",
     "prepackage": "npm run compile:production && npm run build:webview",
     "compile:production": "tsc -p ./tsconfig.production.json",
     "scan": "npx ts-node src/scripts/generate_edgelist.ts",

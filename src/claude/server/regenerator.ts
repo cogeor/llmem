@@ -24,6 +24,12 @@ export interface RegenerateDeps {
     verbose: boolean;
     webSocket: WebSocketService;
     logger: Logger;
+    /**
+     * Loop 21 — optional explicit override for the webview asset directory,
+     * threaded through from `ServerConfig.assetRoot`. When omitted, the
+     * launcher's discovery chain runs.
+     */
+    assetRoot?: string;
 }
 
 /**
@@ -35,6 +41,7 @@ export async function regenerateWebview(deps: RegenerateDeps): Promise<void> {
         workspaceRoot: deps.workspaceRoot,
         artifactRoot: deps.artifactRoot,
         graphOnly: false,
+        assetRoot: deps.assetRoot,
     });
 
     if (deps.verbose) {

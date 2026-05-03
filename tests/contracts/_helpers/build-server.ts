@@ -52,6 +52,7 @@ export function buildConfig(overrides: Partial<Required<ServerConfig>> = {}): Re
         port: 0,
         workspaceRoot: tmp,
         artifactRoot: '.artifacts',
+        assetRoot: '',
         openBrowser: false,
         verbose: false,
         apiToken: '',

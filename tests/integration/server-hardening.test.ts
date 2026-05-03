@@ -127,6 +127,7 @@ function buildConfig(overrides: Partial<Required<ServerConfig>>): Required<Serve
         port: 0,
         workspaceRoot: tmp,
         artifactRoot: '.artifacts',
+        assetRoot: '',
         openBrowser: false,
         verbose: false,
         apiToken: '',
