@@ -7,5 +7,4 @@
 
 export { PythonExtractor } from './extractor';
 export { PythonImportParser } from './imports';
-export { PythonCallResolver } from './resolver';
 export { PythonAdapter } from './adapter';

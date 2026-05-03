@@ -2,7 +2,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { collectViewerData } from '../application/viewer-data';
-import { getSupportedExtensions } from '../artifact/service';
+import { ParserRegistry } from '../parser/registry';
 import { scanFile } from '../application/scan';
 import type { Logger } from '../core/logger';
 import { asWorkspaceRoot, asAbsPath } from '../core/paths';
@@ -72,7 +72,7 @@ export class HotReloadService {
         console.log('[HotReload]   Arch root:', this.archRoot);
 
         // Watch source files -> refresh graphs
-        const extensions = getSupportedExtensions();
+        const extensions = ParserRegistry.getInstance().getSupportedExtensions();
         const extPattern = extensions.map(e => e.replace(/^\./, '')).join(',');
 
         console.log(`[HotReload] Watching extensions: {${extPattern}}`);

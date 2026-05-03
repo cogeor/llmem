@@ -106,12 +106,6 @@ const KNOWN_VIOLATIONS: readonly KnownViolation[] = [
     to: 'src/extension/config.ts',
     reason: 'getConfig+loadConfig runtime; future loop moves runtime out of extension/',
   },
-  {
-    from: 'src/extension/hot-reload.ts',
-    to: 'src/artifact/service.ts',
-    reason:
-      'getSupportedExtensions still lives in artifact/service; Loop 15 (parser-support-truth) moves it',
-  },
 ];
 
 function toRepoRel(absPath: string): string {

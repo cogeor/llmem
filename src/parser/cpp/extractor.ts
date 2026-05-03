@@ -18,16 +18,17 @@ import Parser, { SyntaxNode } from 'tree-sitter';
 import { ArtifactExtractor } from '../interfaces';
 import { FileArtifact, Entity, ImportSpec, ExportSpec, Loc, EntityKind } from '../types';
 
-// Tree-sitter C++ grammar - require at runtime
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const Cpp = require('tree-sitter-cpp');
-
 export class CppExtractor implements ArtifactExtractor {
     private parser: Parser;
     private workspaceRoot: string;
 
     constructor(workspaceRoot?: string) {
         this.workspaceRoot = workspaceRoot || process.cwd();
+        // Tree-sitter C++ grammar - require lazily so `parser/config.ts` can
+        // import this module's adapter for extension metadata without forcing
+        // tree-sitter-cpp to be installed at module-load time.
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const Cpp = require('tree-sitter-cpp');
         this.parser = new Parser();
         this.parser.setLanguage(Cpp);
     }

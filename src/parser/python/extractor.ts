@@ -17,26 +17,24 @@ import * as fs from 'fs';
 import * as path from 'path';
 import Parser, { SyntaxNode } from 'tree-sitter';
 import { ArtifactExtractor } from '../interfaces';
-import { FileArtifact, Entity, CallSite, Loc, EntityKind, ExportSpec } from '../types';
+import { FileArtifact, Entity, Loc, EntityKind, ExportSpec } from '../types';
 import { PythonImportParser } from './imports';
-import { PythonCallResolver, LocalDefinition } from './resolver';
-
-// Tree-sitter Python grammar - require at runtime
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const Python = require('tree-sitter-python');
 
 export class PythonExtractor implements ArtifactExtractor {
     private parser: Parser;
     private importParser: PythonImportParser;
-    private callResolver: PythonCallResolver;
     private workspaceRoot: string;
 
     constructor(workspaceRoot?: string) {
         this.workspaceRoot = workspaceRoot || process.cwd();
+        // Tree-sitter Python grammar - require lazily so `parser/config.ts` can
+        // import this module's adapter for extension metadata without forcing
+        // tree-sitter-python to be installed at module-load time.
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const Python = require('tree-sitter-python');
         this.parser = new Parser();
         this.parser.setLanguage(Python);
         this.importParser = new PythonImportParser();
-        this.callResolver = new PythonCallResolver(this.workspaceRoot);
     }
 
     public async extract(filePath: string, content?: string): Promise<FileArtifact | null> {
@@ -55,7 +53,7 @@ export class PythonExtractor implements ArtifactExtractor {
 
         // 2. Extract entities (functions, classes, methods)
         // NOTE: Call extraction is disabled for Python - only TS/JS supports call graphs
-        const { entities } = this.extractEntities(rootNode, fileContent);
+        const entities = this.extractEntities(rootNode, fileContent);
 
         // 3. Determine exports (in Python, top-level defs are typically "public")
         const exports = this.extractExports(entities);
@@ -76,46 +74,19 @@ export class PythonExtractor implements ArtifactExtractor {
     /**
      * Extract all function and class definitions.
      */
-    private extractEntities(
-        rootNode: SyntaxNode,
-        fileContent: string
-    ): { entities: Entity[]; localDefs: Map<string, LocalDefinition> } {
+    private extractEntities(rootNode: SyntaxNode, fileContent: string): Entity[] {
         const entities: Entity[] = [];
-        const localDefs = new Map<string, LocalDefinition>();
 
         const processNode = (node: SyntaxNode, classContext?: string) => {
             if (node.type === 'function_definition') {
                 const entity = this.extractFunctionEntity(node, fileContent, classContext);
                 if (entity) {
                     entities.push(entity);
-
-                    const kind = classContext ? 'method' : 'function';
-                    const qualifiedName = classContext ? `${classContext}.${entity.name}` : entity.name;
-
-                    localDefs.set(entity.name, {
-                        name: entity.name,
-                        kind,
-                        qualifiedName
-                    });
-
-                    if (classContext) {
-                        localDefs.set(qualifiedName, {
-                            name: entity.name,
-                            kind,
-                            qualifiedName
-                        });
-                    }
                 }
             } else if (node.type === 'class_definition') {
                 const classEntity = this.extractClassEntity(node, fileContent);
                 if (classEntity) {
                     entities.push(classEntity);
-
-                    localDefs.set(classEntity.name, {
-                        name: classEntity.name,
-                        kind: 'class',
-                        qualifiedName: classEntity.name
-                    });
 
                     // Process methods within the class
                     const bodyNode = node.childForFieldName('body');
@@ -143,7 +114,7 @@ export class PythonExtractor implements ArtifactExtractor {
         };
 
         processNode(rootNode);
-        return { entities, localDefs };
+        return entities;
     }
 
     /**
@@ -219,105 +190,6 @@ export class PythonExtractor implements ArtifactExtractor {
             signature: signature + ': ...',
             calls: []
         };
-    }
-
-    /**
-     * Extract all call sites within an entity's body.
-     */
-    private extractCalls(entityNode: SyntaxNode, fileContent: string): CallSite[] {
-        const calls: CallSite[] = [];
-        const bodyNode = entityNode.childForFieldName('body');
-
-        if (!bodyNode) return calls;
-
-        const processNode = (node: SyntaxNode) => {
-            if (node.type === 'call') {
-                const callSite = this.extractCallSite(node);
-                if (callSite) {
-                    calls.push(callSite);
-                }
-            }
-
-            // Don't recurse into nested function/class definitions
-            if (node.type !== 'function_definition' && node.type !== 'class_definition') {
-                for (const child of node.children) {
-                    processNode(child);
-                }
-            }
-        };
-
-        processNode(bodyNode);
-        return calls;
-    }
-
-    /**
-     * Extract a CallSite from a call node.
-     */
-    private extractCallSite(node: SyntaxNode): CallSite | null {
-        const functionNode = node.childForFieldName('function');
-        if (!functionNode) return null;
-
-        let calleeName: string;
-        let kind: 'function' | 'method' | 'new' = 'function';
-
-        if (functionNode.type === 'identifier') {
-            // Simple function call: foo()
-            calleeName = functionNode.text;
-        } else if (functionNode.type === 'attribute') {
-            // Method call: obj.method() or module.func()
-            calleeName = functionNode.text;
-            kind = 'method';
-        } else {
-            // Complex expression: foo()(), etc.
-            calleeName = functionNode.text;
-        }
-
-        // Resolve the call
-        const resolved = this.callResolver.resolve(calleeName);
-
-        return {
-            callSiteId: `call@${node.startPosition.row + 1}:${node.startPosition.column}`,
-            kind,
-            calleeName,
-            resolvedDefinition: resolved,
-            loc: this.getLoc(node)
-        };
-    }
-
-    /**
-     * Find the AST node corresponding to an entity.
-     */
-    private findEntityNode(rootNode: SyntaxNode, entity: Entity): SyntaxNode | null {
-        const targetLine = entity.loc.startLine - 1; // Convert to 0-based
-
-        const search = (node: SyntaxNode): SyntaxNode | null => {
-            if (
-                (node.type === 'function_definition' || node.type === 'class_definition') &&
-                node.startPosition.row === targetLine
-            ) {
-                const nameNode = node.childForFieldName('name');
-                if (nameNode && nameNode.text === entity.name) {
-                    return node;
-                }
-            }
-
-            // Check decorated definitions
-            if (node.type === 'decorated_definition') {
-                for (const child of node.children) {
-                    const result = search(child);
-                    if (result) return result;
-                }
-            }
-
-            for (const child of node.children) {
-                const result = search(child);
-                if (result) return result;
-            }
-
-            return null;
-        };
-
-        return search(rootNode);
     }
 
     /**

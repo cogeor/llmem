@@ -110,18 +110,6 @@ export function getWorkspaceRoot(): string {
     return workspaceRoot;
 }
 
-export function getSupportedExtensions(): string[] {
-    // Use ParserRegistry to get supported extensions
-    try {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
-        const { ParserRegistry } = require('../parser/registry');
-        return ParserRegistry.getInstance().getSupportedExtensions();
-    } catch {
-        // Fallback if registry not available
-        return ['.ts', '.tsx', '.js', '.jsx', '.py'];
-    }
-}
-
 function checkInitialized() {
     if (!isInitialized) {
         throw new Error('Artifact service not initialized. Call initializeArtifactService() first.');

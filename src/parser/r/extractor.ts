@@ -18,17 +18,18 @@ import Parser, { SyntaxNode } from 'tree-sitter';
 import { ArtifactExtractor } from '../interfaces';
 import { FileArtifact, Entity, ImportSpec, ExportSpec, Loc } from '../types';
 
-// Tree-sitter R grammar - require at runtime
-// Note: Using scoped package until tree-sitter-r is claimed
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const R = require('@davisvaughan/tree-sitter-r');
-
 export class RExtractor implements ArtifactExtractor {
     private parser: Parser;
     private workspaceRoot: string;
 
     constructor(workspaceRoot?: string) {
         this.workspaceRoot = workspaceRoot || process.cwd();
+        // Tree-sitter R grammar - require lazily so `parser/config.ts` can
+        // import this module's adapter for extension metadata without forcing
+        // @davisvaughan/tree-sitter-r to be installed at module-load time.
+        // (Using scoped package until tree-sitter-r is claimed.)
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const R = require('@davisvaughan/tree-sitter-r');
         this.parser = new Parser();
         this.parser.setLanguage(R);
     }
