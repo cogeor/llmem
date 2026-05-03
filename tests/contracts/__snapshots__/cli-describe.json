@@ -161,6 +161,59 @@
         }
       ],
       "name": "scan"
+    },
+    {
+      "args": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "_": {
+            "description": "(internal) Positional arguments routed by the dispatcher.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "content": {
+            "description": "Inline JSON payload — the agent's report_file_info / report_folder_info body.",
+            "type": "string"
+          },
+          "contentFile": {
+            "description": "Path to a file containing the JSON payload, or \"-\" to read stdin to EOF.",
+            "type": "string"
+          },
+          "path": {
+            "description": "Workspace-relative path to a file or folder to document (positional accepted).",
+            "type": "string"
+          },
+          "promptOnly": {
+            "default": false,
+            "description": "Print the LLM prompt to stdout and exit 0.",
+            "type": "boolean"
+          },
+          "workspace": {
+            "description": "Workspace root directory (auto-detected if omitted).",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "description": "Generate the LLM prompt or save an LLM-enriched design doc for a file or folder.",
+      "examples": [
+        {
+          "command": "llmem document src/parser/extractor.ts --prompt-only",
+          "scenario": "Print the file documentation prompt"
+        },
+        {
+          "command": "llmem document src/parser --prompt-only",
+          "scenario": "Print the folder documentation prompt"
+        },
+        {
+          "command": "llmem document src/parser/extractor.ts --content-file -",
+          "scenario": "Pipe the agent's JSON output back to write .arch/src/parser/extractor.ts.md"
+        }
+      ],
+      "name": "document"
     }
   ],
   "version": "<X>"

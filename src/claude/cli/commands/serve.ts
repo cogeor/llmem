@@ -18,6 +18,7 @@ import { hasEdgeLists, generateGraph } from '../../web-launcher';
 import { scanFolderRecursive } from '../../../application/scan';
 import { WorkspaceIO } from '../../../workspace/workspace-io';
 import { asWorkspaceRoot } from '../../../core/paths';
+import { detectWorkspace } from '../workspace';
 import type { CommandSpec } from '../registry';
 
 // Loop 21 — optional explicit override for the webview asset directory.
@@ -25,40 +26,6 @@ import type { CommandSpec } from '../registry';
 // to its discovery chain (workspaceRoot/dist/webview → repo-root walk-up
 // → src/webview). Empty string is treated the same as unset.
 const ASSET_ROOT_OVERRIDE = process.env.LLMEM_ASSET_ROOT || undefined;
-
-/**
- * Detect workspace root.
- *
- * Local copy of detectWorkspace lifted from cli.ts:108-133. Each command
- * file gets its own copy in loop 01; deduplication can wait until loop 03+
- * when serve and scan share more.
- */
-function detectWorkspace(explicit?: string): string {
-    if (explicit) {
-        if (!fs.existsSync(explicit)) {
-            console.error(`Error: Workspace not found: ${explicit}`);
-            process.exit(1);
-        }
-        return path.resolve(explicit);
-    }
-
-    // Auto-detect
-    const markers = ['.git', 'package.json', '.llmem', '.arch', '.artifacts'];
-    let current = process.cwd();
-    const root = path.parse(current).root;
-
-    while (current !== root) {
-        for (const marker of markers) {
-            if (fs.existsSync(path.join(current, marker))) {
-                return current;
-            }
-        }
-        current = path.dirname(current);
-    }
-
-    // Fallback to cwd
-    return process.cwd();
-}
 
 const serveArgs = z.object({
     port: z.number().int().min(0).max(65535).default(3000),

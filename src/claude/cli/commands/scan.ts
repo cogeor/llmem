@@ -10,50 +10,13 @@
  */
 
 import * as path from 'path';
-import * as fs from 'fs';
 import { z } from 'zod';
 
 import { scanFolderRecursive } from '../../../application/scan';
 import { WorkspaceIO } from '../../../workspace/workspace-io';
 import { asWorkspaceRoot } from '../../../core/paths';
+import { detectWorkspace } from '../workspace';
 import type { CommandSpec } from '../registry';
-
-/**
- * Detect workspace root.
- *
- * Local copy of detectWorkspace lifted from serve.ts:36-61 (which itself
- * was lifted from cli.ts:108-133). Each command file gets its own copy
- * for now; deduplication is explicitly deferred.
- *
- * TODO(loop 06+): hoist to src/claude/cli/context.ts to stop duplicating
- * across commands.
- */
-function detectWorkspace(explicit?: string): string {
-    if (explicit) {
-        if (!fs.existsSync(explicit)) {
-            console.error(`Error: Workspace not found: ${explicit}`);
-            process.exit(1);
-        }
-        return path.resolve(explicit);
-    }
-
-    // Auto-detect
-    const markers = ['.git', 'package.json', '.llmem', '.arch', '.artifacts'];
-    let current = process.cwd();
-    const root = path.parse(current).root;
-
-    while (current !== root) {
-        for (const marker of markers) {
-            if (fs.existsSync(path.join(current, marker))) {
-                return current;
-            }
-        }
-        current = path.dirname(current);
-    }
-
-    // Fallback to cwd
-    return process.cwd();
-}
 
 const scanArgs = z.object({
     workspace: z.string().optional().describe('Workspace root directory (auto-detected if omitted)'),

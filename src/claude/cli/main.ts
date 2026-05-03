@@ -49,6 +49,19 @@ function findCommand(name: string): CommandSpec | undefined {
     return REGISTRY.find(c => c.name === name || (c.aliases && c.aliases.includes(name)));
 }
 
+/**
+ * Normalize a long-flag key to the camelCase form used in Zod schemas.
+ *
+ * `--prompt-only` → `promptOnly`. Single-word flags pass through. Used so
+ * commands can declare schemas with conventional camelCase identifiers
+ * (`promptOnly: z.boolean()`) while users type kebab-case on the CLI
+ * (`--prompt-only`). Loop 06 introduces this when the `document` command
+ * adds the first multi-word flag.
+ */
+function kebabToCamel(key: string): string {
+    return key.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
+}
+
 function parseArgv(argv: string[]): ParsedArgv {
     const flagMap: Record<string, unknown> = {};
     const positional: string[] = [];
@@ -61,21 +74,23 @@ function parseArgv(argv: string[]): ParsedArgv {
         if (arg.startsWith('--')) {
             const eqIdx = arg.indexOf('=');
             if (eqIdx !== -1) {
-                const key = arg.slice(2, eqIdx);
+                const rawKey = arg.slice(2, eqIdx);
                 const value = arg.slice(eqIdx + 1);
-                if (key === 'help') { helpRequested = true; continue; }
-                flagMap[key] = value;
+                if (rawKey === 'help') { helpRequested = true; continue; }
+                flagMap[kebabToCamel(rawKey)] = value;
                 continue;
             }
-            const key = arg.slice(2);
-            if (key === 'help') { helpRequested = true; continue; }
-            if (key.startsWith('no-')) {
-                flagMap[key.slice(3)] = false;
+            const rawKey = arg.slice(2);
+            if (rawKey === 'help') { helpRequested = true; continue; }
+            if (rawKey.startsWith('no-')) {
+                flagMap[kebabToCamel(rawKey.slice(3))] = false;
                 continue;
             }
-            // Look ahead for a value
+            const key = kebabToCamel(rawKey);
+            // Look ahead for a value. Special case: bare `-` is the
+            // conventional stdin sentinel and IS a value, not a flag.
             const next = argv[i + 1];
-            if (next !== undefined && !next.startsWith('-')) {
+            if (next !== undefined && (next === '-' || !next.startsWith('-'))) {
                 flagMap[key] = next;
                 i++;
             } else {
@@ -95,7 +110,7 @@ function parseArgv(argv: string[]): ParsedArgv {
                 process.exit(1);
             }
             const next = argv[i + 1];
-            if (next !== undefined && !next.startsWith('-')) {
+            if (next !== undefined && (next === '-' || !next.startsWith('-'))) {
                 flagMap[long] = next;
                 i++;
             } else {
