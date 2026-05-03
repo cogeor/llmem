@@ -1,9 +1,9 @@
-import * as fs from 'fs';
 import * as path from 'path';
 import { getArchRoot, getDesignDocKey } from '../docs/arch-store';
-import { asWorkspaceRoot, asAbsPath } from '../core/paths';
+import { asWorkspaceRoot, asAbsPath, type WorkspaceRoot } from '../core/paths';
 import { renderMarkdown } from './markdown-renderer';
 import { createLogger } from '../common/logger';
+import { WorkspaceIO } from '../workspace/workspace-io';
 
 const log = createLogger('design-doc-manager');
 
@@ -16,23 +16,41 @@ export interface DesignDoc {
 }
 
 /**
- * Load all design docs for a given project root
- * Convenience function for generator and data service
+ * Load all design docs for a given project root.
+ *
+ * Loop 26: takes a `WorkspaceIO` instance so reads run through the
+ * realpath-strong I/O surface. Constructs a `DesignDocManager` internally.
  */
-export async function loadDesignDocs(projectRoot: string): Promise<Record<string, DesignDoc>> {
-    const manager = new DesignDocManager(projectRoot);
+export async function loadDesignDocs(
+    projectRoot: string,
+    io: WorkspaceIO,
+): Promise<Record<string, DesignDoc>> {
+    const manager = new DesignDocManager(asWorkspaceRoot(projectRoot), io);
     return await manager.getAllDocsAsync();
 }
 
 /**
  * Manages design documents, handling data conversion and retrieval.
+ *
+ * Loop 26: `WorkspaceIO` is now a constructor field. Every read in
+ * `getAllDocsAsync` / `walk` flows through it (replaces fs.existsSync,
+ * fs.readFileSync, fs.readdirSync — 3 sites).
  */
 export class DesignDocManager {
+    private workspaceRoot: WorkspaceRoot;
     private archRoot: string;
+    private archRel: string;
+    private io: WorkspaceIO;
 
-    constructor(projectRoot: string) {
+    constructor(projectRoot: WorkspaceRoot | string, io: WorkspaceIO) {
+        const branded = typeof projectRoot === 'string'
+            ? asWorkspaceRoot(projectRoot)
+            : projectRoot;
+        this.workspaceRoot = branded;
         // .arch path mapping owned by src/docs/arch-store.ts (Loop 04).
-        this.archRoot = getArchRoot(asWorkspaceRoot(projectRoot));
+        this.archRoot = getArchRoot(branded);
+        this.archRel = path.relative(branded, this.archRoot).replace(/\\/g, '/');
+        this.io = io;
     }
 
     /**
@@ -51,14 +69,14 @@ export class DesignDocManager {
         const docs: Record<string, DesignDoc> = {};
 
         log.debug('archRoot resolved', { archRoot: this.archRoot });
-        if (!fs.existsSync(this.archRoot)) {
+        if (!(await this.io.exists(this.archRel))) {
             log.debug('archRoot does not exist');
             return docs;
         }
 
         const files: string[] = [];
         try {
-            this.walk(this.archRoot, (f) => files.push(f));
+            await this.walk(this.archRel, (f) => files.push(f));
         } catch (e) {
             log.error('Error walking directory', {
                 error: e instanceof Error ? e.message : String(e),
@@ -66,22 +84,23 @@ export class DesignDocManager {
         }
         log.debug('Found files in archRoot', { count: files.length });
 
-        for (const filePath of files) {
-            if (filePath.endsWith('.md')) {
+        for (const fileRel of files) {
+            if (fileRel.endsWith('.md')) {
                 try {
-                    const markdown = fs.readFileSync(filePath, 'utf-8');
+                    const markdown = await this.io.readFile(fileRel, 'utf-8');
                     const html = await renderMarkdown(markdown);
 
                     // Key mapping is owned by src/docs/arch-store.ts (Loop 04).
-                    const key = getDesignDocKey(asAbsPath(this.archRoot), asAbsPath(filePath));
-                    const relPath = path.relative(this.archRoot, filePath).replace(/\\/g, '/');
+                    const absFilePath = path.join(this.workspaceRoot, fileRel);
+                    const key = getDesignDocKey(asAbsPath(this.archRoot), asAbsPath(absFilePath));
+                    const relPath = path.relative(this.archRoot, absFilePath).replace(/\\/g, '/');
                     log.debug('Processed design doc', { relPath, key });
 
                     // Store both markdown and HTML
                     docs[key] = { markdown, html };
                 } catch (e) {
                     log.error('Failed to convert design doc', {
-                        filePath,
+                        filePath: fileRel,
                         error: e instanceof Error ? e.message : String(e),
                     });
                 }
@@ -91,15 +110,21 @@ export class DesignDocManager {
         return docs;
     }
 
-    private walk(dir: string, callback: (path: string) => void) {
-        const entries = fs.readdirSync(dir, { withFileTypes: true });
+    /**
+     * Recursive walker via WorkspaceIO. `relDir` is workspace-relative.
+     * Calls `callback(relPath)` for each file encountered.
+     */
+    private async walk(relDir: string, callback: (relPath: string) => void): Promise<void> {
+        const entries = await this.io.readDir(relDir);
         for (const entry of entries) {
-            const fullPath = path.join(dir, entry.name);
-            if (entry.isDirectory()) {
-                this.walk(fullPath, callback);
+            const childRel = relDir === '' || relDir === '.'
+                ? entry
+                : `${relDir}/${entry}`;
+            const stat = await this.io.stat(childRel);
+            if (stat.isDirectory()) {
+                await this.walk(childRel, callback);
             } else {
-                // console.log('[DesignDocManager] Found file:', fullPath);
-                callback(fullPath);
+                callback(childRel);
             }
         }
     }

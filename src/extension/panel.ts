@@ -313,6 +313,10 @@ export class LLMemPanel {
         const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!workspaceRoot) return;
         const artifactRoot = path.join(workspaceRoot, getConfig().artifactRoot);
+        // L26: WorkspaceIO threaded into collectViewerData. Constructed
+        // per-method here; L27's AppContext will hoist this to a single
+        // workspace-scoped instance.
+        const io = await WorkspaceIO.create(asWorkspaceRoot(workspaceRoot));
         const req = {
             workspaceRoot: asWorkspaceRoot(workspaceRoot),
             artifactRoot: asAbsPath(artifactRoot),
@@ -344,6 +348,7 @@ export class LLMemPanel {
             const raw = await collectViewerData({
                 workspaceRoot: req.workspaceRoot,
                 artifactRoot: req.artifactRoot,
+                io,
                 logger: req.logger,
             });
             const rendered = await toRenderedViewerData(raw);
@@ -373,6 +378,12 @@ export class LLMemPanel {
         const watchedFiles = watchService.getWatchedFiles();
         log.debug('Found watched files', { count: watchedFiles.length });
 
+        // L24/L26: WorkspaceIO realpath-strong I/O surface, threaded into
+        // every scanFile and collectViewerData invocation. Hoisted outside
+        // the `watchedFiles.length > 0` guard so the initial-data path
+        // also has access to it.
+        const io = await WorkspaceIO.create(asWorkspaceRoot(workspaceRoot));
+
         // Detect changed files and regenerate edges
         if (watchedFiles.length > 0) {
             const changedFiles = await watchService.getChangedFiles();
@@ -380,9 +391,6 @@ export class LLMemPanel {
 
             // Regenerate edges for changed files
             const logger = this._panelLogger();
-            // L24: WorkspaceIO realpath-strong I/O surface, threaded into
-            // every scanFile invocation.
-            const io = await WorkspaceIO.create(asWorkspaceRoot(workspaceRoot));
             for (const filePath of changedFiles) {
                 try {
                     await scanFile({
@@ -432,6 +440,7 @@ export class LLMemPanel {
             const raw = await collectViewerData({
                 workspaceRoot: asWorkspaceRoot(workspaceRoot),
                 artifactRoot: asAbsPath(artifactRoot),
+                io,
                 logger: this._panelLogger(),
             });
             const rendered = await toRenderedViewerData(raw);

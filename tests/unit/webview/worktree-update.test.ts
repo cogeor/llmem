@@ -8,6 +8,8 @@
 // Promoted from src/test/verify_tree_update.ts in Loop 17. The original
 // script used a hardcoded directory next to itself and `process.exit(1)`
 // for failure reporting; this version uses a temp dir and `assert.fail`.
+//
+// Loop 26: `generateWorkTree` now takes a `WorkspaceIO` instance.
 
 import test, { describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -16,12 +18,16 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 import { generateWorkTree, type ITreeNode } from '../../../src/webview/worktree';
+import { WorkspaceIO } from '../../../src/workspace/workspace-io';
+import { asWorkspaceRoot } from '../../../src/core/paths';
 
 describe('generateWorkTree add/remove cycle', () => {
     let testDir: string;
+    let io: WorkspaceIO;
 
-    before(() => {
+    before(async () => {
         testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-worktree-update-'));
+        io = await WorkspaceIO.create(asWorkspaceRoot(testDir));
     });
 
     after(() => {
@@ -34,7 +40,7 @@ describe('generateWorkTree add/remove cycle', () => {
         fs.mkdirSync(path.join(testDir, 'sub'));
         fs.writeFileSync(path.join(testDir, 'sub', 'file2.txt'), 'content');
 
-        const tree: ITreeNode = await generateWorkTree(testDir, testDir);
+        const tree: ITreeNode = await generateWorkTree(io);
 
         const file1 = tree.children?.find((c) => c.name === 'file1.txt');
         const sub = tree.children?.find((c) => c.name === 'sub');
@@ -54,7 +60,7 @@ describe('generateWorkTree add/remove cycle', () => {
     test('adding a new file shows up in the next snapshot', async () => {
         fs.writeFileSync(path.join(testDir, 'newfile.txt'), 'content');
 
-        const tree: ITreeNode = await generateWorkTree(testDir, testDir);
+        const tree: ITreeNode = await generateWorkTree(io);
 
         const newFile = tree.children?.find((c) => c.name === 'newfile.txt');
         if (!newFile) {
@@ -65,7 +71,7 @@ describe('generateWorkTree add/remove cycle', () => {
     test('removing a file drops it from the next snapshot', async () => {
         fs.unlinkSync(path.join(testDir, 'file1.txt'));
 
-        const tree: ITreeNode = await generateWorkTree(testDir, testDir);
+        const tree: ITreeNode = await generateWorkTree(io);
 
         const file1Gone = tree.children?.find((c) => c.name === 'file1.txt');
         if (file1Gone) {

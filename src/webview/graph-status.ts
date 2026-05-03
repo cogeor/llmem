@@ -1,15 +1,20 @@
 /**
  * Graph Status Computation
- * 
+ *
  * Determines the status of import/call graphs for each folder.
  * Status is based on comparing edge list timestamps with file modification times.
+ *
+ * Loop 26: every read-side `fs.*` site is replaced with `WorkspaceIO`
+ * calls (existsSync × 2, readdirSync × 3, statSync × 3 — 7 sites).
+ * The internal helpers are converted to operate on workspace-relative
+ * paths so `io.readDir` / `io.stat` / `io.exists` apply uniformly.
  */
 
-import * as fs from 'fs';
 import * as path from 'path';
-import { ImportEdgeListStore, CallEdgeListStore, EdgeListData } from '../graph/edgelist';
+import { ImportEdgeListStore, CallEdgeListStore } from '../graph/edgelist';
 import { IGNORED_FOLDERS, ALL_SUPPORTED_EXTENSIONS } from '../parser/config';
 import { GraphStatus } from './worktree';
+import { WorkspaceIO } from '../workspace/workspace-io';
 
 export interface FolderGraphStatus {
     folderPath: string;          // Relative folder path
@@ -21,16 +26,23 @@ export interface FolderGraphStatus {
     lastModified: number;        // Most recent file modification timestamp
 }
 
+/** Convert an absolute path under the workspace to its workspace-relative POSIX form. */
+function toWorkspaceRel(workspaceRoot: string, abs: string): string {
+    return path.relative(workspaceRoot, abs).replace(/\\/g, '/');
+}
+
 /**
  * Compute graph status for all folders in a worktree.
- * 
- * @param projectRoot Workspace root
- * @param artifactRoot Artifact directory
+ *
+ * @param projectRoot Workspace root (absolute path)
+ * @param artifactRoot Artifact directory (absolute path)
+ * @param io Realpath-strong I/O surface anchored on the workspace root
  * @returns Map of folder path to status
  */
 export async function computeAllFolderStatuses(
     projectRoot: string,
-    artifactRoot: string
+    artifactRoot: string,
+    io: WorkspaceIO
 ): Promise<Map<string, FolderGraphStatus>> {
     const results = new Map<string, FolderGraphStatus>();
 
@@ -40,16 +52,18 @@ export async function computeAllFolderStatuses(
 
     const importPath = path.join(artifactRoot, 'import-edgelist.json');
     const callPath = path.join(artifactRoot, 'call-edgelist.json');
+    const importRel = toWorkspaceRel(projectRoot, importPath);
+    const callRel = toWorkspaceRel(projectRoot, callPath);
 
-    const hasImportStore = fs.existsSync(importPath);
-    const hasCallStore = fs.existsSync(callPath);
+    const hasImportStore = await io.exists(importRel);
+    const hasCallStore = await io.exists(callRel);
 
     if (hasImportStore) await importStore.load();
     if (hasCallStore) await callStore.load();
 
     // Get edge list timestamps
-    const importTimestamp = hasImportStore ? getFileTimestamp(importPath) : 0;
-    const callTimestamp = hasCallStore ? getFileTimestamp(callPath) : 0;
+    const importTimestamp = hasImportStore ? await getFileTimestamp(io, importRel) : 0;
+    const callTimestamp = hasCallStore ? await getFileTimestamp(io, callRel) : 0;
 
     // Build set of FILES that have edges (not folders)
     const filesWithImportEdges = new Set<string>();
@@ -72,10 +86,11 @@ export async function computeAllFolderStatuses(
         }
     }
 
-    // Scan all folders and compute status based on files inside
+    // Scan all folders and compute status based on files inside.
+    // Start at the workspace root ('.' relative).
     await scanFoldersRecursive(
-        projectRoot,
-        projectRoot,
+        io,
+        '.',
         results,
         filesWithImportEdges,
         filesWithCallEdges,
@@ -136,35 +151,36 @@ function getWorstStatus(a: 'never' | 'outdated' | 'current', b: 'never' | 'outda
 
 /**
  * Recursively scan folders and compute their status based on files inside.
+ * `currentRel` is workspace-relative POSIX form ('.' for the workspace root).
  */
 async function scanFoldersRecursive(
-    projectRoot: string,
-    currentPath: string,
+    io: WorkspaceIO,
+    currentRel: string,
     results: Map<string, FolderGraphStatus>,
     filesWithImportEdges: Set<string>,
     filesWithCallEdges: Set<string>,
     importTimestamp: number,
     callTimestamp: number
 ): Promise<void> {
-    const relativePath = path.relative(projectRoot, currentPath).replace(/\\/g, '/') || '.';
+    const relativePath = currentRel || '.';
 
     // Skip ignored folders
-    const folderName = path.basename(currentPath);
-    if (IGNORED_FOLDERS.has(folderName)) return;
+    const folderName = relativePath === '.' ? '' : path.posix.basename(relativePath);
+    if (folderName && IGNORED_FOLDERS.has(folderName)) return;
 
     // Get files in this folder and check their status
     const {
         fileCount,
         lastModified,
         filesInFolder
-    } = getFolderInfoWithFiles(currentPath);
+    } = await getFolderInfoWithFiles(io, relativePath);
 
     // Check how many files have edges computed
     let filesWithImport = 0;
     let filesWithCall = 0;
 
     for (const file of filesInFolder) {
-        const fileRelPath = path.join(relativePath, file).replace(/\\/g, '/');
+        const fileRelPath = relativePath === '.' ? file : `${relativePath}/${file}`;
         if (filesWithImportEdges.has(fileRelPath)) filesWithImport++;
         if (filesWithCallEdges.has(fileRelPath)) filesWithCall++;
     }
@@ -209,7 +225,7 @@ async function scanFoldersRecursive(
     // Recurse into subdirectories
     let entries: string[];
     try {
-        entries = fs.readdirSync(currentPath);
+        entries = await io.readDir(relativePath);
     } catch (e) {
         return;
     }
@@ -217,18 +233,19 @@ async function scanFoldersRecursive(
     for (const entry of entries) {
         if (IGNORED_FOLDERS.has(entry)) continue;
 
-        const entryPath = path.join(currentPath, entry);
-        let stats: fs.Stats;
+        const entryRel = relativePath === '.' ? entry : `${relativePath}/${entry}`;
+        let isDir = false;
         try {
-            stats = fs.statSync(entryPath);
+            const stats = await io.stat(entryRel);
+            isDir = stats.isDirectory();
         } catch (e) {
             continue;
         }
 
-        if (stats.isDirectory()) {
+        if (isDir) {
             await scanFoldersRecursive(
-                projectRoot,
-                entryPath,
+                io,
+                entryRel,
                 results,
                 filesWithImportEdges,
                 filesWithCallEdges,
@@ -241,10 +258,11 @@ async function scanFoldersRecursive(
 
 /**
  * Get file modification timestamp.
+ * `relPath` is workspace-relative POSIX form.
  */
-function getFileTimestamp(filePath: string): number {
+async function getFileTimestamp(io: WorkspaceIO, relPath: string): Promise<number> {
     try {
-        const stats = fs.statSync(filePath);
+        const stats = await io.stat(relPath);
         return stats.mtimeMs;
     } catch (e) {
         return 0;
@@ -253,30 +271,37 @@ function getFileTimestamp(filePath: string): number {
 
 /**
  * Get folder info with files list.
+ * `folderRel` is workspace-relative POSIX form.
  */
-function getFolderInfoWithFiles(folderPath: string): { fileCount: number; lastModified: number; filesInFolder: string[] } {
+async function getFolderInfoWithFiles(
+    io: WorkspaceIO,
+    folderRel: string,
+): Promise<{ fileCount: number; lastModified: number; filesInFolder: string[] }> {
     let fileCount = 0;
     let lastModified = 0;
     const filesInFolder: string[] = [];
 
     let entries: string[];
     try {
-        entries = fs.readdirSync(folderPath);
+        entries = await io.readDir(folderRel);
     } catch (e) {
         return { fileCount, lastModified, filesInFolder };
     }
 
     for (const entry of entries) {
-        const entryPath = path.join(folderPath, entry);
+        const entryRel = folderRel === '.' ? entry : `${folderRel}/${entry}`;
 
-        let stats: fs.Stats;
+        let isFile = false;
+        let mtimeMs = 0;
         try {
-            stats = fs.statSync(entryPath);
+            const stats = await io.stat(entryRel);
+            isFile = stats.isFile();
+            mtimeMs = stats.mtimeMs;
         } catch (e) {
             continue;
         }
 
-        if (!stats.isFile()) continue;
+        if (!isFile) continue;
 
         // Check if supported extension
         const ext = path.extname(entry).toLowerCase();
@@ -288,8 +313,8 @@ function getFolderInfoWithFiles(folderPath: string): { fileCount: number; lastMo
 
         fileCount++;
         filesInFolder.push(entry);
-        if (stats.mtimeMs > lastModified) {
-            lastModified = stats.mtimeMs;
+        if (mtimeMs > lastModified) {
+            lastModified = mtimeMs;
         }
     }
 

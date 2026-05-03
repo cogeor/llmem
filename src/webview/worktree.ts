@@ -1,7 +1,7 @@
-import * as fs from 'fs';
 import * as path from 'path';
 import { isSupportedFile } from '../parser/config';
 import { createLogger } from '../common/logger';
+import { WorkspaceIO } from '../workspace/workspace-io';
 
 const log = createLogger('webview-worktree');
 
@@ -46,27 +46,30 @@ const ALWAYS_IGNORED = new Set([
 /**
  * Parse .gitignore and return a set of patterns.
  * Simple implementation - handles basic patterns only.
+ *
+ * Loop 26: reads `.gitignore` through the realpath-strong WorkspaceIO
+ * surface (replaces `fs.existsSync` + `fs.readFileSync`).
  */
-function parseGitignore(rootPath: string): Set<string> {
+async function parseGitignore(io: WorkspaceIO): Promise<Set<string>> {
     const patterns = new Set<string>();
-    const gitignorePath = path.join(rootPath, '.gitignore');
 
     try {
-        if (fs.existsSync(gitignorePath)) {
-            const content = fs.readFileSync(gitignorePath, 'utf8');
-            for (const line of content.split('\n')) {
-                const trimmed = line.trim();
-                // Skip comments and empty lines
-                if (!trimmed || trimmed.startsWith('#')) continue;
+        if (!(await io.exists('.gitignore'))) {
+            return patterns;
+        }
+        const content = await io.readFile('.gitignore', 'utf8');
+        for (const line of content.split('\n')) {
+            const trimmed = line.trim();
+            // Skip comments and empty lines
+            if (!trimmed || trimmed.startsWith('#')) continue;
 
-                // Remove trailing slashes for directory patterns
-                let pattern = trimmed.replace(/\/$/, '');
+            // Remove trailing slashes for directory patterns
+            let pattern = trimmed.replace(/\/$/, '');
 
-                // Handle negation (we don't support it, just skip)
-                if (pattern.startsWith('!')) continue;
+            // Handle negation (we don't support it, just skip)
+            if (pattern.startsWith('!')) continue;
 
-                patterns.add(pattern);
-            }
+            patterns.add(pattern);
         }
     } catch (e) {
         log.warn('Failed to parse .gitignore', {
@@ -98,7 +101,7 @@ function shouldIgnore(name: string, relativePath: string, patterns: Set<string>)
         '.mp4', '.avi', '.mov', '.mp3', '.wav',
         // Archives
         '.zip', '.tar', '.gz', '.7z', '.rar',
-        // Documents  
+        // Documents
         '.pdf', '.doc', '.docx', '.xls', '.xlsx'
     ];
     const ext = path.extname(name).toLowerCase();
@@ -131,32 +134,43 @@ function shouldIgnore(name: string, relativePath: string, patterns: Set<string>)
 /**
  * Recursively generates a tree structure of the workspace.
  * Respects .gitignore patterns.
- * 
- * @param rootPath Absolute path to the root directory
- * @param currentPath Absolute path to the current directory being scanned (default: rootPath)
+ *
+ * Loop 26: signature is now `(io, currentRel?, gitignorePatterns?)`.
+ * The legacy `(rootPath, currentPath)` absolute-path form is dropped —
+ * every caller passed `rootPath === currentPath === workspaceRoot`. The
+ * relative-path signature is what `WorkspaceIO` wants.
+ *
+ * @param io Realpath-strong I/O surface anchored on the workspace root
+ * @param currentRel Workspace-relative POSIX path of the current node
+ *                   (default: '' which represents the workspace root)
  * @param gitignorePatterns Optional pre-parsed gitignore patterns
  * @returns Root tree node
  */
 export async function generateWorkTree(
-    rootPath: string,
-    currentPath: string = rootPath,
+    io: WorkspaceIO,
+    currentRel: string = '',
     gitignorePatterns?: Set<string>
 ): Promise<ITreeNode> {
     // Parse .gitignore on first call
     if (!gitignorePatterns) {
-        gitignorePatterns = parseGitignore(rootPath);
+        gitignorePatterns = await parseGitignore(io);
     }
 
-    const name = path.basename(currentPath);
-    const relativePath = path.relative(rootPath, currentPath).replace(/\\/g, '/');
+    // Normalize: '' → '.' for the io surface; keep '' in the resulting
+    // node.path to preserve the legacy serialized shape.
+    const probeRel = currentRel === '' ? '.' : currentRel;
+    const relativePath = currentRel;
+    const name = currentRel === ''
+        ? path.basename(io.getRealRoot())
+        : path.posix.basename(currentRel);
 
     // Check stats
-    let stats: fs.Stats;
+    let stats: import('fs').Stats;
     try {
-        stats = fs.statSync(currentPath);
+        stats = await io.stat(probeRel);
     } catch (e) {
         log.warn('Could not stat path', {
-            currentPath,
+            currentRel,
             error: e instanceof Error ? e.message : String(e),
         });
         return { name, path: relativePath, type: 'file', size: 0 };
@@ -169,12 +183,12 @@ export async function generateWorkTree(
         // Count lines for text files (< 1MB and no null bytes)
         if (size < 1024 * 1024) {
             try {
-                const content = fs.readFileSync(currentPath, 'utf8');
+                const content = await io.readFile(probeRel, 'utf8');
                 if (!content.includes('\0')) {
                     lineCount = content.split('\n').length;
                 }
             } catch (e) {
-                // Ignore read errors
+                // Ignore read errors (binary files, decode failures, etc.)
             }
         }
 
@@ -190,10 +204,10 @@ export async function generateWorkTree(
         const children: ITreeNode[] = [];
         let entries: string[] = [];
         try {
-            entries = fs.readdirSync(currentPath);
+            entries = await io.readDir(probeRel);
         } catch (e) {
             log.warn('Could not list dir', {
-                currentPath,
+                currentRel,
                 error: e instanceof Error ? e.message : String(e),
             });
         }
@@ -204,9 +218,18 @@ export async function generateWorkTree(
             // Check if should be ignored
             if (shouldIgnore(entry, entryRelPath, gitignorePatterns)) continue;
 
-            const fullPath = path.join(currentPath, entry);
-            const childNode = await generateWorkTree(rootPath, fullPath, gitignorePatterns);
-            children.push(childNode);
+            // Per-child try/catch so a single bad entry (e.g. a symlink
+            // pointing outside the workspace, surfaced as PathEscapeError
+            // through io.stat) does not abort the entire walk.
+            try {
+                const childNode = await generateWorkTree(io, entryRelPath, gitignorePatterns);
+                children.push(childNode);
+            } catch (e) {
+                log.warn('Skipping unreadable entry', {
+                    entryRelPath,
+                    error: e instanceof Error ? e.message : String(e),
+                });
+            }
         }
 
         // Sort: directories first, then files

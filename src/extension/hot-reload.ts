@@ -291,9 +291,11 @@ export class HotReloadService {
 
     public async sendUpdate() {
         try {
+            const io = await this.getIO();
             const raw = await collectViewerData({
                 workspaceRoot: asWorkspaceRoot(this.projectRoot),
                 artifactRoot: asAbsPath(this.artifactRoot),
+                io,
                 logger: this._scanLogger,
             });
             const designDocs = await renderRawDesignDocs(raw.designDocs);

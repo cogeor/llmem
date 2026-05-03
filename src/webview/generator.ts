@@ -6,6 +6,8 @@ import { generateWorkTree } from './worktree';
 import { convertAllMarkdown } from './utils/md-converter';
 import { loadDesignDocs } from './design-docs';
 import { createLogger } from '../common/logger';
+import { WorkspaceIO } from '../workspace/workspace-io';
+import { asWorkspaceRoot } from '../core/paths';
 
 const log = createLogger('webview-generator');
 
@@ -37,6 +39,13 @@ export async function generateStaticWebview(
 ): Promise<string> {
 
     const { graphOnly = false } = options;
+
+    // L26: WorkspaceIO realpath-strong I/O surface, constructed once and
+    // forwarded into the read-side calls (`generateWorkTree`,
+    // `loadDesignDocs`). The static-generator's writes (`fs.cpSync`,
+    // `fs.writeFileSync`, etc.) stay on `WRITE_ALLOWLIST` until L28 moves
+    // the viewer projection out of `src/webview/` entirely.
+    const io = await WorkspaceIO.create(asWorkspaceRoot(workspaceRoot));
 
     // Ensure destination exists
     if (!fs.existsSync(destinationDir)) {
@@ -134,7 +143,7 @@ export async function generateStaticWebview(
     // 4. Generate Folder Tree (skip in graph-only mode)
     // Use workspace root for the tree - don't assume 'src/' exists
     if (!graphOnly) {
-        const workTree = await generateWorkTree(workspaceRoot, workspaceRoot);
+        const workTree = await generateWorkTree(io);
         const treePath = path.join(destinationDir, 'work_tree.js');
         const treeContent = `window.WORK_TREE = ${JSON.stringify(workTree, null, 2)};`;
         fs.writeFileSync(treePath, treeContent, 'utf8');
@@ -160,7 +169,7 @@ export async function generateStaticWebview(
 
     // 6. Bundle Design Docs (skip in graph-only mode)
     if (!graphOnly) {
-        const designDocs = await loadDesignDocs(workspaceRoot);
+        const designDocs = await loadDesignDocs(workspaceRoot, io);
         const designDocsPath = path.join(destinationDir, 'design_docs.js');
         const designDocsContent = `window.DESIGN_DOCS = ${JSON.stringify(designDocs, null, 2)};`;
         fs.writeFileSync(designDocsPath, designDocsContent, 'utf8');

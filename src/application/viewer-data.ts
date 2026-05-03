@@ -27,15 +27,19 @@
  * lines and avoids creating a new `application -> webview` boundary
  * violation. `getArchRoot` and `getDesignDocKey` from `docs/arch-store`
  * provide the path mapping.
+ *
+ * Loop 26: every read-side `fs.*` site (existsSync × 3, readdirSync × 1)
+ * is replaced with `WorkspaceIO` calls. The `io: WorkspaceIO` field is
+ * REQUIRED on the option types so realpath-strong containment is enforced
+ * uniformly. The directory walker becomes async because `io.readDir` /
+ * `io.stat` are async-only by design.
  */
 
 import * as path from 'path';
-import * as fs from 'fs';
 import type { WorkspaceRoot, AbsPath } from '../core/paths';
-import { asWorkspaceRoot, asAbsPath, asRelPath } from '../core/paths';
+import { asWorkspaceRoot, asAbsPath } from '../core/paths';
 import type { Logger } from '../core/logger';
 import { NoopLogger } from '../core/logger';
-import { safeMkdir, safeReadFile } from '../workspace/safe-fs';
 import { getArchRoot, getDesignDocKey } from '../docs/arch-store';
 import { generateWorkTree, type ITreeNode } from '../webview/worktree';
 import {
@@ -49,6 +53,7 @@ import { artifactToEdgeList } from '../graph/artifact-converter';
 import { LAZY_CODEBASE_LINE_THRESHOLD } from '../parser/config';
 import { computeAllFolderStatuses } from '../webview/graph-status';
 import { WatchService } from '../graph/worktree-state';
+import { WorkspaceIO } from '../workspace/workspace-io';
 
 /**
  * Shape of the data the viewer renders. Note: `designDocs` is RAW markdown.
@@ -64,6 +69,8 @@ export interface ViewerData {
 export interface CollectViewerDataOptions {
     workspaceRoot: WorkspaceRoot;
     artifactRoot: AbsPath;
+    /** Required (L26): realpath-strong I/O surface anchored on the workspace root. */
+    io: WorkspaceIO;
     logger?: Logger;
 }
 
@@ -76,9 +83,16 @@ export interface CollectViewerDataWithStoresOptions {
     workspaceRoot: WorkspaceRoot;
     importStore: ImportEdgeListStore;
     callStore: CallEdgeListStore;
+    /** Required (L26): realpath-strong I/O surface anchored on the workspace root. */
+    io: WorkspaceIO;
     /** When provided, watched-files filtering is applied. */
     artifactRoot?: AbsPath;
     logger?: Logger;
+}
+
+/** Convert an absolute path under the workspace to its workspace-relative POSIX form. */
+function toWorkspaceRel(workspaceRoot: WorkspaceRoot, abs: string): string {
+    return path.relative(workspaceRoot, abs).replace(/\\/g, '/');
 }
 
 /**
@@ -91,14 +105,13 @@ export interface CollectViewerDataWithStoresOptions {
 export async function collectViewerData(
     opts: CollectViewerDataOptions,
 ): Promise<ViewerData> {
-    const { workspaceRoot, artifactRoot } = opts;
+    const { workspaceRoot, artifactRoot, io } = opts;
     const logger = opts.logger ?? NoopLogger;
 
-    // Ensure artifact root exists (safeMkdir does { recursive: true }
-    // internally; resolveInsideWorkspace accepts absolute paths that fall
-    // under root). We pass the relative form to satisfy the RelPath brand.
-    const artifactRel = path.relative(workspaceRoot, artifactRoot).replace(/\\/g, '/');
-    await safeMkdir(workspaceRoot, asRelPath(artifactRel));
+    // Ensure artifact root exists. The realpath-strong `io.mkdirRecursive`
+    // walks up to the nearest existing ancestor and asserts containment.
+    const artifactRel = toWorkspaceRel(workspaceRoot, artifactRoot);
+    await io.mkdirRecursive(artifactRel);
 
     // Load or generate split edge lists
     const importStore = new ImportEdgeListStore(artifactRoot);
@@ -106,8 +119,10 @@ export async function collectViewerData(
 
     const importPath = path.join(artifactRoot, 'import-edgelist.json');
     const callPath = path.join(artifactRoot, 'call-edgelist.json');
+    const importRel = toWorkspaceRel(workspaceRoot, importPath);
+    const callRel = toWorkspaceRel(workspaceRoot, callPath);
 
-    if (fs.existsSync(importPath) && fs.existsSync(callPath)) {
+    if ((await io.exists(importRel)) && (await io.exists(callRel))) {
         // Both edge lists exist - load them
         await importStore.load();
         await callStore.load();
@@ -131,13 +146,12 @@ export async function collectViewerData(
     logger.info(`[WebviewDataService] Import graph: ${importStats.nodes} nodes, ${importStats.edges} edges`);
     logger.info(`[WebviewDataService] Call graph: ${callStats.nodes} nodes, ${callStats.edges} edges`);
 
-    // Ensure .arch exists. The legacy code swallowed mkdir errors via a
-    // try/catch around an inline mkdirSync; safeMkdir surfaces a structured
+    // Ensure .arch exists. `io.mkdirRecursive` surfaces a structured
     // PathEscapeError if the candidate escapes the workspace, which can't
     // happen for the well-known '.arch' relative path.
     const archRoot = getArchRoot(workspaceRoot);
     try {
-        await safeMkdir(workspaceRoot, asRelPath('.arch'));
+        await io.mkdirRecursive('.arch');
     } catch (e) {
         logger.error(`Failed to create .arch directory: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -157,14 +171,14 @@ export async function collectViewerData(
     logger.info(`[WebviewDataService] Graph data prepared: import ${graphData.importGraph.nodes.length} nodes, call ${graphData.callGraph.nodes.length} nodes`);
 
     // 2. Work Tree with graph status
-    const workTree = await generateWorkTree(workspaceRoot, workspaceRoot);
+    const workTree = await generateWorkTree(io);
 
     // Populate graph status for directories
-    const folderStatuses = await computeAllFolderStatuses(workspaceRoot, artifactRoot);
+    const folderStatuses = await computeAllFolderStatuses(workspaceRoot, artifactRoot, io);
     populateTreeStatus(workTree, folderStatuses);
 
     // 3. Design Docs (raw markdown — caller renders)
-    const designDocs = await collectRawDesignDocs(workspaceRoot, archRoot, logger);
+    const designDocs = await collectRawDesignDocs(workspaceRoot, archRoot, io, logger);
 
     return {
         graphData,
@@ -185,13 +199,13 @@ export async function collectViewerData(
 export async function collectViewerDataWithStores(
     opts: CollectViewerDataWithStoresOptions,
 ): Promise<ViewerData> {
-    const { workspaceRoot, importStore, callStore, artifactRoot } = opts;
+    const { workspaceRoot, importStore, callStore, artifactRoot, io } = opts;
     const logger = opts.logger ?? NoopLogger;
 
-    // Ensure .arch exists (see collectViewerData for safeMkdir notes).
+    // Ensure .arch exists (see collectViewerData for io.mkdirRecursive notes).
     const archRoot = getArchRoot(workspaceRoot);
     try {
-        await safeMkdir(workspaceRoot, asRelPath('.arch'));
+        await io.mkdirRecursive('.arch');
     } catch (e) {
         logger.error(`Failed to create .arch directory: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -214,10 +228,10 @@ export async function collectViewerDataWithStores(
     );
 
     // 2. Work Tree
-    const workTree = await generateWorkTree(workspaceRoot, workspaceRoot);
+    const workTree = await generateWorkTree(io);
 
     // 3. Design Docs (raw markdown — caller renders)
-    const designDocs = await collectRawDesignDocs(workspaceRoot, archRoot, logger);
+    const designDocs = await collectRawDesignDocs(workspaceRoot, archRoot, io, logger);
 
     return {
         graphData,
@@ -367,51 +381,58 @@ async function scanAndPopulateSplitEdgeLists(
 async function collectRawDesignDocs(
     workspaceRoot: WorkspaceRoot,
     archRoot: AbsPath,
+    io: WorkspaceIO,
     logger: Logger,
 ): Promise<Record<string, string>> {
     const docs: Record<string, string> = {};
 
-    if (!fs.existsSync(archRoot)) {
+    const archRel = toWorkspaceRel(workspaceRoot, archRoot);
+    if (!(await io.exists(archRel))) {
         return docs;
     }
 
-    // Collect all files under archRoot (sync walk; consistent with the
-    // legacy DesignDocManager.walk implementation).
+    // Collect all files under archRoot via the realpath-strong walker.
     const files: string[] = [];
     try {
-        walkDir(archRoot, (f) => files.push(f));
+        await walkDir(io, archRel, (rel) => files.push(rel));
     } catch (e) {
         logger.error(`[WebviewDataService] Error walking .arch: ${e instanceof Error ? e.message : String(e)}`);
     }
 
-    for (const filePath of files) {
-        if (!filePath.endsWith('.md')) continue;
+    for (const relPath of files) {
+        if (!relPath.endsWith('.md')) continue;
         try {
-            // Read via safeReadFile. filePath is absolute and inside
-            // workspaceRoot/.arch — convert to a workspace-relative path
-            // to satisfy the RelPath brand on safe-fs's API.
-            const relPath = path.relative(workspaceRoot, filePath).replace(/\\/g, '/');
-            const markdown = await safeReadFile(workspaceRoot, asRelPath(relPath));
-            if (markdown === null) continue;
-            const key = getDesignDocKey(asAbsPath(archRoot), asAbsPath(filePath));
+            const markdown = await io.readFile(relPath, 'utf-8');
+            const absPath = path.join(workspaceRoot, relPath);
+            const key = getDesignDocKey(asAbsPath(archRoot), asAbsPath(absPath));
             docs[key] = markdown;
         } catch (e) {
-            logger.error(`Failed to read design doc: ${filePath} — ${e instanceof Error ? e.message : String(e)}`);
+            logger.error(`Failed to read design doc: ${relPath} — ${e instanceof Error ? e.message : String(e)}`);
         }
     }
 
     return docs;
 }
 
-/** Recursive directory walk; calls `cb(fullPath)` on every file. */
-function walkDir(dir: string, cb: (fullPath: string) => void): void {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
+/**
+ * Recursive directory walk via WorkspaceIO. Calls `cb(relPath)` on every file.
+ * `relDir` is workspace-relative (POSIX form).
+ */
+async function walkDir(
+    io: WorkspaceIO,
+    relDir: string,
+    cb: (relPath: string) => void,
+): Promise<void> {
+    const entries = await io.readDir(relDir);
     for (const entry of entries) {
-        const fullPath = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-            walkDir(fullPath, cb);
+        const childRel = relDir === '' || relDir === '.'
+            ? entry
+            : `${relDir}/${entry}`;
+        const stat = await io.stat(childRel);
+        if (stat.isDirectory()) {
+            await walkDir(io, childRel, cb);
         } else {
-            cb(fullPath);
+            cb(childRel);
         }
     }
 }

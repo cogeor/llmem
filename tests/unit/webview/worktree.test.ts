@@ -7,6 +7,9 @@
 // `.java`/`.go` from the supported-extension list — this test pins that the
 // flag flips correctly, so unsupported files render but cannot be toggled
 // for watching.
+//
+// Loop 26: `generateWorkTree` now takes a `WorkspaceIO` instance instead
+// of an absolute root path.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -15,6 +18,8 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 import { generateWorkTree, type ITreeNode } from '../../../src/webview/worktree';
+import { WorkspaceIO } from '../../../src/workspace/workspace-io';
+import { asWorkspaceRoot } from '../../../src/core/paths';
 
 function findChild(root: ITreeNode, name: string): ITreeNode | undefined {
     return root.children?.find((c) => c.name === name);
@@ -30,7 +35,8 @@ test('generateWorkTree marks .java and .go files as not supported, .ts and .py a
         fs.writeFileSync(path.join(fixtureDir, 'baz.go'), 'package main\n');
         fs.writeFileSync(path.join(fixtureDir, 'quux.py'), 'def quux():\n    pass\n');
 
-        const tree = await generateWorkTree(fixtureDir);
+        const io = await WorkspaceIO.create(asWorkspaceRoot(fixtureDir));
+        const tree = await generateWorkTree(io);
 
         assert.equal(tree.type, 'directory');
         assert.ok(Array.isArray(tree.children), 'root tree should have children');
