@@ -376,3 +376,221 @@ test('auth: GET /api/stats does not require token (read-only)', async () => {
         fs.rmSync(config.workspaceRoot, { recursive: true, force: true });
     }
 });
+
+// ---------------------------------------------------------------------------
+// 4. Method + same-origin gate on /api/regenerate (Loop 18)
+//
+// The route used to accept any verb. With `apiToken` empty (local-dev mode)
+// a plain GET — which a browser will issue for `<img src=...>`, `<link>`,
+// etc. — could trigger a full regeneration. Loop 18 added two gates that
+// run BEFORE the auth check:
+//
+//   - Method gate: non-POST → 405 with `Allow: POST`.
+//   - Same-origin gate: POST with a present-but-mismatched `Origin` → 403.
+//
+// Decision #1 from Loop 18 PLAN: ABSENT `Origin` is allowed. curl,
+// server-to-server, and various browser flows omit it; the API token is
+// still the strong authn gate.
+// ---------------------------------------------------------------------------
+
+/** Same shape as `RequestResult` but with the response headers attached
+ *  so we can assert on `Allow` etc. */
+interface RequestResultWithHeaders extends RequestResult {
+    headers: http.IncomingHttpHeaders;
+}
+
+/**
+ * Like `withServer`, but (a) exposes the bound port to the test body so
+ * we can construct a same-origin `Origin` header for the legitimate-POST
+ * case, and (b) returns response headers in addition to status+body so
+ * the method gate's `Allow: POST` can be asserted.
+ */
+async function withServerExposingPort(
+    ctxOverrides: Partial<ServerContext> & { config: Required<ServerConfig> },
+    fn: (
+        req: (opts: RequestOptions) => Promise<RequestResultWithHeaders>,
+        port: number,
+    ) => Promise<void>,
+): Promise<void> {
+    const httpHandler = new HttpRequestHandler({
+        webviewDir: ctxOverrides.config.workspaceRoot + '/.artifacts/webview',
+        verbose: false,
+    });
+
+    const ctx: ServerContext = {
+        config: ctxOverrides.config,
+        logger: ctxOverrides.logger ?? NoopLogger,
+        watchManager: ctxOverrides.watchManager ?? ({
+            getWatchState: () => ({
+                watchedFiles: [], totalFiles: 0, lastUpdated: new Date().toISOString(),
+            }),
+            refresh: async () => {},
+            initialize: async () => {},
+        } as any),
+        archWatcher: ctxOverrides.archWatcher ?? ({
+            readDoc: async () => null,
+            writeDoc: async () => true,
+        } as any),
+        httpHandler,
+        regenerateWebview: ctxOverrides.regenerateWebview ?? (async () => {}),
+    };
+    registerRoutes(ctx);
+
+    const server = http.createServer((req, res) => httpHandler.handle(req, res));
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const addr = server.address();
+    if (!addr || typeof addr !== 'object') throw new Error('server.address() failed');
+    const port = addr.port;
+
+    const request = (opts: RequestOptions): Promise<RequestResultWithHeaders> =>
+        new Promise<RequestResultWithHeaders>((resolve, reject) => {
+            const req = http.request(
+                {
+                    method: opts.method ?? 'GET',
+                    host: '127.0.0.1',
+                    port,
+                    path: opts.path,
+                    headers: opts.headers ?? {},
+                },
+                (res) => {
+                    const chunks: Buffer[] = [];
+                    res.on('data', (c: Buffer) => chunks.push(c));
+                    res.on('end', () =>
+                        resolve({
+                            status: res.statusCode ?? 0,
+                            body: Buffer.concat(chunks).toString('utf-8'),
+                            headers: res.headers,
+                        }),
+                    );
+                },
+            );
+            req.on('error', reject);
+            if (opts.body !== undefined) req.write(opts.body);
+            req.end();
+        });
+
+    try {
+        await fn(request, port);
+    } finally {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+}
+
+test('method-gate: GET /api/regenerate returns 405 with Allow: POST (empty token)', async () => {
+    const config = buildConfig({ apiToken: '' });
+    let regenerateCalls = 0;
+    try {
+        await withServerExposingPort(
+            { config, regenerateWebview: async () => { regenerateCalls += 1; } },
+            async (req) => {
+                const result = await req({ method: 'GET', path: '/api/regenerate' });
+                assert.equal(result.status, 405, `body=${result.body}`);
+                assert.equal(result.headers['allow'], 'POST',
+                    `Allow header must be 'POST'; got ${JSON.stringify(result.headers['allow'])}`);
+                const parsed = JSON.parse(result.body);
+                assert.equal(parsed.success, false);
+                assert.match(parsed.message, /not allowed/i);
+                // Critical: the gate must short-circuit before the regenerate
+                // hook runs. A CSRF GET that reaches `regenerateWebview`
+                // defeats the entire point of this loop.
+                assert.equal(regenerateCalls, 0,
+                    'regenerateWebview must not be called for non-POST requests');
+            },
+        );
+    } finally {
+        fs.rmSync(config.workspaceRoot, { recursive: true, force: true });
+    }
+});
+
+test('method-gate: PUT /api/regenerate returns 405 even with correct token (gate runs before auth)', async () => {
+    const config = buildConfig({ apiToken: 'secret' });
+    try {
+        await withServerExposingPort({ config }, async (req) => {
+            const result = await req({
+                method: 'PUT',
+                path: '/api/regenerate',
+                headers: { Authorization: 'Bearer secret' },
+            });
+            assert.equal(result.status, 405,
+                `method gate must run before auth; got ${result.status}: ${result.body}`);
+            assert.equal(result.headers['allow'], 'POST');
+        });
+    } finally {
+        fs.rmSync(config.workspaceRoot, { recursive: true, force: true });
+    }
+});
+
+test('origin-gate: POST /api/regenerate with cross-origin Origin returns 403 (gate runs before auth)', async () => {
+    const config = buildConfig({ apiToken: 'secret' });
+    let regenerateCalls = 0;
+    try {
+        await withServerExposingPort(
+            { config, regenerateWebview: async () => { regenerateCalls += 1; } },
+            async (req) => {
+                const result = await req({
+                    method: 'POST',
+                    path: '/api/regenerate',
+                    headers: {
+                        Authorization: 'Bearer secret',
+                        Origin: 'http://evil.example',
+                    },
+                });
+                assert.equal(result.status, 403, `body=${result.body}`);
+                const parsed = JSON.parse(result.body);
+                assert.equal(parsed.success, false);
+                assert.match(parsed.message, /cross-origin/i);
+                assert.equal(regenerateCalls, 0,
+                    'regenerateWebview must not be called for cross-origin requests');
+            },
+        );
+    } finally {
+        fs.rmSync(config.workspaceRoot, { recursive: true, force: true });
+    }
+});
+
+test('origin-gate: POST /api/regenerate with same-origin Origin returns 200', async () => {
+    const config = buildConfig({ apiToken: 'secret' });
+    try {
+        await withServerExposingPort({ config }, async (req, port) => {
+            const result = await req({
+                method: 'POST',
+                path: '/api/regenerate',
+                headers: {
+                    Authorization: 'Bearer secret',
+                    // Browsers send `Origin` as `<scheme>://<host>:<port>` (no
+                    // trailing slash). The server's bound `Host` header for
+                    // requests routed via `127.0.0.1:<port>` matches by
+                    // construction.
+                    Origin: `http://127.0.0.1:${port}`,
+                },
+            });
+            assert.equal(result.status, 200, `body=${result.body}`);
+            const parsed = JSON.parse(result.body);
+            assert.equal(parsed.success, true);
+        });
+    } finally {
+        fs.rmSync(config.workspaceRoot, { recursive: true, force: true });
+    }
+});
+
+test('origin-gate: POST /api/regenerate with NO Origin header returns 200 (Decision #1: absent = allow)', async () => {
+    // Documented in PLAN.md Loop 18, Decision #1: curl-style requests that
+    // omit `Origin` are allowed. The apiToken (when set) remains the strong
+    // gate; here we verify it ALSO works with empty token, which is the
+    // local-dev path the existing webview UI uses.
+    const config = buildConfig({ apiToken: '' });
+    try {
+        await withServerExposingPort({ config }, async (req) => {
+            const result = await req({
+                method: 'POST',
+                path: '/api/regenerate',
+                // No Origin header.
+            });
+            assert.equal(result.status, 200, `body=${result.body}`);
+            const parsed = JSON.parse(result.body);
+            assert.equal(parsed.success, true);
+        });
+    } finally {
+        fs.rmSync(config.workspaceRoot, { recursive: true, force: true });
+    }
+});
