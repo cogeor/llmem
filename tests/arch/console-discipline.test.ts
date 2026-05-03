@@ -10,7 +10,7 @@
 //   - src/core/logger.ts                    // boundary interface + consoleLogger
 //   - src/webview/ui/**                     // browser bundle
 //   - src/webview/live-reload.ts            // browser WebSocket client
-//   - src/claude/cli.ts                     // CLI user-facing output
+//   - src/claude/cli/**                     // CLI user-facing output (loop 01 split)
 //   - src/info/cli.ts                       // CLI user-facing output
 //   - src/info/cli_folder.ts                // CLI user-facing output
 //   - src/scripts/**                        // dev script entrypoints
@@ -100,10 +100,10 @@ function isAllowedPath(rel: string): boolean {
         rel === 'src/common/logger.ts' ||
         rel === 'src/core/logger.ts' ||
         rel === 'src/webview/live-reload.ts' ||
-        rel === 'src/claude/cli.ts' ||
         rel === 'src/info/cli.ts' ||
         rel === 'src/info/cli_folder.ts' ||
         rel === 'src/claude/server/open-browser.ts' ||
+        rel.startsWith('src/claude/cli/') ||
         rel.startsWith('src/webview/ui/') ||
         rel.startsWith('src/scripts/')
     );

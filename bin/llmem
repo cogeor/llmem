@@ -1,48 +1,7 @@
 #!/usr/bin/env node
-
-/**
- * LLMem CLI Entry Point
- *
- * Routes to the appropriate command:
- *   llmem serve   - Start HTTP webview server
- *   llmem mcp     - Start MCP server for Claude Code
- *   llmem stats   - Show graph statistics
- */
-
 const path = require('path');
-
-// Determine the dist directory relative to this script
-// The Claude CLI is compiled to dist/claude/ (per tsconfig.claude.json)
-const distDir = path.join(__dirname, '..', 'dist', 'claude');
-
-// Get command from args
-const command = process.argv[2];
-
-if (command === 'mcp') {
-    // Run MCP server (stdio mode for Claude Code)
-    const { main } = require(path.join(distDir, 'index.js'));
-    main().catch(err => {
-        console.error('MCP server error:', err);
-        process.exit(1);
-    });
-} else if (!command || command === '--help' || command === '-h' || command === 'help') {
-    // Show usage when no command or help requested
-    console.log('Usage: llmem <command>');
-    console.log('');
-    console.log('Commands:');
-    console.log('  mcp     Start MCP server for Claude Code (stdio mode)');
-    console.log('  serve   Start HTTP webview server');
-    console.log('  stats   Show graph statistics');
-    console.log('');
-    console.log('Options:');
-    console.log('  -h, --help  Show this help message');
-    console.log('');
-    console.log('Environment variables:');
-    console.log('  LLMEM_WORKSPACE  Explicit workspace root path (e.g. /home/user/projects/myproject)');
-    process.exit(command ? 0 : 1);
-} else {
-    // Unknown command - show error and usage
-    console.error(`llmem: unknown command '${command}'`);
-    console.error('Run `llmem --help` for usage.');
+const cliPath = path.join(__dirname, '..', 'dist', 'claude', 'cli', 'main.js');
+require(cliPath).main().catch((err) => {
+    console.error(err && err.message ? err.message : err);
     process.exit(1);
-}
+});
