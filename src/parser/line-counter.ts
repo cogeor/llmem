@@ -8,6 +8,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { ALL_SUPPORTED_EXTENSIONS, IGNORED_FOLDERS } from './config';
+import { createLogger } from '../common/logger';
+
+const log = createLogger('line-counter');
 
 export interface FolderLineCount {
     folder: string;           // Relative folder path
@@ -40,8 +43,8 @@ export function countFolderLines(rootDir: string, folderPath: string): FolderLin
     let entries: string[];
     try {
         entries = fs.readdirSync(folderPath);
-    } catch (e) {
-        console.warn(`[LineCounter] Cannot read folder: ${folderPath}`);
+    } catch {
+        log.warn('Cannot read folder', { folderPath });
         return result;
     }
 

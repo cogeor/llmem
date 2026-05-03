@@ -13,6 +13,9 @@
 
 import { WebSocketServer, WebSocket } from 'ws';
 import * as http from 'http';
+import { createLogger } from '../../common/logger';
+
+const log = createLogger('websocket');
 
 /**
  * WebSocket message types
@@ -82,19 +85,21 @@ export class WebSocketService {
             this.clients.add(ws);
 
             if (this.verbose) {
-                console.log(`[WebSocket] Client connected (${this.clients.size} total)`);
+                log.debug('Client connected', { total: this.clients.size });
             }
 
             ws.on('close', () => {
                 this.clients.delete(ws);
                 if (this.verbose) {
-                    console.log(`[WebSocket] Client disconnected (${this.clients.size} remaining)`);
+                    log.debug('Client disconnected', { remaining: this.clients.size });
                 }
             });
 
             ws.on('error', (error) => {
                 if (this.verbose) {
-                    console.error('[WebSocket] Client error:', error);
+                    log.error('Client error', {
+                        error: error instanceof Error ? error.message : String(error),
+                    });
                 }
             });
         });
@@ -115,7 +120,7 @@ export class WebSocketService {
         }
 
         if (this.verbose && sent > 0) {
-            console.log(`[WebSocket] Broadcasted to ${sent} client(s):`, message.type);
+            log.debug('Broadcasted', { clients: sent, messageType: message.type });
         }
     }
 

@@ -9,6 +9,9 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as chokidar from 'chokidar';
 import { WatchService } from '../../graph/worktree-state';
+import { createLogger } from '../../common/logger';
+
+const log = createLogger('file-watcher');
 
 export interface FileWatcherConfig {
     workspaceRoot: string;
@@ -88,7 +91,7 @@ export class FileWatcherService {
 
         if (existingPaths.length === 0) {
             if (this.config.verbose) {
-                console.log('[FileWatcher] No paths to watch');
+                log.debug('No paths to watch');
             }
             return;
         }
@@ -110,7 +113,10 @@ export class FileWatcherService {
         this.watcher.on('unlink', (filePath) => this.handleFileEvent('removed', filePath));
 
         if (this.config.verbose) {
-            console.log(`[FileWatcher] Watching ${watchedFiles.length} source files and ${this.edgeListFiles.length} edge lists`);
+            log.info('Watching files', {
+                sourceFiles: watchedFiles.length,
+                edgeLists: this.edgeListFiles.length,
+            });
         }
     }
 
@@ -134,7 +140,7 @@ export class FileWatcherService {
         const relativePath = path.relative(this.config.workspaceRoot, filePath).replace(/\\/g, '/');
 
         if (this.config.verbose) {
-            console.log(`[FileWatcher] Source ${action}: ${relativePath}`);
+            log.debug('Source change', { action, relativePath });
         }
 
         // Track changed file
@@ -154,7 +160,9 @@ export class FileWatcherService {
                     await this.onSourceChange(files);
                 }
             } catch (e) {
-                console.error('[FileWatcher] Error in source change handler:', e);
+                log.error('Error in source change handler', {
+                    error: e instanceof Error ? e.message : String(e),
+                });
             }
         }, 1000);
     }
@@ -164,7 +172,7 @@ export class FileWatcherService {
      */
     private handleEdgeListEvent(action: string, filePath: string): void {
         if (this.config.verbose) {
-            console.log(`[FileWatcher] Edge list ${action}: ${path.basename(filePath)}`);
+            log.debug('Edge list change', { action, filename: path.basename(filePath) });
         }
 
         // Debounce
@@ -178,7 +186,9 @@ export class FileWatcherService {
                     await this.onEdgeListChange();
                 }
             } catch (e) {
-                console.error('[FileWatcher] Error in edge list change handler:', e);
+                log.error('Error in edge list change handler', {
+                    error: e instanceof Error ? e.message : String(e),
+                });
             }
         }, 500);
     }

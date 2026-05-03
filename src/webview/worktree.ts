@@ -1,6 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { isSupportedFile } from '../parser/config';
+import { createLogger } from '../common/logger';
+
+const log = createLogger('webview-worktree');
 
 /**
  * Graph computation status for a folder.
@@ -66,7 +69,9 @@ function parseGitignore(rootPath: string): Set<string> {
             }
         }
     } catch (e) {
-        console.warn('Failed to parse .gitignore:', e);
+        log.warn('Failed to parse .gitignore', {
+            error: e instanceof Error ? e.message : String(e),
+        });
     }
 
     return patterns;
@@ -150,7 +155,10 @@ export async function generateWorkTree(
     try {
         stats = fs.statSync(currentPath);
     } catch (e) {
-        console.warn(`Could not stat ${currentPath}:`, e);
+        log.warn('Could not stat path', {
+            currentPath,
+            error: e instanceof Error ? e.message : String(e),
+        });
         return { name, path: relativePath, type: 'file', size: 0 };
     }
 
@@ -184,7 +192,10 @@ export async function generateWorkTree(
         try {
             entries = fs.readdirSync(currentPath);
         } catch (e) {
-            console.warn(`Could not list dir ${currentPath}`, e);
+            log.warn('Could not list dir', {
+                currentPath,
+                error: e instanceof Error ? e.message : String(e),
+            });
         }
 
         for (const entry of entries) {

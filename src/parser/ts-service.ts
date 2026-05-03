@@ -2,6 +2,9 @@
 import * as ts from 'typescript';
 import * as path from 'path';
 import * as fs from 'fs';
+import { createLogger } from '../common/logger';
+
+const log = createLogger('typescript-service');
 
 // Whitelist of TypeScript/JavaScript file extensions
 const TS_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx']);
@@ -53,15 +56,17 @@ export class TypeScriptService {
             const files = this.getTypeScriptFiles(this.workspaceRoot);
 
             if (files.length === 0) {
-                console.warn('[TypeScriptService] No TypeScript/JavaScript files found - this is normal for projects using other languages (Python, C++, R, Dart, Rust, etc.)');
+                log.warn('No TypeScript/JavaScript files found - this is normal for projects using other languages (Python, C++, R, Dart, Rust, etc.)');
                 this.program = undefined;
                 return;
             }
 
             this.program = ts.createProgram(files, compilerOptions);
-            console.error(`[TypeScriptService] Initialized with ${files.length} files`);
+            log.info('Initialized program', { fileCount: files.length });
         } catch (e) {
-            console.warn('[TypeScriptService] Failed to initialize program:', e);
+            log.warn('Failed to initialize program', {
+                error: e instanceof Error ? e.message : String(e),
+            });
             this.program = undefined;
         }
     }
@@ -84,7 +89,7 @@ export class TypeScriptService {
 
         try {
             if (!fs.existsSync(tsconfigPath)) {
-                console.error('[TypeScriptService] No tsconfig.json found, using defaults (this is normal for non-TypeScript projects)');
+                log.info('No tsconfig.json found, using defaults (this is normal for non-TypeScript projects)');
                 return defaultOptions;
             }
 
@@ -94,8 +99,9 @@ export class TypeScriptService {
             );
 
             if (configFile.error) {
-                console.warn('[TypeScriptService] Error reading tsconfig.json:',
-                    ts.flattenDiagnosticMessageText(configFile.error.messageText, '\n'));
+                log.warn('Error reading tsconfig.json', {
+                    error: ts.flattenDiagnosticMessageText(configFile.error.messageText, '\n'),
+                });
                 return defaultOptions;
             }
 
@@ -119,8 +125,9 @@ export class TypeScriptService {
             });
 
             if (realErrors.length > 0) {
-                console.warn('[TypeScriptService] tsconfig.json parse errors:',
-                    realErrors.map(e => ts.flattenDiagnosticMessageText(e.messageText, '\n')).join('; '));
+                log.warn('tsconfig.json parse errors', {
+                    errors: realErrors.map(e => ts.flattenDiagnosticMessageText(e.messageText, '\n')).join('; '),
+                });
             }
 
             // Merge with defaults to ensure critical options are set
@@ -131,7 +138,9 @@ export class TypeScriptService {
                 skipLibCheck: true
             };
         } catch (e) {
-            console.warn('[TypeScriptService] Failed to load tsconfig.json:', e);
+            log.warn('Failed to load tsconfig.json', {
+                error: e instanceof Error ? e.message : String(e),
+            });
             return defaultOptions;
         }
     }

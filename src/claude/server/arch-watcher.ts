@@ -10,6 +10,9 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as chokidar from 'chokidar';
 import { renderMarkdown } from '../../webview/markdown-renderer';
+import { createLogger } from '../../common/logger';
+
+const log = createLogger('arch-watcher');
 
 export interface ArchWatcherConfig {
     workspaceRoot: string;
@@ -62,10 +65,12 @@ export class ArchWatcherService {
             try {
                 fs.mkdirSync(this.archDir, { recursive: true });
                 if (this.config.verbose) {
-                    console.log('[ArchWatcher] Created .arch directory');
+                    log.info('Created .arch directory');
                 }
             } catch (e) {
-                console.error('[ArchWatcher] Failed to create .arch directory:', e);
+                log.error('Failed to create .arch directory', {
+                    error: e instanceof Error ? e.message : String(e),
+                });
                 return;
             }
         }
@@ -87,32 +92,33 @@ export class ArchWatcherService {
         });
 
         this.watcher.on('add', (filePath) => {
-            console.log(`[ArchWatcher] Chokidar 'add' event: ${filePath}`);
+            log.debug("Chokidar 'add' event", { filePath });
             if (filePath.endsWith('.md')) {
                 this.handleEvent('created', filePath);
             }
         });
         this.watcher.on('change', (filePath) => {
-            console.log(`[ArchWatcher] Chokidar 'change' event: ${filePath}`);
+            log.debug("Chokidar 'change' event", { filePath });
             if (filePath.endsWith('.md')) {
                 this.handleEvent('updated', filePath);
             }
         });
         this.watcher.on('unlink', (filePath) => {
-            console.log(`[ArchWatcher] Chokidar 'unlink' event: ${filePath}`);
+            log.debug("Chokidar 'unlink' event", { filePath });
             if (filePath.endsWith('.md')) {
                 this.handleEvent('deleted', filePath);
             }
         });
         this.watcher.on('error', (error) => {
-            console.error(`[ArchWatcher] Chokidar error:`, error);
+            log.error('Chokidar error', {
+                error: error instanceof Error ? error.message : String(error),
+            });
         });
         this.watcher.on('ready', () => {
-            console.log(`[ArchWatcher] Chokidar ready - now watching for changes`);
+            log.info('Chokidar ready - now watching for changes');
         });
 
-        // Always log this for debugging
-        console.log(`[ArchWatcher] Watching: ${watchPattern}`);
+        log.info('Watching', { watchPattern });
     }
 
     /**
@@ -131,7 +137,10 @@ export class ArchWatcherService {
                 this.pendingEvents.delete(absolutePath);
                 await this.emitEvent(type, absolutePath);
             } catch (e) {
-                console.error(`[ArchWatcher] Error in debounce handler for ${absolutePath}:`, e);
+                log.error('Error in debounce handler', {
+                    absolutePath,
+                    error: e instanceof Error ? e.message : String(e),
+                });
             }
         }, this.debounceDelay);
 
@@ -144,8 +153,7 @@ export class ArchWatcherService {
     private async emitEvent(type: 'created' | 'updated' | 'deleted', absolutePath: string): Promise<void> {
         const relativePath = path.relative(this.archDir, absolutePath).replace(/\\/g, '/');
 
-        // Always log for debugging
-        console.log(`[ArchWatcher] ${type}: ${relativePath}`);
+        log.debug('File event', { type, relativePath });
 
         const event: ArchFileEvent = {
             type,
@@ -159,7 +167,10 @@ export class ArchWatcherService {
                 event.markdown = fs.readFileSync(absolutePath, 'utf-8');
                 event.html = await renderMarkdown(event.markdown);
             } catch (e) {
-                console.error(`[ArchWatcher] Failed to read file: ${absolutePath}`, e);
+                log.error('Failed to read file', {
+                    absolutePath,
+                    error: e instanceof Error ? e.message : String(e),
+                });
             }
         }
 
@@ -201,7 +212,10 @@ export class ArchWatcherService {
             const html = await renderMarkdown(markdown);
             return { markdown, html };
         } catch (e) {
-            console.error(`[ArchWatcher] Failed to read doc: ${absolutePath}`, e);
+            log.error('Failed to read doc', {
+                absolutePath,
+                error: e instanceof Error ? e.message : String(e),
+            });
             return null;
         }
     }
@@ -229,12 +243,15 @@ export class ArchWatcherService {
             fs.writeFileSync(absolutePath, markdown, 'utf-8');
 
             if (this.config.verbose) {
-                console.log(`[ArchWatcher] Wrote: ${mdPath}`);
+                log.debug('Wrote doc', { mdPath });
             }
 
             return true;
         } catch (e) {
-            console.error(`[ArchWatcher] Failed to write doc: ${absolutePath}`, e);
+            log.error('Failed to write doc', {
+                absolutePath,
+                error: e instanceof Error ? e.message : String(e),
+            });
             return false;
         }
     }
@@ -270,7 +287,7 @@ export class ArchWatcherService {
         }
 
         if (this.config.verbose) {
-            console.log('[ArchWatcher] Closed');
+            log.debug('Closed');
         }
     }
 }

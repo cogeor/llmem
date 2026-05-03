@@ -2,6 +2,9 @@ import * as fs from 'fs';
 import { Graph, Node, Edge } from '../types';
 import { getHtmlTemplate } from './template';
 import { ColorGenerator } from '../utils';
+import { createLogger } from '../../common/logger';
+
+const log = createLogger('plot-generator');
 
 interface VisNode {
     id: string;
@@ -61,5 +64,5 @@ export function generatePlotHtml<N extends Node, E extends Edge>(graph: Graph<N,
 export function savePlot<N extends Node, E extends Edge>(graph: Graph<N, E>, title: string, outputPath: string) {
     const html = generatePlotHtml(graph, title);
     fs.writeFileSync(outputPath, html, 'utf-8');
-    console.error(`Plot saved to ${outputPath}`);
+    log.info('Plot saved', { outputPath });
 }

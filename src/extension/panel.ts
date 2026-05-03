@@ -5,11 +5,14 @@ import { getConfig } from './config';
 import { collectViewerData, type ViewerData } from '../application/viewer-data';
 import { scanFile, scanFolderRecursive } from '../application/scan';
 import { addWatchedPath, removeWatchedPath } from '../application/toggle-watch';
-import type { Logger } from '../core/logger';
+import type { Logger as BoundaryLogger } from '../core/logger';
+import { createLogger } from '../common/logger';
 import { asWorkspaceRoot, asAbsPath, asRelPath } from '../core/paths';
 import { parseGraphId } from '../core/ids';
 import type { DesignDoc } from '../webview/design-docs';
 import { renderMarkdown } from '../webview/markdown-renderer';
+
+const log = createLogger('panel');
 
 /**
  * Renderer shape produced from a `ViewerData`'s raw markdown by the panel
@@ -40,7 +43,10 @@ async function renderViewerDocs(raw: Record<string, string>): Promise<Record<str
             const html = await renderMarkdown(markdown);
             out[key] = { markdown, html };
         } catch (e) {
-            console.error(`[LLMemPanel] Failed to render design doc: ${key}`, e);
+            log.error('Failed to render design doc', {
+                key,
+                error: e instanceof Error ? e.message : String(e),
+            });
         }
     }
     return out;
@@ -213,7 +219,7 @@ export class LLMemPanel {
         const config = getConfig();
         const artifactRoot = path.join(workspaceRoot, config.artifactRoot);
 
-        console.log(`[LLMemPanel] Loading nodes for folder: ${folderPath}`);
+        log.debug('Loading nodes for folder', { folderPath });
 
         try {
             // Generate edges for the folder (this also creates nodes)
@@ -258,7 +264,11 @@ export class LLMemPanel {
                 to: e.target
             }));
 
-            console.log(`[LLMemPanel] Loaded ${visNodes.length} nodes, ${visEdges.length} edges for ${folderPath}`);
+            log.debug('Loaded folder graph', {
+                folderPath,
+                nodes: visNodes.length,
+                edges: visEdges.length,
+            });
 
             this._panel.webview.postMessage({
                 type: 'data:folderNodes',
@@ -269,7 +279,10 @@ export class LLMemPanel {
                 }
             });
         } catch (e: any) {
-            console.error(`[LLMemPanel] Failed to load folder nodes:`, e);
+            log.error('Failed to load folder nodes', {
+                folderPath,
+                error: e instanceof Error ? e.message : String(e),
+            });
             this._panel.webview.postMessage({
                 type: 'data:folderNodes',
                 folderPath,
@@ -299,7 +312,7 @@ export class LLMemPanel {
             targetPath: asRelPath(targetPath),
             logger: this._panelLogger(),
         };
-        console.log(`[LLMemPanel] Toggle watch: ${targetPath} -> ${watched}`);
+        log.info('Toggle watch', { targetPath, watched });
         try {
             if (watched) {
                 const result = await addWatchedPath(req);
@@ -336,14 +349,14 @@ export class LLMemPanel {
     private async _startHotReloadAndSendInitialData() {
         const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!workspaceRoot) {
-            console.error('[LLMemPanel] No workspace root');
+            log.error('No workspace root');
             return;
         }
 
         const config = getConfig();
         const artifactRoot = path.join(workspaceRoot, config.artifactRoot);
 
-        console.log('[LLMemPanel] Using WatchService with file-only tracking');
+        log.debug('Using WatchService with file-only tracking');
 
         // Load watch state using WatchService
         const { WatchService } = await import('../graph/worktree-state');
@@ -351,12 +364,12 @@ export class LLMemPanel {
         await watchService.load();
 
         const watchedFiles = watchService.getWatchedFiles();
-        console.log(`[LLMemPanel] Found ${watchedFiles.length} watched files`);
+        log.debug('Found watched files', { count: watchedFiles.length });
 
         // Detect changed files and regenerate edges
         if (watchedFiles.length > 0) {
             const changedFiles = await watchService.getChangedFiles();
-            console.log(`[LLMemPanel] ${changedFiles.length} files have changed`);
+            log.debug('Files have changed', { count: changedFiles.length });
 
             // Regenerate edges for changed files
             const logger = this._panelLogger();
@@ -369,7 +382,10 @@ export class LLMemPanel {
                         logger,
                     });
                 } catch (e) {
-                    console.error(`[LLMemPanel] Failed to regenerate edges for ${filePath}:`, e);
+                    log.error('Failed to regenerate edges', {
+                        filePath,
+                        error: e instanceof Error ? e.message : String(e),
+                    });
                 }
             }
 
@@ -401,7 +417,7 @@ export class LLMemPanel {
 
         // Send initial data
         try {
-            console.log('[LLMemPanel] Collecting initial data...');
+            log.info('Collecting initial data...');
             const raw = await collectViewerData({
                 workspaceRoot: asWorkspaceRoot(workspaceRoot),
                 artifactRoot: asAbsPath(artifactRoot),
@@ -412,11 +428,11 @@ export class LLMemPanel {
                 type: 'data:init',
                 data: rendered
             });
-            console.log('[LLMemPanel] Initial data sent:', {
+            log.info('Initial data sent', {
                 importNodes: rendered.graphData.importGraph.nodes.length,
                 importEdges: rendered.graphData.importGraph.edges.length,
                 callNodes: rendered.graphData.callGraph.nodes.length,
-                callEdges: rendered.graphData.callGraph.edges.length
+                callEdges: rendered.graphData.callGraph.edges.length,
             });
 
             // Send watched files to webview
@@ -425,10 +441,12 @@ export class LLMemPanel {
                     type: 'state:watchedPaths',
                     paths: watchedFiles
                 });
-                console.log(`[LLMemPanel] Sent ${watchedFiles.length} watched files to webview`);
+                log.debug('Sent watched files to webview', { count: watchedFiles.length });
             }
         } catch (e) {
-            console.error('[LLMemPanel] Initial data load failed:', e);
+            log.error('Initial data load failed', {
+                error: e instanceof Error ? e.message : String(e),
+            });
             this._panel.webview.postMessage({
                 type: 'data:init',
                 data: {
@@ -458,7 +476,7 @@ export class LLMemPanel {
         callStore.clear();
         await callStore.save();
 
-        console.log('[LLMemPanel] Cleared all edge lists on startup');
+        log.info('Cleared all edge lists on startup');
     }
 
     private _getNonce(): string {
@@ -471,16 +489,20 @@ export class LLMemPanel {
     }
 
     /**
-     * Build a Logger that bridges scan / viewer-data progress into the
-     * existing panel-side console.log shape. Replacing console with an
-     * OutputChannel is a future-loop concern (Phase-5 logging
-     * unification); for now we preserve today's exact log strings.
+     * Build a Logger that bridges scan / viewer-data progress through the
+     * structured logger.
+     *
+     * Loop 20: targets are now leveled `log.<info|warn|error>` calls with
+     * scope='panel' instead of raw `console.*`. The boundary `Logger`
+     * interface stays the same, so application-layer callers see no
+     * change. Replacing this with a VS Code OutputChannel sink is a
+     * future-loop concern (Loop 52 panel split).
      */
-    private _panelLogger(): Logger {
+    private _panelLogger(): BoundaryLogger {
         return {
-            info: (m) => console.log(m),
-            warn: (m) => console.warn(m),
-            error: (m) => console.error(m),
+            info: (m) => log.info(m),
+            warn: (m) => log.warn(m),
+            error: (m) => log.error(m),
         };
     }
 

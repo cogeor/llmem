@@ -3,6 +3,9 @@ import * as path from 'path';
 import { getArchRoot, getDesignDocKey } from '../docs/arch-store';
 import { asWorkspaceRoot, asAbsPath } from '../core/paths';
 import { renderMarkdown } from './markdown-renderer';
+import { createLogger } from '../common/logger';
+
+const log = createLogger('design-doc-manager');
 
 /**
  * Design document with both markdown source and rendered HTML
@@ -41,15 +44,15 @@ export class DesignDocManager {
     }
 
     public async getAllDocsAsync(): Promise<Record<string, DesignDoc>> {
-        console.log('[DesignDocManager] Starting getAllDocsAsync');
+        log.debug('Starting getAllDocsAsync');
         // Loop 19: markdown rendering goes through the centralized
         // `renderMarkdown` helper, which owns the ESM dynamic-import shim
         // and the server-side DOMPurify pass.
         const docs: Record<string, DesignDoc> = {};
 
-        console.log(`[DesignDocManager] archRoot: ${this.archRoot}`);
+        log.debug('archRoot resolved', { archRoot: this.archRoot });
         if (!fs.existsSync(this.archRoot)) {
-            console.log('[DesignDocManager] archRoot does not exist');
+            log.debug('archRoot does not exist');
             return docs;
         }
 
@@ -57,9 +60,11 @@ export class DesignDocManager {
         try {
             this.walk(this.archRoot, (f) => files.push(f));
         } catch (e) {
-            console.error('[DesignDocManager] Error walking directory:', e);
+            log.error('Error walking directory', {
+                error: e instanceof Error ? e.message : String(e),
+            });
         }
-        console.log(`[DesignDocManager] Found ${files.length} files in archRoot`);
+        log.debug('Found files in archRoot', { count: files.length });
 
         for (const filePath of files) {
             if (filePath.endsWith('.md')) {
@@ -70,12 +75,15 @@ export class DesignDocManager {
                     // Key mapping is owned by src/docs/arch-store.ts (Loop 04).
                     const key = getDesignDocKey(asAbsPath(this.archRoot), asAbsPath(filePath));
                     const relPath = path.relative(this.archRoot, filePath).replace(/\\/g, '/');
-                    console.log(`[DesignDocManager] Processed: ${relPath} -> ${key}`);
+                    log.debug('Processed design doc', { relPath, key });
 
                     // Store both markdown and HTML
                     docs[key] = { markdown, html };
                 } catch (e) {
-                    console.error(`Failed to convert design doc: ${filePath}`, e);
+                    log.error('Failed to convert design doc', {
+                        filePath,
+                        error: e instanceof Error ? e.message : String(e),
+                    });
                 }
             }
         }

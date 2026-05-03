@@ -8,6 +8,9 @@
 import * as path from 'path';
 import { LanguageAdapter } from './adapter';
 import { ArtifactExtractor } from './interfaces';
+import { createLogger } from '../common/logger';
+
+const log = createLogger('parser-registry');
 
 /**
  * Singleton registry for language parsers
@@ -29,7 +32,7 @@ export class ParserRegistry {
      * Auto-registers all built-in language adapters
      */
     private constructor() {
-        console.error('[ParserRegistry] Initializing language parsers...');
+        log.info('Initializing language parsers...');
 
         // TypeScript/JavaScript (always available - uses compiler API)
         // This is the ONLY language with call graph support
@@ -37,7 +40,9 @@ export class ParserRegistry {
             const { TypeScriptAdapter } = require('./typescript/adapter');
             this.registerAdapter(new TypeScriptAdapter());
         } catch (error) {
-            console.error('[ParserRegistry] Failed to load TypeScript adapter:', error);
+            log.error('Failed to load TypeScript adapter', {
+                error: error instanceof Error ? error.message : String(error),
+            });
         }
 
         // Python (tree-sitter based - imports only, no call graph)
@@ -45,8 +50,8 @@ export class ParserRegistry {
             require('tree-sitter-python');
             const { PythonAdapter } = require('./python/adapter');
             this.registerAdapter(new PythonAdapter());
-        } catch (error) {
-            console.error('[ParserRegistry] Python parser not available (tree-sitter-python not installed)');
+        } catch {
+            log.warn('Python parser not available (tree-sitter-python not installed)');
         }
 
         // C/C++ (tree-sitter based - imports only via #include)
@@ -54,8 +59,8 @@ export class ParserRegistry {
             require('tree-sitter-cpp');
             const { CppAdapter } = require('./cpp/adapter');
             this.registerAdapter(new CppAdapter());
-        } catch (error) {
-            console.error('[ParserRegistry] C/C++ parser not available (tree-sitter-cpp not installed)');
+        } catch {
+            log.warn('C/C++ parser not available (tree-sitter-cpp not installed)');
         }
 
         // Rust (tree-sitter based - imports only via use statements)
@@ -63,8 +68,8 @@ export class ParserRegistry {
             require('tree-sitter-rust');
             const { RustAdapter } = require('./rust/adapter');
             this.registerAdapter(new RustAdapter());
-        } catch (error) {
-            console.error('[ParserRegistry] Rust parser not available (tree-sitter-rust not installed)');
+        } catch {
+            log.warn('Rust parser not available (tree-sitter-rust not installed)');
         }
 
         // R (tree-sitter based - imports only via library/require/source)
@@ -72,11 +77,11 @@ export class ParserRegistry {
             require('@davisvaughan/tree-sitter-r');
             const { RAdapter } = require('./r/adapter');
             this.registerAdapter(new RAdapter());
-        } catch (error) {
-            console.error('[ParserRegistry] R parser not available (@davisvaughan/tree-sitter-r not installed)');
+        } catch {
+            log.warn('R parser not available (@davisvaughan/tree-sitter-r not installed)');
         }
 
-        console.error('[ParserRegistry] Initialization complete');
+        log.info('Initialization complete');
     }
 
     /**
@@ -119,7 +124,9 @@ export class ParserRegistry {
             this.extensionMap.set(normalizedExt, adapter);
         }
 
-        console.error(`[ParserRegistry] Registered ${adapter.displayName} (${adapter.id}) for extensions: ${adapter.extensions.join(', ')}`);
+        log.info(`Registered ${adapter.displayName} (${adapter.id})`, {
+            extensions: adapter.extensions.join(', '),
+        });
     }
 
     /**

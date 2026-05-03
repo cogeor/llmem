@@ -14,6 +14,9 @@
  */
 
 import { WatchService } from '../../graph/worktree-state';
+import { createLogger } from '../../common/logger';
+
+const log = createLogger('watch-manager');
 
 export interface WatchManagerConfig {
     workspaceRoot: string;
@@ -55,7 +58,7 @@ export class WatchManager {
 
         if (this.config.verbose) {
             const files = this.watchService.getWatchedFiles();
-            console.log(`[WatchManager] Loaded ${files.length} watched files`);
+            log.info('Loaded watched files', { count: files.length });
         }
     }
 

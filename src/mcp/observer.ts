@@ -146,47 +146,49 @@ export function summarize(result: unknown): unknown {
 // ============================================================================
 
 /**
- * JSON console observer
- * Logs structured JSON events to stderr for external processing
- */
-export const jsonConsoleObserver: Observer = {
-    onStart: (ctx, params) => {
-        console.error(JSON.stringify({
-            event: 'mcp.request.start',
-            timestamp: new Date().toISOString(),
-            ...ctx,
-            params: redact(params),
-        }));
-    },
-
-    onEnd: (ctx, result) => {
-        console.error(JSON.stringify({
-            event: 'mcp.request.end',
-            timestamp: new Date().toISOString(),
-            ...ctx,
-            durationMs: Date.now() - ctx.startMs,
-            resultSummary: summarize(result),
-        }));
-    },
-
-    onError: (ctx, err) => {
-        const error = err as Error | undefined;
-        console.error(JSON.stringify({
-            event: 'mcp.request.error',
-            timestamp: new Date().toISOString(),
-            ...ctx,
-            durationMs: Date.now() - ctx.startMs,
-            errorType: error?.name ?? 'Error',
-            errorMessage: String(error?.message ?? err),
-        }));
-    },
-};
-
-/**
  * Pretty console observer
  * Logs human-readable colored output for development
  */
 const mcpLogger = createLogger('mcp');
+
+/**
+ * JSON observer
+ *
+ * Loop 20: Routes structured events through the canonical logger so
+ * they pick up the configured format (`LOG_FORMAT=json` emits one JSON
+ * object per line; `pretty` reads them like normal log entries). The
+ * `event` and `durationMs` fields stay in the data payload so
+ * downstream JSON consumers see the same keys as before.
+ */
+export const jsonConsoleObserver: Observer = {
+    onStart: (ctx, params) => {
+        mcpLogger.info('mcp.request.start', {
+            event: 'mcp.request.start',
+            ...ctx,
+            params: redact(params),
+        });
+    },
+
+    onEnd: (ctx, result) => {
+        mcpLogger.info('mcp.request.end', {
+            event: 'mcp.request.end',
+            ...ctx,
+            durationMs: Date.now() - ctx.startMs,
+            resultSummary: summarize(result),
+        });
+    },
+
+    onError: (ctx, err) => {
+        const error = err as Error | undefined;
+        mcpLogger.error('mcp.request.error', {
+            event: 'mcp.request.error',
+            ...ctx,
+            durationMs: Date.now() - ctx.startMs,
+            errorType: error?.name ?? 'Error',
+            errorMessage: String(error?.message ?? err),
+        });
+    },
+};
 
 export const prettyConsoleObserver: Observer = {
     onStart: (ctx, params) => {

@@ -28,6 +28,9 @@ import { startServer, stopServer } from '../mcp/server';
 import { getClaudeConfig } from './config';
 import * as path from 'path';
 import * as fs from 'fs';
+import { createLogger } from '../common/logger';
+
+const log = createLogger('claude');
 
 /**
  * Detect workspace root by walking up directory tree
@@ -37,7 +40,7 @@ function detectWorkspaceRoot(): string {
     // 1. Explicit env var (highest priority)
     if (process.env.LLMEM_WORKSPACE) {
         const workspace = process.env.LLMEM_WORKSPACE;
-        console.error(`[Claude] Using LLMEM_WORKSPACE: ${workspace}`);
+        log.info('Using LLMEM_WORKSPACE', { workspace });
         return workspace;
     }
 
@@ -50,7 +53,7 @@ function detectWorkspaceRoot(): string {
         for (const marker of markers) {
             const markerPath = path.join(current, marker);
             if (fs.existsSync(markerPath)) {
-                console.error(`[Claude] Auto-detected workspace root: ${current} (found ${marker})`);
+                log.info('Auto-detected workspace root', { current, marker });
                 return current;
             }
         }
@@ -58,7 +61,7 @@ function detectWorkspaceRoot(): string {
     }
 
     // 3. Fallback to cwd
-    console.error(`[Claude] Using current directory as workspace: ${process.cwd()}`);
+    log.info('Using current directory as workspace', { cwd: process.cwd() });
     return process.cwd();
 }
 
@@ -66,32 +69,35 @@ function detectWorkspaceRoot(): string {
  * Main entry point for Claude Code MCP server
  */
 async function main(): Promise<void> {
-    console.error('[Claude] Starting LLMem MCP server for Claude Code...');
+    log.info('Starting LLMem MCP server for Claude Code...');
 
     // Detect workspace root
     const workspaceRoot = detectWorkspaceRoot();
-    console.error(`[Claude] Workspace root: ${workspaceRoot}`);
+    log.info('Workspace root resolved', { workspaceRoot });
 
     // Load Claude-specific config
     const config = getClaudeConfig();
-    console.error(`[Claude] Configuration:`);
-    console.error(`[Claude]   Artifact root: ${config.artifactRoot}`);
-    console.error(`[Claude]   Max files per folder: ${config.maxFilesPerFolder}`);
-    console.error(`[Claude]   Max file size: ${config.maxFileSizeKB} KB`);
+    log.info('Configuration loaded', {
+        artifactRoot: config.artifactRoot,
+        maxFilesPerFolder: config.maxFilesPerFolder,
+        maxFileSizeKB: config.maxFileSizeKB,
+    });
 
     // Start MCP server (reuses shared implementation)
     try {
         await startServer(config, workspaceRoot);
-        console.error('[Claude] MCP server started successfully');
-        console.error('[Claude] Ready to receive requests from Claude Code');
+        log.info('MCP server started successfully');
+        log.info('Ready to receive requests from Claude Code');
 
         // Graceful shutdown handler
         const shutdown = async (signal: string) => {
-            console.error(`[Claude] Received ${signal}, shutting down gracefully...`);
+            log.info('Received signal, shutting down gracefully', { signal });
             try {
                 await stopServer();
             } catch (err) {
-                console.error('[Claude] Error during shutdown:', err);
+                log.error('Error during shutdown', {
+                    error: err instanceof Error ? err.message : String(err),
+                });
             }
             process.exit(0);
         };
@@ -99,10 +105,15 @@ async function main(): Promise<void> {
         process.once('SIGTERM', () => shutdown('SIGTERM'));
         process.once('SIGINT', () => shutdown('SIGINT'));
 
-        process.on('unhandledRejection', (reason, promise) => {
-            console.error('[Claude] Unhandled rejection:', reason);
+        process.on('unhandledRejection', (reason) => {
+            log.error('Unhandled rejection', {
+                reason: reason instanceof Error ? reason.message : String(reason),
+            });
         });
     } catch (error) {
+        // fatal-bootstrap: startServer threw before any normal error
+        // surface is wired; emit plainly so the operator still sees it.
+        // eslint-disable-next-line no-console
         console.error('[Claude] Failed to start MCP server:', error);
         process.exit(1);
     }
@@ -111,6 +122,9 @@ async function main(): Promise<void> {
 // Run main when executed directly
 if (require.main === module) {
     main().catch((error) => {
+        // fatal-bootstrap: top-level main() rejection — process is about
+        // to exit with code 1 regardless of logger state.
+        // eslint-disable-next-line no-console
         console.error('[Claude] Fatal error:', error);
         process.exit(1);
     });

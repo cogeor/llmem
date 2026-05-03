@@ -2,7 +2,9 @@ import * as path from 'path';
 import { ArtifactMetadata } from './types';
 import { readFile, writeFile, exists } from './storage';
 import { getArtifactsRoot } from './path-mapper';
+import { createLogger } from '../common/logger';
 
+const log = createLogger('artifact-index');
 const INDEX_FILE = '.index.json';
 
 export class ArtifactIndex {
@@ -22,7 +24,9 @@ export class ArtifactIndex {
                 try {
                     this.records = JSON.parse(content);
                 } catch (e) {
-                    console.error('Failed to parse artifact index:', e);
+                    log.error('Failed to parse artifact index', {
+                        error: e instanceof Error ? e.message : String(e),
+                    });
                     this.records = [];
                 }
             }
@@ -33,7 +37,7 @@ export class ArtifactIndex {
 
     async save(): Promise<void> {
         // DISABLED: Artifact system deprecated, using edge list
-        console.error('[ArtifactIndex] save() disabled - using edge list instead');
+        log.debug('save() disabled - using edge list instead');
         return;
     }
 

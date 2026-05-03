@@ -6,6 +6,9 @@
  */
 
 import { execFile } from 'child_process';
+import { createLogger } from '../../common/logger';
+
+const log = createLogger('open-browser');
 
 export function openBrowser(url: string): void {
     let cmd: string;
@@ -22,7 +25,9 @@ export function openBrowser(url: string): void {
     }
     execFile(cmd, args, (error) => {
         if (error) {
-            console.error(`Failed to open browser: ${error.message}`);
+            log.warn('Failed to open browser', { error: error.message });
+            // allow: user-facing fallback instruction printed to stdout
+            // eslint-disable-next-line no-console
             console.log(`Please open ${url} manually.`);
         }
     });

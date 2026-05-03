@@ -14,6 +14,9 @@ import { asWorkspaceRoot } from '../../core/paths';
 import type { Logger } from '../../core/logger';
 import type { WebSocketService } from './websocket';
 import type { ArchFileEvent } from './arch-watcher';
+import { createLogger } from '../../common/logger';
+
+const log = createLogger('regenerator');
 
 export interface RegenerateDeps {
     workspaceRoot: string;
@@ -27,7 +30,7 @@ export interface RegenerateDeps {
  * Regenerate the static webview and broadcast a websocket reload.
  */
 export async function regenerateWebview(deps: RegenerateDeps): Promise<void> {
-    console.log('Regenerating webview...');
+    log.info('Regenerating webview...');
     const result = await generateGraphLauncher({
         workspaceRoot: deps.workspaceRoot,
         artifactRoot: deps.artifactRoot,
@@ -35,11 +38,14 @@ export async function regenerateWebview(deps: RegenerateDeps): Promise<void> {
     });
 
     if (deps.verbose) {
-        console.log('Graph generated:');
-        console.log(`  Import: ${result.importNodeCount} nodes, ${result.importEdgeCount} edges`);
-        console.log(`  Call: ${result.callNodeCount} nodes, ${result.callEdgeCount} edges`);
+        log.info('Graph generated', {
+            importNodes: result.importNodeCount,
+            importEdges: result.importEdgeCount,
+            callNodes: result.callNodeCount,
+            callEdges: result.callEdgeCount,
+        });
     }
-    console.log('Webview updated');
+    log.info('Webview updated');
 
     deps.webSocket.broadcast({
         type: 'reload',
@@ -54,7 +60,7 @@ export async function rescanSourcesAndRegenerate(
     files: string[],
     deps: RegenerateDeps,
 ): Promise<void> {
-    console.log(`Regenerating edges for ${files.length} changed file(s)...`);
+    log.info('Regenerating edges for changed files', { count: files.length });
     const artifactDir = path.join(deps.workspaceRoot, deps.artifactRoot);
 
     for (const file of files) {
@@ -66,7 +72,7 @@ export async function rescanSourcesAndRegenerate(
         });
     }
 
-    console.log('Edges regenerated');
+    log.info('Edges regenerated');
     await regenerateWebview(deps);
 }
 
@@ -77,14 +83,15 @@ export function broadcastArchEvent(
     event: ArchFileEvent,
     webSocket: WebSocketService,
 ): void {
-    console.log(`[GraphServer] Arch event: ${event.type} ${event.relativePath}`);
+    log.debug('Arch event', { type: event.type, relativePath: event.relativePath });
 
     const wsType =
         `arch:${event.type}` as 'arch:created' | 'arch:updated' | 'arch:deleted';
 
-    console.log(
-        `[GraphServer] Broadcasting ${wsType} to ${webSocket.getClientCount()} clients`,
-    );
+    log.debug('Broadcasting arch event', {
+        wsType,
+        clientCount: webSocket.getClientCount(),
+    });
 
     webSocket.broadcastArchEvent(
         wsType,

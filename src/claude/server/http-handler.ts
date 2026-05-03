@@ -15,6 +15,9 @@
 import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
+import { createLogger } from '../../common/logger';
+
+const log = createLogger('http-handler');
 
 /**
  * MIME types for common file extensions
@@ -143,7 +146,7 @@ export class HttpRequestHandler {
         const url = req.url || '/';
 
         if (this.config.verbose) {
-            console.log(`${req.method} ${url}`);
+            log.debug('Request', { method: req.method, url });
         }
 
         // API endpoints

@@ -17,7 +17,8 @@ import { FileWatcherService } from './file-watcher';
 import { HttpRequestHandler } from './http-handler';
 import { WatchManager } from './watch-manager';
 import { ArchWatcherService } from './arch-watcher';
-import type { Logger } from '../../core/logger';
+import type { Logger as BoundaryLogger } from '../../core/logger';
+import { createLogger } from '../../common/logger';
 import { registerRoutes } from './routes';
 import type { ServerContext } from './routes';
 import { openBrowser } from './open-browser';
@@ -27,6 +28,8 @@ import {
     rescanSourcesAndRegenerate,
     type RegenerateDeps,
 } from './regenerator';
+
+const log = createLogger('graph-server');
 
 /**
  * Server configuration
@@ -61,10 +64,15 @@ export class GraphServer {
     private webviewDir: string;
     private isRegenerating = false;
 
-    private readonly serverLogger: Logger = {
-        info: (m) => { if (this.config.verbose) console.log(m); },
-        warn: (m) => console.warn(m),
-        error: (m) => console.error(m),
+    // Loop 20: bridge the application-layer boundary `Logger` interface
+    // through the structured logger. The verbose-only gating for `info`
+    // is preserved (the structured logger has its own LOG_LEVEL gate as
+    // well, so this is intentionally an extra suppress for non-verbose
+    // mode that historically only printed errors/warnings).
+    private readonly serverLogger: BoundaryLogger = {
+        info: (m) => { if (this.config.verbose) log.info(m); },
+        warn: (m) => log.warn(m),
+        error: (m) => log.error(m),
     };
 
     constructor(config: ServerConfig) {
@@ -89,7 +97,7 @@ export class GraphServer {
     /** Start the server. */
     async start(): Promise<void> {
         if (!fs.existsSync(this.webviewDir)) {
-            console.log('Generating graph...');
+            log.info('Generating graph...');
             await this.regenerateWebview();
         }
 
@@ -108,11 +116,11 @@ export class GraphServer {
             onEdgeListChange: async () => await this.handleEdgeListChange(),
         });
 
-        console.log('[GraphServer] Setting up ArchWatcher...');
+        log.info('Setting up ArchWatcher...');
         await this.archWatcher.setup((event) =>
             broadcastArchEvent(event, this.webSocket),
         );
-        console.log('[GraphServer] ArchWatcher setup complete');
+        log.info('ArchWatcher setup complete');
 
         await new Promise<void>((resolve, reject) => {
             this.httpServer!.listen(this.config.port, '127.0.0.1', () => {
@@ -121,10 +129,12 @@ export class GraphServer {
             });
             this.httpServer!.on('error', (error: any) => {
                 if (error.code === 'EADDRINUSE') {
-                    console.error(`Error: Port ${this.config.port} is already in use.`);
-                    console.error(`Try a different port with --port <number>`);
+                    log.error('Port already in use', { port: this.config.port });
+                    log.error('Try a different port with --port <number>');
                 } else {
-                    console.error('Server error:', error);
+                    log.error('Server error', {
+                        error: error instanceof Error ? error.message : String(error),
+                    });
                 }
                 reject(error);
             });
@@ -143,7 +153,7 @@ export class GraphServer {
         if (this.httpServer) {
             await new Promise<void>((resolve) => {
                 this.httpServer!.close(() => {
-                    console.log('Server stopped');
+                    log.info('Server stopped');
                     resolve();
                 });
             });
@@ -191,7 +201,9 @@ export class GraphServer {
         try {
             await rescanSourcesAndRegenerate(files, this.regenDeps());
         } catch (error) {
-            console.error('Error regenerating edges:', error);
+            log.error('Error regenerating edges', {
+                error: error instanceof Error ? error.message : String(error),
+            });
         } finally {
             this.isRegenerating = false;
         }
@@ -203,7 +215,9 @@ export class GraphServer {
         try {
             await this.regenerateWebview();
         } catch (error) {
-            console.error('Error regenerating webview:', error);
+            log.error('Error regenerating webview', {
+                error: error instanceof Error ? error.message : String(error),
+            });
         } finally {
             this.isRegenerating = false;
         }
@@ -211,12 +225,12 @@ export class GraphServer {
 
     private printServerInfo(): void {
         const watched = this.fileWatcher.getWatchedFileCount();
-        console.log('\nLLMem Graph Server\n');
-        console.log(`  Server running at: http://127.0.0.1:${this.getPort()}`);
-        console.log(`  Serving from: ${this.webviewDir}`);
-        console.log(`  Workspace: ${this.config.workspaceRoot}\n`);
-        console.log(`  Press Ctrl+C to stop\n`);
-        console.log(`  Live reload enabled — watching ${watched} files\n`);
+        log.info('LLMem Graph Server ready');
+        log.info('Server running', { url: `http://127.0.0.1:${this.getPort()}` });
+        log.info('Serving from', { webviewDir: this.webviewDir });
+        log.info('Workspace', { workspaceRoot: this.config.workspaceRoot });
+        log.info('Press Ctrl+C to stop');
+        log.info('Live reload enabled', { watchedFileCount: watched });
     }
 }
 

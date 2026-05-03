@@ -6,6 +6,9 @@
  */
 
 import { z, ZodSchema, ZodError } from 'zod';
+import { createLogger } from '../common/logger';
+
+const log = createLogger('mcp');
 
 // ============================================================================
 // Response Types
@@ -124,7 +127,7 @@ export function logRequest(
     toolName: string,
     args: unknown
 ): void {
-    console.error(`[${correlationId}] MCP Request: ${toolName}`, JSON.stringify(args));
+    log.debug('MCP Request', { correlationId, toolName, args: JSON.stringify(args) });
 }
 
 /**
@@ -134,5 +137,5 @@ export function logResponse(
     correlationId: string,
     response: McpResponse<unknown>
 ): void {
-    console.error(`[${correlationId}] MCP Response: ${response.status}`);
+    log.debug('MCP Response', { correlationId, status: response.status });
 }

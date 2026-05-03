@@ -5,6 +5,9 @@ import * as path from 'path';
 import { generateWorkTree } from './worktree';
 import { convertAllMarkdown } from './utils/md-converter';
 import { loadDesignDocs } from './design-docs';
+import { createLogger } from '../common/logger';
+
+const log = createLogger('webview-generator');
 
 /**
  * Options for the static webview generator
@@ -55,11 +58,11 @@ export async function generateStaticWebview(
     if (fs.existsSync(stylesSrc)) {
         fs.cpSync(stylesSrc, stylesDest, { recursive: true });
     } else {
-        console.warn(`Warning: styles folder not found at ${stylesSrc}`);
+        log.warn('styles folder not found', { stylesSrc });
     }
 
     // 2. Bundle or copy Webview UI
-    console.log('Bundling webview UI...');
+    log.info('Bundling webview UI...');
     const jsDir = path.join(destinationDir, 'js');
     if (!fs.existsSync(jsDir)) {
         fs.mkdirSync(jsDir, { recursive: true });
@@ -75,7 +78,7 @@ export async function generateStaticWebview(
                 fs.copyFileSync(bundledMap, path.join(jsDir, 'main.js.map'));
             }
         } else {
-            console.warn(`Warning: pre-bundled main.js not found at ${bundledJs}`);
+            log.warn('pre-bundled main.js not found', { bundledJs });
         }
     } else {
         // Bundle from source TypeScript
@@ -94,7 +97,9 @@ export async function generateStaticWebview(
                 format: 'iife', // Use IIFE for file:// support (no CORS on modules)
             });
         } catch (e) {
-            console.error("Esbuild failed:", e);
+            log.error('Esbuild failed', {
+                error: e instanceof Error ? e.message : String(e),
+            });
             throw e;
         }
     }
@@ -105,7 +110,7 @@ export async function generateStaticWebview(
     if (fs.existsSync(libsSrc)) {
         fs.cpSync(libsSrc, libsDest, { recursive: true });
     } else {
-        console.warn(`Warning: libs folder not found at ${libsSrc}`);
+        log.warn('libs folder not found', { libsSrc });
     }
 
     // 3. Copy .arch folder to arch (skip in graph-only mode)
@@ -122,7 +127,7 @@ export async function generateStaticWebview(
             // Convert Markdown to HTML
             await convertAllMarkdown(archDest);
         } else {
-            console.warn(`Warning: .arch folder not found at ${archSrc}`);
+            log.warn('.arch folder not found', { archSrc });
         }
     }
 

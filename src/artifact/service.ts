@@ -7,6 +7,9 @@ import { ArtifactIndex } from './index';
 import { ArtifactTreeManager } from './tree';
 import { artifactFilePath, sourceToArtifactDir, summaryFilePath } from './path-mapper';
 import { readFile, writeFile, deleteFile, exists } from './storage';
+import { createLogger } from '../common/logger';
+
+const log = createLogger('artifact-service');
 
 // Legacy imports - artifact system is deprecated, using edge lists instead
 // import { TypeScriptService, TypeScriptExtractor } from '../parser';
@@ -47,7 +50,9 @@ function parseGitignore(rootPath: string): Set<string> {
             }
         }
     } catch (e) {
-        console.warn('Failed to parse .gitignore:', e);
+        log.warn('Failed to parse .gitignore', {
+            error: e instanceof Error ? e.message : String(e),
+        });
     }
 
     return patterns;
@@ -79,13 +84,13 @@ function shouldIgnore(name: string, relativePath: string): boolean {
 export async function initializeArtifactService(root: string) {
     // Already initialized for this workspace - no-op
     if (isInitialized && workspaceRoot === root) {
-        console.error('[ArtifactService] Already initialized for this workspace');
+        log.debug('Already initialized for this workspace');
         return;
     }
 
     // Switching workspaces - reinitialize
     if (isInitialized && workspaceRoot !== root) {
-        console.error(`[ArtifactService] Switching workspace from ${workspaceRoot} to ${root}`);
+        log.debug('Switching workspace', { from: workspaceRoot, to: root });
         isInitialized = false;
     }
 
@@ -126,7 +131,7 @@ export function isArtifactServiceInitialized(): boolean {
 
 export async function createArtifact(sourcePath: string, type: string, content: string): Promise<ArtifactMetadata> {
     // DISABLED: Artifact system deprecated, using edge list
-    console.error('[ArtifactService] createArtifact disabled - using edge list instead');
+    log.debug('createArtifact disabled - using edge list instead');
 
     // Return dummy metadata without writing any files
     return {
@@ -144,7 +149,7 @@ export async function createArtifact(sourcePath: string, type: string, content: 
  */
 export async function ensureSingleFileArtifact(filePath: string): Promise<ArtifactRecord | null> {
     // DISABLED: Legacy artifact system deprecated, using edge list instead
-    console.error('[ArtifactService] ensureSingleFileArtifact disabled - using edge list');
+    log.debug('ensureSingleFileArtifact disabled - using edge list');
     return null;
 
     /* Legacy code preserved for future lazy loading:
@@ -217,7 +222,7 @@ export async function ensureSingleFileArtifact(filePath: string): Promise<Artifa
  */
 export async function ensureArtifacts(folderPath: string, recursive: boolean = false): Promise<ArtifactRecord[]> {
     // DISABLED: Legacy artifact system deprecated, using edge list instead
-    console.error('[ArtifactService] ensureArtifacts disabled - using edge list');
+    log.debug('ensureArtifacts disabled - using edge list');
     return [];
 
     /* Legacy code preserved for future lazy loading:
@@ -300,7 +305,7 @@ export async function ensureArtifacts(folderPath: string, recursive: boolean = f
  */
 export async function saveFolderSummary(folderPath: string, summary: string): Promise<ArtifactMetadata> {
     // DISABLED: Legacy artifact system deprecated, using edge list instead
-    console.error('[ArtifactService] saveFolderSummary disabled - using edge list');
+    log.debug('saveFolderSummary disabled - using edge list');
     return {
         id: '',
         sourcePath: folderPath,
@@ -336,7 +341,7 @@ export async function saveFolderSummary(folderPath: string, summary: string): Pr
  */
 export async function saveModuleSummaries(summaries: Record<string, string>): Promise<ArtifactMetadata[]> {
     // DISABLED: Legacy artifact system deprecated, using edge list instead
-    console.error('[ArtifactService] saveModuleSummaries disabled - using edge list');
+    log.debug('saveModuleSummaries disabled - using edge list');
     return [];
 
     /* Legacy code preserved for future lazy loading:
@@ -349,7 +354,10 @@ export async function saveModuleSummaries(summaries: Record<string, string>): Pr
             const metadata = await saveFolderSummary(folderPath, content);
             results.push(metadata);
         } catch (error) {
-            console.error(`Failed to save summary for ${folderPath}:`, error);
+            log.error('Failed to save summary', {
+                folderPath,
+                error: error instanceof Error ? error.message : String(error),
+            });
         }
     }
 

@@ -14,11 +14,17 @@ import * as fs from 'fs';
 import { scanFolder, scanFolderRecursive } from '../application/scan';
 import { asWorkspaceRoot } from '../core/paths';
 import type { Logger } from '../core/logger';
+import { createLogger } from '../common/logger';
 
+// Loop 20: route the application-layer adapter through the structured
+// logger. The script's own `console.log` progress prints stay (they
+// produce the user-visible CLI report), but progress lines emitted from
+// `application/scan` now flow through scope='generate-call-edges'.
+const scanLog = createLogger('generate-call-edges');
 const consoleLogger: Logger = {
-    info: (m) => console.log(m),
-    warn: (m) => console.warn(m),
-    error: (m) => console.error(m),
+    info: (m) => scanLog.info(m),
+    warn: (m) => scanLog.warn(m),
+    error: (m) => scanLog.error(m),
 };
 
 async function main(): Promise<void> {

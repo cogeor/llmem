@@ -13,6 +13,9 @@ import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import { createLogger } from '../common/logger';
+
+const log = createLogger('watch-service');
 
 // ============================================================================
 // Types
@@ -78,7 +81,7 @@ export class WatchService {
                 const rawState = JSON.parse(content);
 
                 if (typeof rawState !== 'object' || rawState === null) {
-                    console.error('[WatchService] Invalid state file shape, starting fresh');
+                    log.warn('Invalid state file shape, starting fresh');
                     return;
                 }
 
@@ -93,10 +96,12 @@ export class WatchService {
                     ));
                 }
 
-                console.error(`[WatchService] Loaded ${this.watchedFiles.size} watched files`);
+                log.debug('Loaded watched files', { count: this.watchedFiles.size });
             }
         } catch (e) {
-            console.error('[WatchService] Failed to load state:', e);
+            log.error('Failed to load state', {
+                error: e instanceof Error ? e.message : String(e),
+            });
         }
     }
 
@@ -104,7 +109,7 @@ export class WatchService {
      * Migrate from v1 format (directories + files) to v2 (files only).
      */
     private async migrateFromV1(v1State: WatchStateV1): Promise<void> {
-        console.error('[WatchService] Migrating from v1 to v2 format...');
+        log.info('Migrating from v1 to v2 format...');
 
         // Collect all files from v1 format
         for (const entry of v1State.watchedPaths || []) {
@@ -132,7 +137,7 @@ export class WatchService {
 
         // Save in new format
         await this.save();
-        console.error(`[WatchService] Migrated to v2: ${this.watchedFiles.size} files`);
+        log.info('Migrated to v2', { fileCount: this.watchedFiles.size });
     }
 
     /**
@@ -155,9 +160,11 @@ export class WatchService {
             };
 
             await fs.writeFile(filePath, JSON.stringify(state, null, 2), 'utf-8');
-            console.error(`[WatchService] Saved ${this.watchedFiles.size} watched files`);
+            log.debug('Saved watched files', { count: this.watchedFiles.size });
         } catch (e) {
-            console.error('[WatchService] Failed to save state:', e);
+            log.error('Failed to save state', {
+                error: e instanceof Error ? e.message : String(e),
+            });
             throw e;
         }
     }
@@ -223,7 +230,7 @@ export class WatchService {
             }
         }
 
-        console.error(`[WatchService] Added ${addedFiles.length} files from folder: ${folderPath}`);
+        log.debug('Added files from folder', { count: addedFiles.length, folderPath });
         return addedFiles;
     }
 
@@ -243,7 +250,7 @@ export class WatchService {
             }
         }
 
-        console.error(`[WatchService] Removed ${removedFiles.length} files from folder: ${folderPath}`);
+        log.debug('Removed files from folder', { count: removedFiles.length, folderPath });
         return removedFiles;
     }
 
@@ -288,7 +295,7 @@ export class WatchService {
             const absolutePath = path.join(this.workspaceRoot, filePath);
 
             if (!fsSync.existsSync(absolutePath)) {
-                console.error(`[WatchService] File no longer exists: ${filePath}`);
+                log.warn('File no longer exists', { filePath });
                 continue;
             }
 
@@ -296,7 +303,7 @@ export class WatchService {
             const savedHash = this.fileHashes.get(filePath);
 
             if (currentHash !== savedHash) {
-                console.error(`[WatchService] Changed: ${filePath}`);
+                log.debug('Changed', { filePath });
                 changed.push(filePath);
                 // Update hash
                 this.fileHashes.set(filePath, currentHash);

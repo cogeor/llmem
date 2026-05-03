@@ -4,12 +4,15 @@ import * as path from 'path';
 import { collectViewerData } from '../application/viewer-data';
 import { ParserRegistry } from '../parser/registry';
 import { scanFile } from '../application/scan';
-import type { Logger } from '../core/logger';
+import type { Logger as BoundaryLogger } from '../core/logger';
+import { createLogger } from '../common/logger';
 import { asWorkspaceRoot, asAbsPath } from '../core/paths';
 import type { DesignDoc } from '../webview/design-docs';
 import { renderMarkdown } from '../webview/markdown-renderer';
 import type { WebviewGraphData } from '../graph/webview-data';
 import type { ITreeNode } from '../webview/worktree';
+
+const log = createLogger('hot-reload');
 
 /**
  * The rendered shape that hot-reload pushes to the panel. Identical to
@@ -47,10 +50,13 @@ export class HotReloadService {
 
     private onUpdate: (data: WebviewData) => void;
 
-    private readonly _scanLogger: Logger = {
-        info: (m) => console.log(m),
-        warn: (m) => console.warn(m),
-        error: (m) => console.error(m),
+    // Loop 20: bridge the application-layer boundary `Logger` interface
+    // through the structured logger. Same shape as before; the targets
+    // are now leveled scope='hot-reload' calls instead of raw console.
+    private readonly _scanLogger: BoundaryLogger = {
+        info: (m) => log.info(m),
+        warn: (m) => log.warn(m),
+        error: (m) => log.error(m),
     };
 
     constructor(
@@ -67,16 +73,16 @@ export class HotReloadService {
     public start() {
         if (this.sourceWatcher) return;
 
-        console.log('[HotReload] Starting watchers...');
-        console.log('[HotReload]   Project root:', this.projectRoot);
-        console.log('[HotReload]   Artifact root:', this.artifactRoot);
-        console.log('[HotReload]   Arch root:', this.archRoot);
+        log.info('Starting watchers...');
+        log.info('Project root', { projectRoot: this.projectRoot });
+        log.info('Artifact root', { artifactRoot: this.artifactRoot });
+        log.info('Arch root', { archRoot: this.archRoot });
 
         // Watch source files -> refresh graphs
         const extensions = ParserRegistry.getInstance().getSupportedExtensions();
         const extPattern = extensions.map(e => e.replace(/^\./, '')).join(',');
 
-        console.log(`[HotReload] Watching extensions: {${extPattern}}`);
+        log.info('Watching extensions', { extensions: extPattern });
 
         const srcPattern = new vscode.RelativePattern(
             vscode.Uri.file(this.projectRoot),
@@ -114,11 +120,11 @@ export class HotReloadService {
 
         const rootWatcher = vscode.workspace.createFileSystemWatcher(rootPattern);
         rootWatcher.onDidCreate((uri) => {
-            console.log('[HotReload] Root creation detected:', uri.fsPath);
+            log.debug('Root creation detected', { fsPath: uri.fsPath });
             this.queueTreeRefresh();
         });
         rootWatcher.onDidDelete((uri) => {
-            console.log('[HotReload] Root deletion detected:', uri.fsPath);
+            log.debug('Root deletion detected', { fsPath: uri.fsPath });
             this.queueTreeRefresh();
         });
         this.disposables.push(rootWatcher);
@@ -141,7 +147,7 @@ export class HotReloadService {
         this.edgelistWatcher.onDidCreate(() => this.queueEdgelistRefresh());
         this.disposables.push(this.edgelistWatcher);
 
-        console.log('[HotReload] Watchers started');
+        log.info('Watchers started');
     }
 
     public stop() {
@@ -151,7 +157,7 @@ export class HotReloadService {
         this.archWatcher = undefined;
         this.treeWatcher = undefined;
         this.edgelistWatcher = undefined;
-        console.log('[HotReload] Watchers stopped');
+        log.info('Watchers stopped');
     }
 
     /**
@@ -159,7 +165,7 @@ export class HotReloadService {
      */
     public addWatchedPath(relativePath: string) {
         this.watchedPaths.add(relativePath);
-        console.log(`[HotReload] Added to watch: ${relativePath}`);
+        log.debug('Added to watch', { relativePath });
     }
 
     /**
@@ -167,7 +173,7 @@ export class HotReloadService {
      */
     public removeWatchedPath(relativePath: string) {
         this.watchedPaths.delete(relativePath);
-        console.log(`[HotReload] Removed from watch: ${relativePath}`);
+        log.debug('Removed from watch', { relativePath });
     }
 
     /**
@@ -192,11 +198,11 @@ export class HotReloadService {
             const watchedChangedFiles = changedFiles.filter(f => this.isInWatchedPath(f));
 
             if (watchedChangedFiles.length === 0) {
-                console.log('[HotReload] Source files changed (not in watched paths):', changedFiles);
+                log.debug('Source files changed (not in watched paths)', { changedFiles });
                 return;
             }
 
-            console.log('[HotReload] Watched files changed, regenerating edges:', watchedChangedFiles);
+            log.info('Watched files changed, regenerating edges', { watchedChangedFiles });
             try {
                 for (const file of watchedChangedFiles) {
                     await scanFile({
@@ -210,7 +216,9 @@ export class HotReloadService {
                 // Refresh the webview data
                 await this.sendUpdate();
             } catch (e) {
-                console.error('[HotReload] Source rebuild failed:', e);
+                log.error('Source rebuild failed', {
+                    error: e instanceof Error ? e.message : String(e),
+                });
             }
         }, 500);
     }
@@ -219,11 +227,13 @@ export class HotReloadService {
         if (this.debounceTimers.arch) clearTimeout(this.debounceTimers.arch);
 
         this.debounceTimers.arch = setTimeout(async () => {
-            console.log('[HotReload] Arch changed - refreshing design docs...');
+            log.debug('Arch changed - refreshing design docs...');
             try {
                 await this.sendUpdate();
             } catch (e) {
-                console.error('[HotReload] Arch refresh failed:', e);
+                log.error('Arch refresh failed', {
+                    error: e instanceof Error ? e.message : String(e),
+                });
             }
         }, 300);
     }
@@ -232,11 +242,13 @@ export class HotReloadService {
         if (this.debounceTimers.tree) clearTimeout(this.debounceTimers.tree);
 
         this.debounceTimers.tree = setTimeout(async () => {
-            console.log('[HotReload] File system changed - refreshing tree...');
+            log.debug('File system changed - refreshing tree...');
             try {
                 await this.sendUpdate();
             } catch (e) {
-                console.error('[HotReload] Tree refresh failed:', e);
+                log.error('Tree refresh failed', {
+                    error: e instanceof Error ? e.message : String(e),
+                });
             }
         }, 500);
     }
@@ -245,11 +257,13 @@ export class HotReloadService {
         if (this.debounceTimers.edgelist) clearTimeout(this.debounceTimers.edgelist);
 
         this.debounceTimers.edgelist = setTimeout(async () => {
-            console.log('[HotReload] Edge list changed - refreshing graphs...');
+            log.debug('Edge list changed - refreshing graphs...');
             try {
                 await this.sendUpdate();
             } catch (e) {
-                console.error('[HotReload] Edgelist refresh failed:', e);
+                log.error('Edgelist refresh failed', {
+                    error: e instanceof Error ? e.message : String(e),
+                });
             }
         }, 300);
     }
@@ -268,9 +282,11 @@ export class HotReloadService {
                 designDocs,
             };
             this.onUpdate(data);
-            console.log('[HotReload] Update sent');
+            log.debug('Update sent');
         } catch (e) {
-            console.error('[HotReload] Failed to collect data:', e);
+            log.error('Failed to collect data', {
+                error: e instanceof Error ? e.message : String(e),
+            });
         }
     }
 }
@@ -287,7 +303,10 @@ async function renderRawDesignDocs(raw: Record<string, string>): Promise<Record<
             const html = await renderMarkdown(markdown);
             out[key] = { markdown, html };
         } catch (e) {
-            console.error(`[HotReload] Failed to render design doc: ${key}`, e);
+            log.error('Failed to render design doc', {
+                key,
+                error: e instanceof Error ? e.message : String(e),
+            });
         }
     }
     return out;

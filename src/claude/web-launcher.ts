@@ -12,6 +12,9 @@ import { ImportEdgeListStore, CallEdgeListStore } from '../graph/edgelist';
 import { prepareWebviewDataFromSplitEdgeLists } from '../graph/webview-data';
 import { generateStaticWebview } from '../webview/generator';
 import { WatchService } from '../graph/worktree-state';
+import { createLogger } from '../common/logger';
+
+const log = createLogger('web-launcher');
 
 /**
  * Options for graph generation
@@ -234,7 +237,7 @@ export function openInBrowser(url: string): void {
     }
     execFile(cmd, args, (error: any) => {
         if (error) {
-            console.error(`Failed to open browser: ${error.message}`);
+            log.warn('Failed to open browser', { error: error.message });
         }
     });
 }

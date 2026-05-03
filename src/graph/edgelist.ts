@@ -20,6 +20,7 @@ import {
     createEmptyEdgeList,
     loadEdgeListData,
 } from './edgelist-schema';
+import { createLogger, type Logger } from '../common/logger';
 
 // ============================================================================
 // Re-exports — the schema module is the single source of truth for these
@@ -46,11 +47,21 @@ abstract class BaseEdgeListStore {
     protected filePath: string;
     protected dirty: boolean = false;
     protected readonly edgeKind: 'import' | 'call';
+    protected readonly log: Logger;
 
-    constructor(artifactRoot: string, filename: string, edgeKind: 'import' | 'call') {
+    constructor(
+        artifactRoot: string,
+        filename: string,
+        edgeKind: 'import' | 'call',
+        logger?: Logger,
+    ) {
         this.filePath = path.join(artifactRoot, filename);
         this.edgeKind = edgeKind;
         this.data = this.createEmpty();
+        // Loop 20: scope per concrete subclass (ImportEdgeListStore /
+        // CallEdgeListStore). The factory default keeps this internal so
+        // call-sites don't need to thread a logger through.
+        this.log = logger ?? createLogger(this.constructor.name);
     }
 
     protected createEmpty(): EdgeListData {
@@ -90,7 +101,7 @@ abstract class BaseEdgeListStore {
 
     async save(): Promise<void> {
         if (!this.dirty) {
-            console.error(`[${this.constructor.name}] No changes to save`);
+            this.log.debug('No changes to save');
             return;
         }
 
@@ -103,10 +114,15 @@ abstract class BaseEdgeListStore {
             this.data.timestamp = new Date().toISOString();
             const content = JSON.stringify(this.data, null, 2);
             await fs.writeFile(this.filePath, content, 'utf-8');
-            console.error(`[${this.constructor.name}] Saved ${this.data.nodes.length} nodes, ${this.data.edges.length} edges`);
+            this.log.debug('Saved edge list', {
+                nodes: this.data.nodes.length,
+                edges: this.data.edges.length,
+            });
             this.dirty = false;
         } catch (e) {
-            console.error(`[${this.constructor.name}] Failed to save:`, e);
+            this.log.error('Failed to save', {
+                error: e instanceof Error ? e.message : String(e),
+            });
             throw e;
         }
     }
@@ -169,7 +185,10 @@ abstract class BaseEdgeListStore {
     addEdge(edge: EdgeEntry): void {
         // Ensure edge kind matches this store
         if (edge.kind !== this.edgeKind) {
-            console.warn(`[${this.constructor.name}] Ignoring ${edge.kind} edge, expected ${this.edgeKind}`);
+            this.log.warn('Ignoring edge with mismatched kind', {
+                edgeKind: edge.kind,
+                expected: this.edgeKind,
+            });
             return;
         }
 
@@ -248,7 +267,11 @@ abstract class BaseEdgeListStore {
 
         if (this.data.nodes.length !== beforeNodes || this.data.edges.length !== beforeEdges) {
             this.dirty = true;
-            console.error(`[${this.constructor.name}] Removed data for ${normalizedPath}: ${beforeNodes - this.data.nodes.length} nodes, ${beforeEdges - this.data.edges.length} edges`);
+            this.log.debug('Removed data', {
+                path: normalizedPath,
+                nodes: beforeNodes - this.data.nodes.length,
+                edges: beforeEdges - this.data.edges.length,
+            });
         }
     }
 
@@ -283,8 +306,8 @@ abstract class BaseEdgeListStore {
  * ```
  */
 export class ImportEdgeListStore extends BaseEdgeListStore {
-    constructor(artifactRoot: string) {
-        super(artifactRoot, IMPORT_EDGELIST_FILENAME, 'import');
+    constructor(artifactRoot: string, logger?: Logger) {
+        super(artifactRoot, IMPORT_EDGELIST_FILENAME, 'import', logger);
     }
 }
 
@@ -315,8 +338,8 @@ export class ImportEdgeListStore extends BaseEdgeListStore {
  * ```
  */
 export class CallEdgeListStore extends BaseEdgeListStore {
-    constructor(artifactRoot: string) {
-        super(artifactRoot, CALL_EDGELIST_FILENAME, 'call');
+    constructor(artifactRoot: string, logger?: Logger) {
+        super(artifactRoot, CALL_EDGELIST_FILENAME, 'call', logger);
     }
 }
 

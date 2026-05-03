@@ -19,6 +19,9 @@ import type { Config } from '../core/config-types';
 import { DEFAULT_CONFIG } from '../config-defaults';
 import { toolDefinitions as TOOLS } from './tools';
 import { generateCorrelationId } from './handlers';
+import { createLogger } from '../common/logger';
+
+const log = createLogger('mcp-server');
 
 // Use require to avoid TypeScript's deep type inference with zod-to-json-schema
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -122,13 +125,13 @@ export async function startServer(config: Config, workspaceRoot: string): Promis
     serverConfig = config;
     storedConfig = config;
     const correlationId = generateCorrelationId();
-    console.error(`[${correlationId}] Starting MCP server...`);
+    log.info('Starting MCP server...', { correlationId });
 
     // Store workspace root for lazy artifact initialization
     // Artifact service will be initialized on-demand when tools need it
     storedWorkspaceRoot = workspaceRoot;
-    console.error(`[${correlationId}]   Workspace root: ${workspaceRoot} (stored for lazy init)`);
-    console.error(`[${correlationId}]   Artifact root: ${config.artifactRoot}`);
+    log.info('Workspace root stored for lazy init', { correlationId, workspaceRoot });
+    log.info('Artifact root configured', { correlationId, artifactRoot: config.artifactRoot });
 
     // Create server instance
     server = new Server(
@@ -145,7 +148,7 @@ export async function startServer(config: Config, workspaceRoot: string): Promis
 
     // Register tool list handler
     server.setRequestHandler(ListToolsRequestSchema, async () => {
-        console.error(`[${correlationId}] Handling list_tools request`);
+        log.debug('Handling list_tools request', { correlationId });
         return {
             tools: TOOLS.map(tool => ({
                 name: tool.name,
@@ -161,12 +164,12 @@ export async function startServer(config: Config, workspaceRoot: string): Promis
         const toolArgs = request.params.arguments ?? {};
         const reqCorrelationId = generateCorrelationId();
 
-        console.error(`[${reqCorrelationId}] Tool call: ${toolName}`);
+        log.debug('Tool call', { correlationId: reqCorrelationId, toolName });
 
         // Find the tool
         const tool = TOOLS.find(t => t.name === toolName);
         if (!tool) {
-            console.error(`[${reqCorrelationId}] Unknown tool: ${toolName}`);
+            log.warn('Unknown tool', { correlationId: reqCorrelationId, toolName });
             return {
                 isError: true,
                 content: [
@@ -194,7 +197,7 @@ export async function startServer(config: Config, workspaceRoot: string): Promis
             };
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : String(err);
-            console.error(`[${reqCorrelationId}] Tool error: ${errorMessage}`);
+            log.error('Tool error', { correlationId: reqCorrelationId, error: errorMessage });
             return {
                 isError: true,
                 content: [
@@ -214,8 +217,12 @@ export async function startServer(config: Config, workspaceRoot: string): Promis
     transport = new StdioServerTransport();
     await server.connect(transport);
 
-    console.error(`[${correlationId}] MCP server started successfully`);
-    console.error(`[${correlationId}]   Registered ${TOOLS.length} tools: ${TOOLS.map(t => t.name).join(', ')}`);
+    log.info('MCP server started successfully', { correlationId });
+    log.info('Registered tools', {
+        correlationId,
+        count: TOOLS.length,
+        tools: TOOLS.map(t => t.name).join(', '),
+    });
 }
 
 /**
@@ -226,7 +233,7 @@ export async function startServer(config: Config, workspaceRoot: string): Promis
  */
 export async function stopServer(): Promise<void> {
     const correlationId = generateCorrelationId();
-    console.error(`[${correlationId}] Stopping MCP server...`);
+    log.info('Stopping MCP server...', { correlationId });
 
     if (server) {
         await server.close();
@@ -238,7 +245,7 @@ export async function stopServer(): Promise<void> {
     storedConfig = null;
     storedWorkspaceRoot = null;
 
-    console.error(`[${correlationId}] MCP server stopped`);
+    log.info('MCP server stopped', { correlationId });
 }
 
 /**
@@ -279,24 +286,32 @@ async function main(): Promise<void> {
     const workspaceRoot = process.env.LLMEM_WORKSPACE;
 
     if (!workspaceRoot) {
+        // fatal-bootstrap: process exits before any structured handler runs;
+        // emit plainly to stderr so the message survives even if the logger
+        // module never finishes initializing.
+        // eslint-disable-next-line no-console
         console.error('[MCP] ERROR: LLMEM_WORKSPACE environment variable is required.');
+        // eslint-disable-next-line no-console
         console.error('[MCP] Usage: LLMEM_WORKSPACE=/path/to/workspace node dist/mcp/server.js');
+        // eslint-disable-next-line no-console
         console.error('[MCP] The workspace root must be explicitly provided - never inferred.');
         process.exit(1);
     }
 
-    console.error(`[MCP] Standalone mode - workspace root: ${workspaceRoot}`);
+    log.info('Standalone mode', { workspaceRoot });
 
     try {
         await startServer(defaultConfig, workspaceRoot);
 
         // Graceful shutdown handler
         const shutdown = async (signal: string) => {
-            console.error(`[MCP] Received ${signal}, shutting down gracefully...`);
+            log.info('Received signal, shutting down gracefully', { signal });
             try {
                 await stopServer();
             } catch (err) {
-                console.error('[MCP] Error during shutdown:', err);
+                log.error('Error during shutdown', {
+                    error: err instanceof Error ? err.message : String(err),
+                });
             }
             process.exit(0);
         };
@@ -305,9 +320,13 @@ async function main(): Promise<void> {
         process.once('SIGINT', () => shutdown('SIGINT'));
 
         process.on('unhandledRejection', (reason) => {
-            console.error('[MCP] Unhandled rejection:', reason);
+            log.error('Unhandled rejection', {
+                reason: reason instanceof Error ? reason.message : String(reason),
+            });
         });
     } catch (error) {
+        // fatal-bootstrap: startServer threw before normal logging is wired.
+        // eslint-disable-next-line no-console
         console.error('[MCP] Failed to start MCP server:', error);
         process.exit(1);
     }
