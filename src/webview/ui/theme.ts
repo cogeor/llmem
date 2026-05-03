@@ -43,6 +43,7 @@ export class ThemeManager {
         // Update button icon - show sun in dark mode (to switch to light), moon in light mode (to switch to dark)
         const btn = document.getElementById('theme-toggle');
         if (btn) {
+            // safe: author-controlled SVG icon string from icons.ts (moon | sun)
             btn.innerHTML = theme === ThemeManager.LIGHT_THEME ? moon : sun;
             btn.title = `Switch to ${theme === ThemeManager.LIGHT_THEME ? 'dark' : 'light'} mode`;
         }

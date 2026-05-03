@@ -2,6 +2,7 @@
 import { DataProvider } from '../services/dataProvider';
 import { WorkTreeNode, FileNode, DirectoryNode, AppState, GraphStatus } from '../types';
 import { folder, file, chevronRight } from '../icons';
+import { escape } from '../utils/escape';
 
 // VS Code webview API type declaration
 declare function acquireVsCodeApi(): { postMessage: (message: any) => void };
@@ -74,6 +75,9 @@ export class Worktree {
     }
 
     render(rootNode: WorkTreeNode) {
+        // safe: renderNode escapes every filesystem-derived interpolation
+        // (path, name) via utils/escape; structural tags and CSS class names
+        // are static.
         this.el.innerHTML = `<ul class="tree-list">${this.renderNode(rootNode, 0)}</ul>`;
     }
 
@@ -121,13 +125,24 @@ export class Worktree {
             ? `Click to toggle file watching for this ${isDir ? 'folder' : 'file'}.`
             : '';
 
+        // Loop 13: escape every filesystem-derived string before interpolation.
+        // node.path and node.name come from the worktree data and could contain
+        // any character a filesystem allows, including `<`, `"`, `'`. The
+        // `data-path` attribute is also read back via CSS selectors using
+        // `CSS.escape` at lookup time, so the escaped form round-trips fine.
+        // node.type is a controlled string union ('file' | 'directory') and
+        // does not need escaping; the same applies to icon SVG strings imported
+        // from icons.ts (author-controlled).
+        const safePath = escape(node.path);
+        const safeName = escape(node.name);
+
         let html = `
-            <li class="tree-node" data-path="${node.path}" data-type="${node.type}">
+            <li class="tree-node" data-path="${safePath}" data-type="${node.type}">
                 <div class="tree-item" style="padding-left: ${depth * 12 + 12}px">
                     ${isDir ? `<span class="tree-arrow">${chevronRight}</span>` : ''}
                     <span class="icon">${isDir ? folder : file}</span>
-                    <span class="label">${node.name}</span>
-                    ${showToggle ? `<button class="status-btn" data-path="${node.path}" title="${statusTitle}" style="
+                    <span class="label">${safeName}</span>
+                    ${showToggle ? `<button class="status-btn" data-path="${safePath}" title="${statusTitle}" style="
                         width: 12px;
                         height: 12px;
                         min-width: 12px;
@@ -144,7 +159,7 @@ export class Worktree {
         `;
 
         if (isDir && (node as DirectoryNode).children) {
-            html += `<ul class="tree-children" data-path="${node.path}">`;
+            html += `<ul class="tree-children" data-path="${safePath}">`;
             (node as DirectoryNode).children.forEach(child => {
                 html += this.renderNode(child, depth + 1);
             });

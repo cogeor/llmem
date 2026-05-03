@@ -1,5 +1,6 @@
 
 import { AppState } from './types';
+import { escape } from './utils/escape';
 
 interface RouteComponent {
     el: HTMLElement;
@@ -45,7 +46,13 @@ export class Router {
 
         // Valid view?
         if (!this.routes[viewName]) {
-            this.container.innerHTML = `<div class="error">View not found: ${viewName}</div>`;
+            // Loop 13: viewName originates from AppState which the app code
+            // controls today, but defensive escape closes the route by which
+            // a future state.set({ currentView: '<script>...</script>' }) call
+            // could land an unsanitized payload into innerHTML.
+            const safeViewName = escape(String(viewName ?? ''));
+            // safe: structural template with escape()-wrapped viewName.
+            this.container.innerHTML = `<div class="error">View not found: ${safeViewName}</div>`;
             return;
         }
 

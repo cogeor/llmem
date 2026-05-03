@@ -16,12 +16,14 @@ export class EdgeRenderer {
         // Create arrowhead markers
         this.defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
 
+        // safe: static template literal with no interpolation —
+        // author-controlled SVG marker definitions.
         this.defs.innerHTML = `
-            <marker id="arrowhead" viewBox="0 -5 10 10" refX="15" refY="0" 
+            <marker id="arrowhead" viewBox="0 -5 10 10" refX="15" refY="0"
                     markerWidth="6" markerHeight="6" orient="auto">
                 <path d="M0,-5L10,0L0,5" fill="var(--edge-color, #999)" />
             </marker>
-            <marker id="arrowhead-highlighted" viewBox="0 -5 10 10" refX="15" refY="0" 
+            <marker id="arrowhead-highlighted" viewBox="0 -5 10 10" refX="15" refY="0"
                     markerWidth="6" markerHeight="6" orient="auto">
                 <path d="M0,-5L10,0L0,5" fill="var(--edge-highlight-color, #007acc)" />
             </marker>
@@ -37,6 +39,7 @@ export class EdgeRenderer {
         edges: VisEdge[],
         positions: Map<string, { x: number; y: number }>
     ): void {
+        // safe: empty string clearing the element.
         this.svg.innerHTML = '';
 
         let rendered = 0;

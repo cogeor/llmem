@@ -39,6 +39,9 @@ export class DesignModeToggle {
 
         const isEditMode = mode === 'edit';
 
+        // safe: all interpolations are author-controlled — boolean ternaries
+        // (isEditMode), author-controlled SVG icons imported from icons.ts
+        // (eye, edit), and static text labels.
         this.el.innerHTML = `
             <div style="display: flex; gap: 8px; align-items: center;">
                 <button

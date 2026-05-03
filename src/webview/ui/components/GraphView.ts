@@ -10,6 +10,7 @@ import { GraphRenderer } from "../graph/GraphRenderer";
 import { DataProvider } from "../services/dataProvider";
 import { AppState, GraphData, WorkTreeNode, DirectoryNode } from "../types";
 import { parseGraphId } from "../../../core/ids";
+import { escape } from "../utils/escape";
 
 interface Props {
     el: HTMLElement;
@@ -105,7 +106,7 @@ export class GraphView {
 
         console.log('[GraphView] Initializing graph:', { graphType, width, height });
 
-        // Clear canvas
+        // safe: empty string clearing the element.
         canvasEl.innerHTML = '';
 
         // Create new renderer
@@ -132,7 +133,13 @@ export class GraphView {
             console.log('[GraphView] Graph rendered successfully');
         } catch (err: any) {
             console.error('[GraphView] Render error:', err);
-            canvasEl.innerHTML = `<div style="padding:20px; color:red">Error rendering graph: ${err.message}<br><pre>${err.stack}</pre></div>`;
+            // Loop 13: error.message and error.stack can carry user-controlled
+            // path fragments and arbitrary text — they must be HTML-escaped
+            // before interpolation into the error display.
+            const safeMessage = escape(String(err?.message ?? 'unknown'));
+            const safeStack = escape(String(err?.stack ?? ''));
+            // safe: structural template with escape()-wrapped error fields.
+            canvasEl.innerHTML = `<div style="padding:20px; color:red">Error rendering graph: ${safeMessage}<br><pre>${safeStack}</pre></div>`;
             canvasEl.style.display = 'block';
         }
     }

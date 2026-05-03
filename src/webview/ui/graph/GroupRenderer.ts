@@ -48,6 +48,7 @@ export class GroupRenderer {
         this.onFileClick = onFileClick;
 
         // Clear previous
+        // safe: empty string clearing the element.
         this.svg.innerHTML = '';
 
         // Assign distinct hues to each module

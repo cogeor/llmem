@@ -28,6 +28,8 @@ export class ViewToggle {
     }
 
     render({ currentView }: AppState) {
+        // safe: currentView is a controlled string union; only equality
+        // comparisons are interpolated. All other content is static.
         this.el.innerHTML = `
             <div class="segmented" role="group">
                 <button data-view="design" class="${currentView === 'design' ? 'is-active' : ''}">Design Script</button>

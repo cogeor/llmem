@@ -2,6 +2,7 @@
 import { DataProvider } from '../services/dataProvider';
 import { AppState, DesignDoc, DesignViewMode } from '../types';
 import { DesignRender } from './DesignRender';
+import { escape } from '../utils/escape';
 
 // Helper to normalize path for display and matching
 function normalizePath(path: string): string {
@@ -170,6 +171,8 @@ export class DesignTextView {
         this.shadow = this.el.attachShadow({ mode: 'open' });
 
         // Setup shadow DOM with styles and content container
+        // safe: DETAIL_STYLES is an author-controlled static string literal
+        // defined above in this file; no interpolation, no user data.
         this.shadow.innerHTML = DETAIL_STYLES;
         this.container = document.createElement('div');
         this.container.style.width = '100%';
@@ -289,6 +292,7 @@ export class DesignTextView {
 
     async onState({ selectedPath, selectedType, designViewMode, watchedPaths }: AppState) {
         if (!selectedPath) {
+            // safe: static template literal with no interpolation.
             this.container.innerHTML = `<div class="detail-empty"><p>Select a file or folder to view its design document.</p></div>`;
             this.currentPath = null;
             this.renderer = null;
@@ -326,25 +330,35 @@ export class DesignTextView {
             const isWatched = watchedPaths?.has(selectedPath) || false;
             const commandType = selectedType === 'directory' ? 'folder_info' : 'file_info';
 
+            // Loop 13: escape filesystem-derived strings before interpolation.
+            // selectedType is a controlled union ('file' | 'directory' | null);
+            // commandType is a controlled string built from selectedType;
+            // normalizedPath is filesystem-derived and must be escaped.
+            const safeType = escape(selectedType || 'item');
+            const safePath = escape(normalizedPath);
+
             let html = `
                 <div class="detail-empty">
                     <h3>No design file found</h3>
-                    <p>There is no design documentation for this ${selectedType || 'item'}.</p>
+                    <p>There is no design documentation for this ${safeType}.</p>
                     <p>To create one, use the MCP command:</p>
-                    <p><code>${commandType} ${normalizedPath}</code></p>
+                    <p><code>${commandType} ${safePath}</code></p>
             `;
 
             // If not watched, add hint about toggling watch first
             if (!isWatched) {
                 html += `
                     <div class="hint">
-                        <strong>Tip:</strong> Toggle the watch button <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ccc;vertical-align:middle;"></span> in the explorer first to start tracking this ${selectedType || 'item'}.
+                        <strong>Tip:</strong> Toggle the watch button <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ccc;vertical-align:middle;"></span> in the explorer first to start tracking this ${safeType}.
                     </div>
                 `;
             }
 
             html += `</div>`;
 
+            // safe: html is composed from static template literals plus
+            // escaped (utils/escape) interpolations of selectedType and
+            // normalizedPath; commandType is a controlled string union.
             this.container.innerHTML = html;
             this.currentPath = null;
             this.renderer = null;

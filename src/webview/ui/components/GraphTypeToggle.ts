@@ -37,6 +37,9 @@ export class GraphTypeToggle {
             ? `<button data-graph-type="call" class="${graphType === "call" ? "is-active" : ""}">Call graph</button>`
             : '';
 
+        // safe: graphType comes from a controlled string union ("import" |
+        // "call"); only equality comparisons are interpolated. callButton is
+        // built above from the same controlled inputs and static literals.
         this.el.innerHTML = `
         <div class="segmented" role="group" aria-label="Graph type">
             <button data-graph-type="import" class="${graphType === "import" ? "is-active" : ""}">Import graph</button>

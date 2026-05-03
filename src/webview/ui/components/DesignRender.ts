@@ -12,6 +12,7 @@
  */
 
 import { DesignViewMode } from '../types';
+import { sanitizeHtml } from '../utils/sanitize';
 
 export interface DesignRenderProps {
     markdown: string;
@@ -87,6 +88,11 @@ export class DesignRender {
 
     /**
      * Render the component (no toolbar - that's in the pane header)
+     *
+     * Loop 13: in view mode, the rendered markdown HTML is sanitized via
+     * DOMPurify before being returned. This is the XSS countermeasure for
+     * `.arch/<file>.md` payloads that may contain `<script>` tags or
+     * `onerror` handlers — `marked` does not strip those by default.
      */
     render(): string {
         const { mode, markdown, html } = this.props;
@@ -100,8 +106,9 @@ export class DesignRender {
                 >${this.escapeHtml(markdown)}</textarea>
             `;
         } else {
+            const safeHtml = html ? sanitizeHtml(html) : '';
             return `
-                <div class="design-view-content">${html || ''}</div>
+                <div class="design-view-content">${safeHtml}</div>
             `;
         }
     }
@@ -110,6 +117,8 @@ export class DesignRender {
      * Mount the component and attach event listeners
      */
     mount(container: HTMLElement): void {
+        // safe: this.render() returns either an escaped <textarea> body
+        // (escapeHtml below) or a sanitizeHtml-wrapped markdown view.
         container.innerHTML = this.render();
 
         // Find elements

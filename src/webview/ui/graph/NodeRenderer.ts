@@ -36,6 +36,7 @@ export class NodeRenderer {
         this.onNodeHover = onNodeHover;
 
         // Clear previous
+        // safe: empty string clearing the element.
         this.svg.innerHTML = '';
 
         for (const node of nodes) {

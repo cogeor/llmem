@@ -148,10 +148,14 @@ function initHeaderIcons() {
     const graphTitle = document.querySelector('#graph-title .pane-icon');
     const themeToggle = document.getElementById('theme-toggle');
 
+    // safe: author-controlled SVG icon string from icons.ts
     if (explorerTitle) explorerTitle.innerHTML = explorerIcon;
+    // safe: author-controlled SVG icon string from icons.ts
     if (designTitle) designTitle.innerHTML = designIcon;
+    // safe: author-controlled SVG icon string from icons.ts
     if (graphTitle) graphTitle.innerHTML = graphIcon;
-    if (themeToggle) themeToggle.innerHTML = sun; // Will be updated by ThemeManager
+    // safe: author-controlled SVG icon string from icons.ts (ThemeManager updates this later)
+    if (themeToggle) themeToggle.innerHTML = sun;
 }
 
 // Bootstrap
