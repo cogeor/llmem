@@ -11,7 +11,8 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
-import { getFolderInfoForMcp, buildFolderEnrichmentPrompt } from './folder';
+import { buildDocumentFolderPrompt } from '../application/document-folder';
+import { asWorkspaceRoot, asRelPath } from '../core/paths';
 
 // Configuration
 const SEMANTIC_MODE = process.argv.includes('--semantic');
@@ -36,12 +37,14 @@ async function main() {
     }
 
     try {
-        const data = await getFolderInfoForMcp(root, relativePath);
-        const prompt = buildFolderEnrichmentPrompt(relativePath, data);
+        const data = await buildDocumentFolderPrompt({
+            workspaceRoot: asWorkspaceRoot(root),
+            folderPath: asRelPath(relativePath),
+        });
 
         // Semantic mode: output just the prompt to stdout (for LLM consumption)
         if (SEMANTIC_MODE) {
-            console.log(prompt);
+            console.log(data.prompt);
             return;
         }
 
@@ -51,7 +54,7 @@ async function main() {
         console.log('\n' + '='.repeat(80));
         console.log('GENERATED PROMPT');
         console.log('='.repeat(80) + '\n');
-        console.log(prompt);
+        console.log(data.prompt);
 
     } catch (e: any) {
         console.error('\nERROR:', e.message);

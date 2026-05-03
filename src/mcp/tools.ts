@@ -24,7 +24,6 @@ import { getDefaultObserver, withObservation } from './observer';
 import {
     validateWorkspaceRoot,
     validateWorkspacePath,
-    writeFileInWorkspace,
     readFileInWorkspace,
 } from './path-utils';
 import { getStoredWorkspaceRoot } from './server';
@@ -37,6 +36,10 @@ import {
     buildDocumentFilePrompt,
     processFileInfoReport,
 } from '../application/document-file';
+import {
+    buildDocumentFolderPrompt,
+    processFolderInfoReport,
+} from '../application/document-folder';
 import { asWorkspaceRoot, asRelPath } from '../core/paths';
 
 // ============================================================================
@@ -262,14 +265,16 @@ async function handleFolderInfoImpl(
     // Validate path stays within workspace
     validateWorkspacePath(workspaceRoot, folderPath);
 
-    // Import folder info functions dynamically
-    const { getFolderInfoForMcp, buildFolderEnrichmentPrompt } = await import('../info/folder');
-
-    const data = await getFolderInfoForMcp(workspaceRoot, folderPath);
-    const prompt = buildFolderEnrichmentPrompt(folderPath, data);
+    // Build the folder-overview prompt via the application-layer service.
+    // The branded WorkspaceRoot is the only source of truth for path
+    // resolution; no `process.cwd()` involvement.
+    const data = await buildDocumentFolderPrompt({
+        workspaceRoot: asWorkspaceRoot(workspaceRoot),
+        folderPath: asRelPath(folderPath),
+    });
 
     return formatPromptResponse(
-        prompt,
+        data.prompt,
         'report_folder_info',
         {
             workspaceRoot: workspaceRoot,
@@ -312,37 +317,24 @@ async function handleReportFolderInfoImpl(
     // Validate path stays within workspace
     validateWorkspacePath(workspaceRoot, folderPath);
 
-    const lines: string[] = [];
-    lines.push(`# FOLDER: ${folderPath}`);
-    lines.push('');
-    lines.push('## Overview');
-    lines.push(overview);
-    lines.push('');
-
-    if (inputs) lines.push(`**Inputs:** ${inputs}\n`);
-    if (outputs) lines.push(`**Outputs:** ${outputs}\n`);
-
-    lines.push('## Architecture');
-    lines.push(architecture);
-    lines.push('');
-
-    lines.push('## Key Files');
-    for (const file of key_files) {
-        lines.push(`- **${file.name}**: ${file.summary}`);
-    }
-
-    const content = lines.join('\n');
-
-    // Save to .arch/<folder>/README.md using safe path utilities
-    const artifactRelativePath = path.join('.arch', folderPath, 'README.md');
-    await writeFileInWorkspace(workspaceRoot, artifactRelativePath, content);
-
-    const artifactPath = validateWorkspacePath(workspaceRoot, artifactRelativePath);
+    // Persist via the application-layer service. The branded WorkspaceRoot
+    // is the only source of truth for the destination — `process.cwd()`
+    // is never consulted, so the README "Known Issue" workaround is no
+    // longer needed.
+    const result = await processFolderInfoReport({
+        workspaceRoot: asWorkspaceRoot(workspaceRoot),
+        folderPath: asRelPath(folderPath),
+        overview,
+        inputs,
+        outputs,
+        keyFiles: key_files,
+        architecture,
+    });
 
     return formatSuccess({
         message: 'Folder documentation generated and saved',
-        artifactPath: artifactPath,
-        content: content,
+        artifactPath: result.readmePath,
+        content: result.designDocument,
     });
 }
 
