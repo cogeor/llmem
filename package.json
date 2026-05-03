@@ -118,7 +118,7 @@
     "pretest": "npm run compile && npm run build:webview",
     "prepackage": "npm run compile:production && npm run build:webview",
     "compile:production": "tsc -p ./tsconfig.production.json",
-    "scan": "npx ts-node src/scripts/generate_edgelist.ts",
+    "scan": "node ./bin/llmem scan",
     "view": "npx ts-node src/scripts/generate_webview.ts",
     "view:graph": "npx ts-node src/scripts/generate_webview.ts --graph-only",
     "file-info": "npx ts-node src/info/cli.ts",

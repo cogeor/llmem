@@ -131,6 +131,36 @@
         }
       ],
       "name": "describe"
+    },
+    {
+      "args": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "folder": {
+            "default": ".",
+            "description": "Workspace-relative folder to scan (defaults to the whole workspace)",
+            "type": "string"
+          },
+          "workspace": {
+            "description": "Workspace root directory (auto-detected if omitted)",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "description": "Scan the workspace and write edge lists to .artifacts/",
+      "examples": [
+        {
+          "command": "llmem scan",
+          "scenario": "Index the entire workspace"
+        },
+        {
+          "command": "llmem scan --folder src/parser",
+          "scenario": "Index a single folder"
+        }
+      ],
+      "name": "scan"
     }
   ],
   "version": "<X>"

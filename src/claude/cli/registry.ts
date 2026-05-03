@@ -29,6 +29,7 @@ import { mcpCommand } from './commands/mcp';
 import { generateCommand } from './commands/generate';
 import { statsCommand } from './commands/stats';
 import { describeCommand } from './commands/describe';
+import { scanCommand } from './commands/scan';      // Loop 05
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const REGISTRY: CommandSpec<any>[] = [
@@ -37,4 +38,5 @@ export const REGISTRY: CommandSpec<any>[] = [
     generateCommand,
     statsCommand,
     describeCommand,    // Loop 04
+    scanCommand,        // Loop 05
 ];
