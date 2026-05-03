@@ -9,7 +9,7 @@ import { FileArtifact, Entity, ImportSpec, CallSite } from '../parser/types';
 import { NodeEntry, EdgeEntry } from './edgelist';
 import { normalizePath } from './utils';
 import { ALL_SUPPORTED_EXTENSIONS } from '../parser/config';
-import { makeEntityId } from '../core/ids';
+import { makeEntityId, isExternalModuleId } from '../core/ids';
 
 export interface ConversionResult {
     nodes: NodeEntry[];
@@ -72,9 +72,8 @@ export function artifactToEdgeList(artifact: FileArtifact, fileId: string): Conv
         const targetFileId = resolveImportTarget(fileId, imp);
 
         if (targetFileId) {
-            // Check if this is an external module (no file extension)
-            const isExternal = !ALL_SUPPORTED_EXTENSIONS.some(ext => targetFileId.endsWith(ext))
-                && !targetFileId.includes('/');
+            // Loop 16: route through the contract's external classifier.
+            const isExternal = isExternalModuleId(targetFileId);
 
             if (isExternal) {
                 // External module import (e.g., pathlib, os, json)
@@ -227,9 +226,9 @@ function resolveCallToEdge(
             return null;
         }
 
-        // Don't normalize module names (they don't have paths)
-        const isExternal = !ALL_SUPPORTED_EXTENSIONS.some(ext => targetFileId.endsWith(ext))
-            && !targetFileId.includes('/');
+        // Don't normalize module names (they don't have paths). Loop 16:
+        // route through the contract's external classifier.
+        const isExternal = isExternalModuleId(targetFileId);
 
         if (!isExternal) {
             targetFileId = normalizePath(targetFileId);

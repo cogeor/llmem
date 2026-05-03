@@ -20,12 +20,28 @@ export interface FileNode extends Node {
     language: string;
 }
 
+/**
+ * External module node — a bare module specifier imported from a workspace
+ * file but not itself a workspace file (e.g., 'react', 'pathlib', 'os').
+ *
+ * Loop 16: this is a runtime-model type. The persisted `NodeEntry.kind`
+ * enum stays homogenous (file or entity); the workspace-vs-external
+ * distinction is recovered at view time via `parseGraphId` /
+ * `isExternalModuleId`. See `graph/edgelist-schema.ts` for the persisted
+ * shape.
+ */
+export interface ExternalModuleNode extends Node {
+    kind: 'external';
+    module: string;  // bare specifier, e.g. 'react', 'pathlib'
+}
+
 export interface ImportEdge extends Edge {
     kind: 'import';
     specifiers: Array<{ name: string; alias?: string }>; // What is imported
 }
 
-export type ImportGraph = Graph<FileNode, ImportEdge>;
+export type ImportGraphNode = FileNode | ExternalModuleNode;
+export type ImportGraph = Graph<ImportGraphNode, ImportEdge>;
 
 // Call Graph Types
 export interface EntityNode extends Node {

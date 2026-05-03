@@ -59,6 +59,11 @@ function transformGraphsToVisData(importGraph: any, callGraph: any): WebviewGrap
     const importNodesRaw = Array.from(importGraph.nodes.values());
     const importColors = colorGen.generateColors(importNodesRaw);
 
+    // Loop 16: external module nodes carry kind: 'external' at runtime.
+    // Pre-Loop-16 the persisted shape used kind: 'file' and the vis group
+    // coincidentally rendered them as 'file'. After Loop 16 they get
+    // group: 'external' here. Visual styling is intentionally left to a
+    // follow-up loop; the webview already styles 'file' but not 'external'.
     const importNodes: VisNode[] = importNodesRaw.map((n: any) => ({
         id: n.id,
         label: n.label,

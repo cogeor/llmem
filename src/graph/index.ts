@@ -7,10 +7,26 @@
  * Other languages (Python, C++, Rust, R) only produce import graphs.
  */
 
-import { ImportGraph, CallGraph, FileNode, EntityNode, ImportEdge, CallEdge } from './types';
+import { ImportGraph, CallGraph, EntityNode, ImportEdge, CallEdge, ImportGraphNode } from './types';
 import { EdgeListData } from './edgelist';
-import { ALL_SUPPORTED_EXTENSIONS } from '../parser/config';
+import { parseGraphId, isExternalModuleId } from '../core/ids';
 export { savePlot } from './plot/generator';
+
+/**
+ * Build a runtime ImportGraphNode from a graph ID.
+ *
+ * Loop 16: routes through `parseGraphId` instead of the legacy
+ * `ALL_SUPPORTED_EXTENSIONS.endsWith` heuristic. The persisted edge-list
+ * shape is unchanged — this is a view-time discrimination computed from
+ * the ID. See `core/ids.ts` for the contract.
+ */
+function makeImportNode(id: string): ImportGraphNode {
+    const parsed = parseGraphId(id);
+    if (parsed.kind === 'external') {
+        return { id, kind: 'external', label: id, module: id };
+    }
+    return { id, kind: 'file', label: id, path: id, language: 'unknown' };
+}
 
 /** TypeScript/JavaScript file extensions (only these support call graphs) */
 const TS_JS_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx']);
@@ -44,7 +60,7 @@ export function buildGraphsFromSplitEdgeLists(
     callGraph: CallGraph;
 } {
     // Build Import Graph (file-level nodes and import edges)
-    const importNodes = new Map<string, FileNode>();
+    const importNodes = new Map<string, ImportGraphNode>();
     const importEdges: ImportEdge[] = [];
 
     // Collect unique file IDs from import nodes
@@ -56,45 +72,27 @@ export function buildGraphsFromSplitEdgeLists(
         }
     }
 
-    // Create file nodes
+    // Create file/external nodes via the canonical helper
     for (const fileId of fileIds) {
-        importNodes.set(fileId, {
-            id: fileId,
-            kind: 'file',
-            label: fileId,
-            path: fileId,
-            language: 'unknown'
-        });
+        importNodes.set(fileId, makeImportNode(fileId));
     }
 
     // Add import edges (include edges to external modules)
     for (const edge of importData.edges) {
         const sourceWatched = !watchedFiles || watchedFiles.has(edge.source);
 
-        // Check if target is an external module (no path separators, no file extension)
-        const isTargetExternal = !edge.target.includes('/') &&
-            !ALL_SUPPORTED_EXTENSIONS.some(ext => edge.target.endsWith(ext));
+        // Loop 16: route through the contract's external-module classifier
+        // instead of the local `ALL_SUPPORTED_EXTENSIONS.endsWith` heuristic.
+        const isTargetExternal = isExternalModuleId(edge.target);
         const targetWatched = !watchedFiles || watchedFiles.has(edge.target) || isTargetExternal;
 
         // Include edge if source is watched AND (target is watched OR target is external)
         if (sourceWatched && targetWatched) {
             if (!importNodes.has(edge.source)) {
-                importNodes.set(edge.source, {
-                    id: edge.source,
-                    kind: 'file',
-                    label: edge.source,
-                    path: edge.source,
-                    language: 'unknown'
-                });
+                importNodes.set(edge.source, makeImportNode(edge.source));
             }
             if (!importNodes.has(edge.target)) {
-                importNodes.set(edge.target, {
-                    id: edge.target,
-                    kind: 'file',
-                    label: edge.target,
-                    path: edge.target,
-                    language: 'unknown'
-                });
+                importNodes.set(edge.target, makeImportNode(edge.target));
             }
 
             importEdges.push({
@@ -119,9 +117,9 @@ export function buildGraphsFromSplitEdgeLists(
     // Create entity nodes from call data (filter by watched files AND TS/JS only)
     for (const node of callData.nodes) {
         if (node.kind !== 'file') {
-            // Check if this is an external module node (fileId == id for external modules like 'pathlib')
-            const isExternal = node.fileId === node.id ||
-                (!node.fileId.includes('/') && !ALL_SUPPORTED_EXTENSIONS.some(ext => node.fileId.endsWith(ext)));
+            // Loop 16: route through the contract's external classifier
+            // instead of duplicating the local heuristic.
+            const isExternal = node.fileId === node.id || isExternalModuleId(node.fileId);
 
             // Only include nodes from TypeScript/JavaScript files (call graph is TS-only)
             const isTypeScript = isTypeScriptFile(node.fileId);

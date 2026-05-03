@@ -25,6 +25,11 @@ import {
   parseGraphId,
   isExternalModuleId,
 } from '../../src/core/ids';
+import type {
+  FileNode,
+  ExternalModuleNode,
+  ImportGraphNode,
+} from '../../src/graph/types';
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const SRC_ROOT = path.join(REPO_ROOT, 'src');
@@ -49,6 +54,37 @@ test('graph-ids: parseGraphId returns entity kind for "fileId::name"', () => {
 
 test('graph-ids: parseGraphId returns external kind for bare module names', () => {
   assert.deepEqual(parseGraphId('react'), { kind: 'external', module: 'react' });
+});
+
+test('graph-ids: ExternalModuleNode kind agrees with parseGraphId.kind for bare specifiers', () => {
+  // Loop 16 contract: the runtime ImportGraphNode discriminator (kind:
+  // 'external') is computed from parseGraphId. The graph-builder helper
+  // and the ids contract module must stay in sync.
+  const id = 'react';
+  const parsed = parseGraphId(id);
+  assert.equal(parsed.kind, 'external');
+  // Mirror the shape `makeImportNode` in src/graph/index.ts produces.
+  const node: ImportGraphNode = parsed.kind === 'external'
+    ? { id, kind: 'external', label: id, module: id }
+    : { id, kind: 'file', label: id, path: id, language: 'unknown' };
+  assert.equal(node.kind, 'external');
+  const external = node as ExternalModuleNode;
+  assert.equal(external.module, 'react');
+});
+
+test('graph-ids: FileNode kind agrees with parseGraphId.kind for workspace paths', () => {
+  // Symmetric to the external test above: a workspace file ID parses as
+  // kind: 'file', and the runtime FileNode shape carries the same literal.
+  const id = 'src/foo.ts';
+  const parsed = parseGraphId(id);
+  assert.equal(parsed.kind, 'file');
+  // Build the node via the same branch makeImportNode uses. We don't
+  // narrow on `parsed.kind === 'external'` here because parseGraphId
+  // returned 'file' above and TS would narrow it away; build directly.
+  const node: ImportGraphNode = { id, kind: 'file', label: id, path: id, language: 'unknown' };
+  assert.equal(node.kind, 'file');
+  const file = node as FileNode;
+  assert.equal(file.path, 'src/foo.ts');
 });
 
 test('graph-ids: entity name with a dot survives the round-trip (split on first "::" only)', () => {

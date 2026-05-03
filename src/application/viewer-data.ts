@@ -298,14 +298,19 @@ async function scanAndPopulateSplitEdgeLists(
 
     logger.info(`[WebviewDataService] Scanning ${sourceFiles.length} TypeScript files...`);
 
-    // Count total lines in the codebase to determine eager vs lazy mode
+    // Count total lines in the codebase to determine eager vs lazy mode.
+    // Loop 16: sf.getEnd() was a CHARACTER offset (the absolute byte
+    // position of the source-file end), not a line count. With characters
+    // counted as lines, even a tiny TS project tripped lazy mode on every
+    // load. sf.getLineStarts() returns one entry per line; .length is the
+    // exact line count, with no fs I/O (the SourceFile is already parsed).
     let totalCodebaseLines = 0;
     for (const sf of sourceFiles) {
-        totalCodebaseLines += sf.getEnd(); // Approximate line count from source file length
+        totalCodebaseLines += sf.getLineStarts().length;
     }
 
     const isLazyMode = totalCodebaseLines > LAZY_CODEBASE_LINE_THRESHOLD;
-    logger.info(`[WebviewDataService] Total codebase lines: ~${totalCodebaseLines}, lazy mode: ${isLazyMode} (threshold: ${LAZY_CODEBASE_LINE_THRESHOLD})`);
+    logger.info(`[WebviewDataService] Total codebase lines: ${totalCodebaseLines}, lazy mode: ${isLazyMode} (threshold: ${LAZY_CODEBASE_LINE_THRESHOLD})`);
 
     let processedCount = 0;
 

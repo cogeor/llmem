@@ -66,7 +66,11 @@ export function makeExternalModuleId(specifier: string): ExternalModuleId {
 // ---------------------------------------------------------------------------
 
 export function isExternalModuleId(id: string): boolean {
-    return !id.includes(ENTITY_SEPARATOR) && !id.startsWith('src/') && !id.includes('/');
+    // Loop 16: dropped a redundant `!id.startsWith('src/')` clause —
+    // `!id.includes('/')` is the operative check (workspace file IDs are
+    // repo-relative paths and always contain a slash; external module
+    // specifiers like 'react' or 'pathlib' do not).
+    return !id.includes(ENTITY_SEPARATOR) && !id.includes('/');
 }
 
 export function parseGraphId(id: string): ParsedGraphId {

@@ -468,9 +468,9 @@ Tasks:
 - remove `.java` and `.go` from runtime-supported extension lists until adapters exist
 - make ParserRegistry the runtime source of truth for support
 - remove unused Python call extraction code or put it behind an explicit experimental tier
-- validate edge-list JSON with a schema and version migration
-- correct lazy-mode line counting; current `sf.getEnd()` measures character offset, not lines
-- make external module nodes and workspace file nodes distinct in the graph model
+- validated edge-list JSON with a Zod schema and version migration (Loop 16); see `src/graph/edgelist-schema.ts`
+- corrected lazy-mode line counting (Loop 16); previous code used `sf.getEnd()` which returned a character offset
+- distinguished external-module nodes from workspace file nodes in the graph model (Loop 16); runtime discrimination via `parseGraphId` / `ExternalModuleNode`
 
 Acceptance:
 

@@ -57,14 +57,16 @@ async function main() {
 
     console.log(`\nFound ${sourceFiles.length} TypeScript files to process`);
 
-    // Count total lines in the codebase to determine eager vs lazy mode
+    // Count total lines in the codebase to determine eager vs lazy mode.
+    // Loop 16: sf.getEnd() was a CHARACTER offset, not a line count.
+    // sf.getLineStarts().length is the exact line count.
     let totalCodebaseLines = 0;
     for (const sf of sourceFiles) {
-        totalCodebaseLines += sf.getEnd(); // Approximate line count from source file length
+        totalCodebaseLines += sf.getLineStarts().length;
     }
 
     const isLazyMode = totalCodebaseLines > LAZY_CODEBASE_LINE_THRESHOLD;
-    console.log(`Total codebase lines: ~${totalCodebaseLines}, lazy mode: ${isLazyMode} (threshold: ${LAZY_CODEBASE_LINE_THRESHOLD})`);
+    console.log(`Total codebase lines: ${totalCodebaseLines}, lazy mode: ${isLazyMode} (threshold: ${LAZY_CODEBASE_LINE_THRESHOLD})`);
 
     // Create split edge list stores
     const importStore = new ImportEdgeListStore(artifactDir);

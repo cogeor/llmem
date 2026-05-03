@@ -12,35 +12,28 @@ import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import * as path from 'path';
 
+import {
+    EdgeListData,
+    EdgeListLoadError,
+    NodeEntry,
+    EdgeEntry,
+    createEmptyEdgeList,
+    loadEdgeListData,
+} from './edgelist-schema';
+
 // ============================================================================
-// Types
+// Re-exports — the schema module is the single source of truth for these
+// types. Loop 16 keeps the public surface byte-compatible with the old
+// hand-typed interfaces by re-exporting from here.
 // ============================================================================
 
-export interface EdgeListData {
-    version: string;
-    timestamp: string;
-    nodes: NodeEntry[];
-    edges: EdgeEntry[];
-}
-
-export interface NodeEntry {
-    id: string;           // see src/core/ids.ts (entity ID = fileId + ENTITY_SEPARATOR + name)
-    name: string;         // "getTypeScriptFiles"
-    kind: 'file' | 'function' | 'class' | 'method' | 'arrow' | 'const';
-    fileId: string;       // "src/parser/ts-service.ts"
-}
-
-export interface EdgeEntry {
-    source: string;       // node ID (for calls) or file ID (for imports)
-    target: string;       // node ID (for calls) or file ID (for imports)
-    kind: 'import' | 'call';
-}
+export type { EdgeListData, NodeEntry, EdgeEntry } from './edgelist-schema';
+export { EdgeListLoadError } from './edgelist-schema';
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-const EDGELIST_VERSION = '1.0.0';
 const IMPORT_EDGELIST_FILENAME = 'import-edgelist.json';
 const CALL_EDGELIST_FILENAME = 'call-edgelist.json';
 
@@ -61,12 +54,7 @@ abstract class BaseEdgeListStore {
     }
 
     protected createEmpty(): EdgeListData {
-        return {
-            version: EDGELIST_VERSION,
-            timestamp: new Date().toISOString(),
-            nodes: [],
-            edges: []
-        };
+        return createEmptyEdgeList();
     }
 
     // ========================================================================
@@ -74,29 +62,29 @@ abstract class BaseEdgeListStore {
     // ========================================================================
 
     async load(): Promise<void> {
-        try {
-            if (fsSync.existsSync(this.filePath)) {
-                const content = await fs.readFile(this.filePath, 'utf-8');
-                this.data = JSON.parse(content);
-                // Validate shape
-                if (typeof this.data !== 'object' || this.data === null ||
-                    !Array.isArray(this.data.nodes) || !Array.isArray(this.data.edges)) {
-                    console.error(`[${this.constructor.name}] Invalid edge list shape, starting fresh`);
-                    this.data = this.createEmpty();
-                }
-                // Normalize missing version
-                if (!this.data.version) {
-                    this.data.version = EDGELIST_VERSION;
-                }
-                console.error(`[${this.constructor.name}] Loaded ${this.data.nodes.length} nodes, ${this.data.edges.length} edges`);
-            } else {
-                this.data = this.createEmpty();
-                console.error(`[${this.constructor.name}] No existing edge list, starting fresh`);
-            }
-        } catch (e) {
-            console.error(`[${this.constructor.name}] Failed to load, starting fresh:`, e);
-            this.data = this.createEmpty();
+        if (!fsSync.existsSync(this.filePath)) {
+            this.data = createEmptyEdgeList();
+            this.dirty = false;
+            return;
         }
+
+        let raw: unknown;
+        try {
+            const content = await fs.readFile(this.filePath, 'utf-8');
+            raw = JSON.parse(content);
+        } catch (e) {
+            throw new EdgeListLoadError(
+                this.filePath,
+                'parse-error',
+                `JSON.parse failed: ${(e as Error).message}`,
+                e,
+            );
+        }
+
+        // loadEdgeListData throws EdgeListLoadError on schema failure — the
+        // throw is the louder, more actionable signal that replaces the
+        // pre-Loop-16 silent reset.
+        this.data = loadEdgeListData(raw, this.filePath);
         this.dirty = false;
     }
 

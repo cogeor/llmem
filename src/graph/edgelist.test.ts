@@ -6,31 +6,17 @@
 import { strict as assert } from 'assert';
 import { test, describe } from 'node:test';
 
-// Inline types to avoid import issues in test
-interface NodeEntry {
-    id: string;
-    name: string;
-    kind: 'file' | 'function' | 'class' | 'method' | 'arrow' | 'const';
-    fileId: string;
-}
-
-interface EdgeListData {
-    version: string;
-    timestamp: string;
-    nodes: NodeEntry[];
-    edges: any[];
-}
+// Loop 16: types are imported from the schema module so the mock cannot
+// drift from the persisted shape. Edges are typed as `any[]` here because
+// this mock only exercises node-bucketing logic.
+import type { NodeEntry, EdgeListData } from './edgelist-schema';
+import { createEmptyEdgeList } from './edgelist-schema';
 
 /**
  * In-memory mock of BaseEdgeListStore for testing.
  */
 class MockEdgeListStore {
-    private data: EdgeListData = {
-        version: '1.0.0',
-        timestamp: new Date().toISOString(),
-        nodes: [],
-        edges: []
-    };
+    private data: EdgeListData = createEmptyEdgeList();
 
     addNode(node: NodeEntry): void {
         const idx = this.data.nodes.findIndex(n => n.id === node.id);

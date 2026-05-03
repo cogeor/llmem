@@ -148,11 +148,35 @@ function countFoldersRecursive(
 
 /**
  * Check if a folder exceeds the line threshold for lazy loading.
- * 
+ *
  * @param lineCount Result from countFolderLines
  * @param threshold Maximum allowed lines
  * @returns true if folder is too large for eager call graph computation
  */
 export function isFolderTooLarge(lineCount: FolderLineCount, threshold: number): boolean {
     return lineCount.totalLines > threshold;
+}
+
+/**
+ * Count actual newline-delimited lines in a single absolute file path.
+ * Returns 0 for files that cannot be read (matches countFolderLines'
+ * tolerance for unreadable files).
+ *
+ * Implementation matches the convention used in countFolderLines line 75:
+ * `content.split('\n').length`. The empty-file branch is explicit because
+ * `''.split('\n').length === 1`, which would be wrong for an empty file.
+ *
+ * Loop 16: this is the canonical helper for callers that lack a parsed
+ * TypeScript SourceFile. Callers that already have a SourceFile should
+ * prefer `sf.getLineStarts().length` (no fs I/O), which yields the same
+ * count.
+ */
+export function countFileLines(absolutePath: string): number {
+    try {
+        const content = fs.readFileSync(absolutePath, 'utf-8');
+        if (content.length === 0) return 0;
+        return content.split('\n').length;
+    } catch {
+        return 0;
+    }
 }

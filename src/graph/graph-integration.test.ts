@@ -377,7 +377,7 @@ describe('Graph Building with Watched Files Filter', () => {
     test('filters nodes and edges by watched files', () => {
         // Create test data
         const importData = {
-            version: '1.0.0',
+            schemaVersion: 1 as const,
             timestamp: new Date().toISOString(),
             nodes: [
                 { id: 'src/a.ts', name: 'a.ts', kind: 'file' as const, fileId: 'src/a.ts' },
@@ -392,7 +392,7 @@ describe('Graph Building with Watched Files Filter', () => {
         };
 
         const callData = {
-            version: '1.0.0',
+            schemaVersion: 1 as const,
             timestamp: new Date().toISOString(),
             nodes: [
                 { id: 'src/a.ts::fnA', name: 'fnA', kind: 'function' as const, fileId: 'src/a.ts' },
@@ -436,7 +436,7 @@ describe('Graph Building with Watched Files Filter', () => {
 
     test('includes external module targets in import graph', () => {
         const importData = {
-            version: '1.0.0',
+            schemaVersion: 1 as const,
             timestamp: new Date().toISOString(),
             nodes: [
                 { id: 'src/main.ts', name: 'main.ts', kind: 'file' as const, fileId: 'src/main.ts' },
@@ -447,7 +447,7 @@ describe('Graph Building with Watched Files Filter', () => {
             ],
         };
 
-        const callData = { version: '1.0.0', timestamp: '', nodes: [], edges: [] };
+        const callData = { schemaVersion: 1 as const, timestamp: '', nodes: [], edges: [] };
 
         const watchedFiles = new Set(['src/main.ts']);
 
@@ -467,7 +467,7 @@ describe('Graph Building with Watched Files Filter', () => {
 describe('Graph Building Edge Cases', () => {
     test('handles empty edge lists', () => {
         const emptyData = {
-            version: '1.0.0',
+            schemaVersion: 1 as const,
             timestamp: new Date().toISOString(),
             nodes: [],
             edges: [],
@@ -483,7 +483,7 @@ describe('Graph Building Edge Cases', () => {
 
     test('handles nodes without edges', () => {
         const importData = {
-            version: '1.0.0',
+            schemaVersion: 1 as const,
             timestamp: new Date().toISOString(),
             nodes: [
                 { id: 'src/standalone.ts', name: 'standalone.ts', kind: 'file' as const, fileId: 'src/standalone.ts' },
@@ -491,7 +491,7 @@ describe('Graph Building Edge Cases', () => {
             edges: [],
         };
 
-        const callData = { version: '1.0.0', timestamp: '', nodes: [], edges: [] };
+        const callData = { schemaVersion: 1 as const, timestamp: '', nodes: [], edges: [] };
 
         const { importGraph } = buildGraphsFromSplitEdgeLists(importData, callData);
 
@@ -503,7 +503,7 @@ describe('Graph Building Edge Cases', () => {
         const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-dedup-'));
         try {
             const importData = {
-                version: '1.0.0',
+                schemaVersion: 1 as const,
                 timestamp: new Date().toISOString(),
                 nodes: [
                     { id: 'src/a.ts', name: 'a.ts', kind: 'file' as const, fileId: 'src/a.ts' },
