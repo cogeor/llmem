@@ -31,6 +31,7 @@ import { statsCommand } from './commands/stats';
 import { describeCommand } from './commands/describe';
 import { scanCommand } from './commands/scan';          // Loop 05
 import { documentCommand } from './commands/document';  // Loop 06
+import { initCommand } from './commands/init';          // Loop 07
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const REGISTRY: CommandSpec<any>[] = [
@@ -41,4 +42,5 @@ export const REGISTRY: CommandSpec<any>[] = [
     describeCommand,    // Loop 04
     scanCommand,        // Loop 05
     documentCommand,    // Loop 06
+    initCommand,        // Loop 07
 ];

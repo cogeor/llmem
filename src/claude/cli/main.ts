@@ -182,8 +182,19 @@ function coerceForSchema(
 }
 
 function printHelp(): void {
-    // Verbatim from src/claude/cli.ts:138-171 to preserve the no-behavior-change
-    // contract. Loop 04 (`describe`) will replace this with registry-driven help.
+    // Loop 07: now registry-driven; visible commands listed dynamically.
+    // See `describe.ts:printHumanTree` for the matching JSON-driven listing —
+    // both surfaces filter `hidden`, so the two cannot drift.
+    //
+    // OPTIONS and ENVIRONMENT remain hardcoded — they document global flags
+    // (port/workspace/regenerate/...) and env vars, not per-command shape.
+    // Per-command flags are surfaced by `describe`.
+    const visibleCommands = REGISTRY.filter(c => !c.hidden);
+    const longest = visibleCommands.reduce((m, c) => Math.max(m, c.name.length), 0);
+    const cmdLines = visibleCommands
+        .map(c => `  ${c.name.padEnd(longest + 2)} ${c.description}`)
+        .join('\n');
+
     console.log(`
 LLMem CLI - Graph Visualization and MCP Server
 
@@ -192,10 +203,7 @@ USAGE:
   npm run serve [OPTIONS]
 
 COMMANDS:
-  serve              Start HTTP server for webview (default)
-  mcp                Start MCP server for Claude Code (stdio)
-  generate           Generate graph without starting server
-  stats              Show graph statistics
+${cmdLines}
 
 OPTIONS:
   --port, -p <num>       Port number (default: 3000)
@@ -209,8 +217,6 @@ EXAMPLES:
   npm run serve
   npm run serve -- --port 8080
   npm run serve -- --regenerate --open
-  npm run serve -- generate
-  npm run serve -- stats
 
 ENVIRONMENT:
   LLMEM_WORKSPACE        Workspace root directory

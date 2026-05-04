@@ -188,8 +188,17 @@ interface WriteCallSite {
 //     replaced by WorkspaceIO.mkdirRecursive + writeFile.
 //   - 'src/graph/plot/generator.ts' — fs.writeFileSync replaced by
 //     WorkspaceIO.writeFile (savePlot signature now takes an `io` arg).
+// Loop 07 added:
+//   - 'src/claude/cli/commands/init.ts' — `llmem init` writes
+//     `.llmem/config.toml` (the workspace config file). Cannot route
+//     through `WorkspaceIO` because the workspace markers and the
+//     containment surface presuppose `.llmem/` already exists; `init`
+//     creates that directory. The path is rooted at `detectWorkspace()`
+//     output and never escapes (mkdir + writeFile under the resolved
+//     `.llmem/` subdir only).
 const WRITE_ALLOWLIST: ReadonlySet<string> = new Set([
   'src/artifact/storage.ts',
+  'src/claude/cli/commands/init.ts',
   'src/graph/edgelist.ts',
   'src/graph/worktree-state.ts',
   'src/scripts/generate_edgelist.ts',

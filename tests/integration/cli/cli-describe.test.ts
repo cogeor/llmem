@@ -31,6 +31,7 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { spawnSync } from 'node:child_process';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { z } from 'zod';
@@ -95,11 +96,18 @@ test('bin/llmem describe (no flags) exits 0 and lists every non-hidden command n
         if (cmd.hidden) continue;
         assert.match(stdout, new RegExp(`\\b${cmd.name}\\b`), `human tree mentions '${cmd.name}'`);
     }
-    // Forward-compat: when a command is hidden, it must NOT appear. In loop 04
-    // none are hidden, so this loop is a no-op iteration; loop 07 will exercise it.
+    // Forward-compat: when a command is hidden, its name must not appear as a
+    // word token in the human tree. Loop 07 exercises this for `generate` and
+    // `stats`. Use a word-boundary regex (NOT `stdout.includes`) so an English
+    // word like "Generate" embedded in another command's description (e.g.
+    // `document`'s "Generate the LLM prompt...") does not produce a false
+    // positive — the contract is about command identifiers, not English usage.
     for (const cmd of REGISTRY) {
         if (!cmd.hidden) continue;
-        assert.ok(!stdout.includes(cmd.name), `hidden command '${cmd.name}' must not appear`);
+        assert.ok(
+            !new RegExp(`\\b${cmd.name}\\b`).test(stdout),
+            `hidden command '${cmd.name}' must not appear as a word token`,
+        );
     }
 });
 
@@ -164,4 +172,91 @@ test('spawned describe --json deep-equals in-process buildDescribeOutput()', () 
     const fromSpawn = JSON.parse(stdout);
     const fromInProcess = JSON.parse(JSON.stringify(buildDescribeOutput()));
     assert.deepEqual(fromSpawn, fromInProcess);
+});
+
+// -----------------------------------------------------------------------------
+// Loop 07: explicit hidden-command behavior. Two assertions on top of the
+// REGISTRY-derived parity tests above. The previous tests pass when the
+// REGISTRY-vs-described sets agree; these two pin the loop-07 contract that
+// (a) `generate` and `stats` are absent from `describe --json`, and (b) the
+// commands remain callable despite being hidden — `findCommand` looks them
+// up by name regardless of `hidden`.
+// -----------------------------------------------------------------------------
+
+test('generate and stats are hidden — absent from describe --json', () => {
+    ensureBuilt();
+    const { stdout, status } = spawnDescribe(['--json']);
+    assert.equal(status, 0);
+    const parsed = JSON.parse(stdout) as { commands: { name: string }[] };
+    assert.equal(
+        parsed.commands.find(c => c.name === 'generate'),
+        undefined,
+        '`generate` must not appear in describe --json (hidden in loop 07)',
+    );
+    assert.equal(
+        parsed.commands.find(c => c.name === 'stats'),
+        undefined,
+        '`stats` must not appear in describe --json (hidden in loop 07)',
+    );
+});
+
+test('generate and stats remain callable despite being hidden', () => {
+    ensureBuilt();
+
+    // Build a tmp workspace seeded with minimal edge lists so `generate` /
+    // `stats` find what they expect (`hasEdgeLists` is just a file
+    // existence check). Inline rather than reusing a helper — the test is
+    // narrow enough that an extracted utility would obscure the intent.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-hidden-'));
+    try {
+        fs.writeFileSync(path.join(tmp, 'package.json'), '{}', 'utf8');
+        const artifactDir = path.join(tmp, '.artifacts');
+        fs.mkdirSync(artifactDir, { recursive: true });
+        // Edge-list shape is the v1 wire shape from `edgelist-schema.ts`
+        // (schemaVersion: 1, plus nodes/edges arrays + timestamp). An empty
+        // edge list parses cleanly — `generate` will render an empty webview,
+        // `stats` will report all zeros.
+        const emptyEdgelist = JSON.stringify({
+            schemaVersion: 1,
+            timestamp: new Date().toISOString(),
+            nodes: [],
+            edges: [],
+        });
+        fs.writeFileSync(path.join(artifactDir, 'import-edgelist.json'), emptyEdgelist, 'utf8');
+        fs.writeFileSync(path.join(artifactDir, 'call-edgelist.json'), emptyEdgelist, 'utf8');
+
+        // `generate` exits 0 — hiding does not gate dispatch.
+        const gen = spawnSync('node', [BIN, 'generate', '--workspace', tmp], {
+            encoding: 'utf8',
+            env: { ...process.env, FORCE_COLOR: '0', LOG_LEVEL: 'error' },
+        });
+        const genStdout = (gen.stdout ?? '').replace(/\r\n/g, '\n');
+        const genStderr = (gen.stderr ?? '').replace(/\r\n/g, '\n');
+        assert.equal(
+            gen.status, 0,
+            `expected generate to exit 0 (hidden but callable); stdout=${genStdout}\nstderr=${genStderr}`,
+        );
+
+        // `stats` exits 0 with the statistics header.
+        const stats = spawnSync('node', [BIN, 'stats', '--workspace', tmp], {
+            encoding: 'utf8',
+            env: { ...process.env, FORCE_COLOR: '0', LOG_LEVEL: 'error' },
+        });
+        const statsStdout = (stats.stdout ?? '').replace(/\r\n/g, '\n');
+        const statsStderr = (stats.stderr ?? '').replace(/\r\n/g, '\n');
+        assert.equal(
+            stats.status, 0,
+            `expected stats to exit 0 (hidden but callable); stdout=${statsStdout}\nstderr=${statsStderr}`,
+        );
+        assert.ok(
+            statsStdout.includes('Graph Statistics:'),
+            `stats should still print its header; got:\n${statsStdout}`,
+        );
+    } finally {
+        try {
+            fs.rmSync(tmp, { recursive: true, force: true });
+        } catch {
+            // Best-effort cleanup — Windows file watchers can delay release.
+        }
+    }
 });

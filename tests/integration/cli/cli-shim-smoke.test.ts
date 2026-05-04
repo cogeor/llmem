@@ -1,10 +1,12 @@
 /**
  * Smoke test for the bin/llmem shim → src/claude/cli/main.ts dispatcher.
  *
- * Loop 01 contract: NO behavior change. We only assert the most basic
- * surface area:
- *   1. `--help` exits 0 and lists the four commands.
- *   2. No-args prints help and exits 1 (preserves today's behavior).
+ * Loop 01 originally pinned "lists the four commands" against the old
+ * hardcoded help. Loop 07 made `printHelp` registry-driven and hid
+ * `generate`/`stats`, so the assertion now is:
+ *   1. `--help` exits 0 and lists the six visible commands.
+ *   2. `--help` does NOT mention the hidden commands (`generate`, `stats`).
+ *   3. No-args prints help and exits 1 (preserves today's behavior).
  *
  * Cross-platform note: spawning `node` explicitly with the JS path bypasses
  * npm's `.cmd` wrapper on Windows and tests the actual JS shim.
@@ -30,13 +32,24 @@ function ensureBuilt(): void {
     }
 }
 
-test('bin/llmem --help exits 0 and lists the four commands', () => {
+test('bin/llmem --help exits 0 and lists every visible command, no hidden ones', () => {
     ensureBuilt();
     const result = spawnSync('node', [BIN, '--help'], { encoding: 'utf8' });
     assert.equal(result.status, 0, `expected exit 0, got ${result.status}; stderr=${result.stderr}`);
     const out = result.stdout;
-    for (const cmd of ['serve', 'mcp', 'generate', 'stats']) {
+    // The six visible commands as of loop 07 (REGISTRY filter `!hidden`).
+    for (const cmd of ['serve', 'mcp', 'describe', 'scan', 'document', 'init']) {
         assert.match(out, new RegExp(`\\b${cmd}\\b`), `help text mentions '${cmd}'`);
+    }
+    // Hidden command names must NOT appear as word tokens. Word-boundary
+    // regex avoids false positives from English usage like "Generate" in
+    // `document`'s description (see cli-describe.test.ts for the longer
+    // commentary on this).
+    for (const cmd of ['generate', 'stats']) {
+        assert.ok(
+            !new RegExp(`\\b${cmd}\\b`).test(out),
+            `help must NOT mention hidden command '${cmd}'`,
+        );
     }
 });
 

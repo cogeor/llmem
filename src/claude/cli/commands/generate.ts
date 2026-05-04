@@ -49,6 +49,8 @@ const generateArgs = z.object({
 
 export const generateCommand: CommandSpec<typeof generateArgs> = {
     name: 'generate',
+    // design/06 § Implementation order step 9: hidden, not deleted (still callable).
+    hidden: true,
     description: 'Generate graph without starting server',
     examples: [
         { scenario: 'Regenerate the static webview from existing edge lists', command: 'llmem generate' },

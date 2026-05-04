@@ -47,6 +47,8 @@ const statsArgs = z.object({
 
 export const statsCommand: CommandSpec<typeof statsArgs> = {
     name: 'stats',
+    // design/06 § Implementation order step 9: hidden, not deleted (still callable).
+    hidden: true,
     description: 'Show graph statistics',
     examples: [
         { scenario: 'Print graph statistics for the auto-detected workspace', command: 'llmem stats' },

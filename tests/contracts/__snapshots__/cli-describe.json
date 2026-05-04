@@ -68,50 +68,6 @@
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false,
         "properties": {
-          "workspace": {
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
-      "description": "Generate graph without starting server",
-      "examples": [
-        {
-          "command": "llmem generate",
-          "scenario": "Regenerate the static webview from existing edge lists"
-        },
-        {
-          "command": "llmem generate --workspace /path/to/repo",
-          "scenario": "Regenerate against a specific workspace"
-        }
-      ],
-      "name": "generate"
-    },
-    {
-      "args": {
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "additionalProperties": false,
-        "properties": {
-          "workspace": {
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
-      "description": "Show graph statistics",
-      "examples": [
-        {
-          "command": "llmem stats",
-          "scenario": "Print graph statistics for the auto-detected workspace"
-        }
-      ],
-      "name": "stats"
-    },
-    {
-      "args": {
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "additionalProperties": false,
-        "properties": {
           "json": {
             "default": false,
             "type": "boolean"
@@ -214,6 +170,36 @@
         }
       ],
       "name": "document"
+    },
+    {
+      "args": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "force": {
+            "default": false,
+            "description": "Overwrite an existing .llmem/config.toml",
+            "type": "boolean"
+          },
+          "workspace": {
+            "description": "Workspace root directory (auto-detected if omitted)",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "description": "Write the .llmem/config.toml stub (no-op if it already exists, --force overwrites).",
+      "examples": [
+        {
+          "command": "llmem init",
+          "scenario": "Create the config stub in the current workspace"
+        },
+        {
+          "command": "llmem init --force",
+          "scenario": "Overwrite an existing stub"
+        }
+      ],
+      "name": "init"
     }
   ],
   "version": "<X>"
