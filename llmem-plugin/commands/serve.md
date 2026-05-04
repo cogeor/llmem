@@ -10,7 +10,7 @@ Start the LLMem HTTP server to view interactive graph visualizations of your cod
 ## Instructions
 
 1. First, ensure edge lists exist by analyzing files/folders with the MCP tools
-2. Start the server on the default port (3000):
+2. Start the server on the default port (7474):
 
 ```bash
 cd $WORKSPACE_ROOT && npm run serve
@@ -21,7 +21,7 @@ Or with options:
 cd $WORKSPACE_ROOT && npm run serve -- --port 8080 --open
 ```
 
-3. Open the URL in your browser (usually http://localhost:3000)
+3. Open the URL in your browser (usually http://localhost:7474)
 
 ## What You'll See
 
@@ -32,6 +32,6 @@ The webview provides three panels:
 
 ## Options
 
-- `--port, -p <num>`: Port number (default: 3000)
+- `--port, -p <num>`: Port number (default: 7474)
 - `--open, -o`: Open browser automatically
 - `--regenerate, -r`: Force regenerate graph before serving

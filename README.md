@@ -86,7 +86,7 @@ Prerequisites:
    ```bash
    npm run serve
    ```
-   This starts a live-reloading webview at `http://localhost:3000`.
+   This starts a live-reloading webview at `http://localhost:7474` (override with `--port`).
 
 > [!NOTE]
 > `dist/claude/index.js` (the MCP server) and `npm run serve` (the graph server) are **two separate processes**. The MCP server handles tool calls from Claude; the graph server serves the visualization UI. Both must be running for the full experience.
@@ -144,7 +144,7 @@ LLMem works in two stages: **graph visualization** and **documentation generatio
    ```bash
    npm run serve
    ```
-   This opens the webview at `http://localhost:3000` with live reload.
+   This opens the webview at `http://localhost:7474` with live reload (override with `--port`).
 
 2. **Toggle watched files** in the left panel — click the circles next to files/folders to include them in the graph.
 

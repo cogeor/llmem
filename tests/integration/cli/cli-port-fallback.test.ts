@@ -7,9 +7,9 @@
  * `printServerInfo()` path. No new flags, no change to `commands/serve.ts`.
  *
  * This test:
- *   1. Holds port 3000 with a sentinel `net.Server`.
+ *   1. Holds the default port (DEFAULT_PORT from config-defaults) with a sentinel `net.Server`.
  *   2. Spawns `bin/llmem serve --workspace <repo-root>`.
- *   3. Asserts stdout shows `Server running ... 127.0.0.1:3001`.
+ *   3. Asserts stdout shows `Server running ... 127.0.0.1:<DEFAULT_PORT+1>`.
  *   4. Hits `/api/stats` on the bound port and asserts HTTP 200.
  *
  * Workspace coupling: this test runs against `REPO_ROOT` because that's
@@ -43,6 +43,8 @@ import * as net from 'node:net';
 import * as http from 'node:http';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
+
+import { DEFAULT_PORT } from '../../../src/config-defaults';
 
 const REPO_ROOT = path.join(__dirname, '..', '..', '..');
 const BIN = path.join(REPO_ROOT, 'bin', 'llmem');
@@ -104,7 +106,7 @@ test('serve picks the next free port when the default is taken', async () => {
     // Use this repo as the workspace — it already has .artifacts/ from
     // prior runs. (Loop 03 lifts this constraint with zero-config; in
     // loop 02 we still need pre-existing edge lists.)
-    const blocker = await holdPort(3000);
+    const blocker = await holdPort(DEFAULT_PORT);
     const child = spawn('node', [BIN, 'serve', '--no-open', '--workspace', REPO_ROOT], {
         cwd: REPO_ROOT,
         env: { ...process.env, FORCE_COLOR: '0' },
@@ -120,7 +122,8 @@ test('serve picks the next free port when the default is taken', async () => {
         const m = out.match(/127\.0\.0\.1:(\d+)/);
         assert.ok(m, `expected a host:port in stdout, got:\n${out}`);
         const boundPort = Number(m![1]);
-        assert.equal(boundPort, 3001, `expected fallback to 3001, got ${boundPort}`);
+        const expectedFallback = DEFAULT_PORT + 1;
+        assert.equal(boundPort, expectedFallback, `expected fallback to ${expectedFallback}, got ${boundPort}`);
 
         // Sanity-hit the API to confirm the server is actually listening.
         const status = await new Promise<number>((resolve, reject) => {

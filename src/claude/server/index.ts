@@ -30,6 +30,7 @@ import {
     rescanSourcesAndRegenerate,
     type RegenerateDeps,
 } from './regenerator';
+import { DEFAULT_PORT } from '../../config-defaults';
 
 const log = createLogger('graph-server');
 
@@ -64,7 +65,7 @@ function listenOnce(server: http.Server, port: number, host: string): Promise<vo
  * Server configuration
  */
 export interface ServerConfig {
-    /** Port to listen on (default: 3000). Use 0 for an ephemeral port. */
+    /** Port to listen on (default: DEFAULT_PORT from config-defaults.ts). Use 0 for an ephemeral port. */
     port?: number;
     /** Workspace root directory */
     workspaceRoot: string;
@@ -122,7 +123,7 @@ export class GraphServer {
 
     constructor(config: ServerConfig) {
         this.config = {
-            port: config.port ?? 3000,
+            port: config.port ?? DEFAULT_PORT,
             workspaceRoot: config.workspaceRoot,
             artifactRoot: config.artifactRoot || '.artifacts',
             openBrowser: config.openBrowser || false,
@@ -323,7 +324,7 @@ export class GraphServer {
  */
 export async function startServer(
     workspaceRoot: string,
-    port: number = 3000,
+    port: number = DEFAULT_PORT,
 ): Promise<GraphServer> {
     const server = new GraphServer({
         workspaceRoot,

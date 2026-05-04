@@ -21,6 +21,7 @@ import * as path from 'path';
 import { z } from 'zod';
 
 import { detectWorkspace } from '../workspace';
+import { DEFAULT_PORT } from '../../../config-defaults';
 import type { CommandSpec } from '../registry';
 
 /**
@@ -41,7 +42,7 @@ export const CONFIG_TOML =
     '# Reserved for future use (parser tier per design/01).\n' +
     '\n' +
     '[server]\n' +
-    'defaultPort = 3000\n' +
+    `defaultPort = ${DEFAULT_PORT}\n` +
     'openBrowser = true\n';
 
 const initArgs = z.object({

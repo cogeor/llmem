@@ -32,3 +32,13 @@ export const MAX_FILES_PER_FOLDER_CAP = 500;
 
 /** Upper-bound cap for maxFileSizeKB */
 export const MAX_FILE_SIZE_KB_CAP = 10240;
+
+/**
+ * Default port for the graph webview HTTP server.
+ *
+ * Single source of truth — referenced by the CLI flag default
+ * (`commands/serve.ts`), the `GraphServer` constructor / `startServer`
+ * helper (`server/index.ts`), the help text (`cli/main.ts`), and the
+ * `init` TOML stub (`commands/init.ts`). Change here and rebuild.
+ */
+export const DEFAULT_PORT = 7474;

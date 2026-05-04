@@ -206,7 +206,7 @@ COMMANDS:
 ${cmdLines}
 
 OPTIONS:
-  --port, -p <num>       Port number (default: 3000)
+  --port, -p <num>       Port number (default: 7474)
   --workspace, -w <path> Workspace root (auto-detected)
   --regenerate, -r       Force regenerate graph before serving
   --open, -o             Open browser automatically

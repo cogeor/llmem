@@ -2,7 +2,7 @@
  * `llmem serve` — start HTTP webview server.
  *
  * Body lifted near-mechanically from src/claude/cli.ts:commandServe.
- *  - port defaults to 3000, walks up to 3009 on EADDRINUSE (loop 02).
+ *  - port defaults to DEFAULT_PORT (config-defaults.ts), walks up +9 on EADDRINUSE (loop 02).
  *  - `--open` defaults to true; pass `--no-open` for headless/CI (loop 03).
  *  - zero-config: when no edge lists exist, scans the workspace via
  *    `application/scan.ts:scanFolderRecursive` and continues. Never
@@ -19,6 +19,7 @@ import { scanFolderRecursive } from '../../../application/scan';
 import { WorkspaceIO } from '../../../workspace/workspace-io';
 import { asWorkspaceRoot } from '../../../core/paths';
 import { detectWorkspace } from '../workspace';
+import { DEFAULT_PORT } from '../../../config-defaults';
 import type { CommandSpec } from '../registry';
 
 // Loop 21 — optional explicit override for the webview asset directory.
@@ -28,7 +29,7 @@ import type { CommandSpec } from '../registry';
 const ASSET_ROOT_OVERRIDE = process.env.LLMEM_ASSET_ROOT || undefined;
 
 const serveArgs = z.object({
-    port: z.number().int().min(0).max(65535).default(3000),
+    port: z.number().int().min(0).max(65535).default(DEFAULT_PORT),
     workspace: z.string().optional(),
     regenerate: z.boolean().default(false),
     open: z.boolean().default(true),      // Loop 03: default-on per design/06.
@@ -40,7 +41,7 @@ export const serveCommand: CommandSpec<typeof serveArgs> = {
     description: 'Start HTTP server for webview (default)',
     examples: [
         { scenario: 'Open the viewer in your browser', command: 'llmem serve' },
-        { scenario: 'Use port 8080 without opening a browser', command: 'llmem serve --port 8080 --no-open' },
+        { scenario: 'Use a custom port without opening a browser', command: 'llmem serve --port 8080 --no-open' },
         { scenario: 'Force re-scan and regenerate before serving', command: 'llmem serve --regenerate' },
     ],
     args: serveArgs,
