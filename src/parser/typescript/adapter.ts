@@ -27,13 +27,19 @@ export class TypeScriptAdapter implements LanguageAdapter {
     readonly npmPackage = undefined;
 
     /**
-     * Create TypeScript extractor
-     *
-     * Note: TypeScript extractor requires a TypeScript service instance
-     * that compiles the entire project. This is shared across all files.
+     * One TypeScriptService per workspace root. `ts.createProgram(N files)`
+     * is O(N) and scan loops call createExtractor() per file — without this
+     * cache, scanning N files is O(N²). Keyed by realpath-equivalent string
+     * so repeated calls with the same root reuse the same Program.
      */
+    private readonly servicesByRoot = new Map<string, TypeScriptService>();
+
     public createExtractor(workspaceRoot: string): ArtifactExtractor {
-        const tsService = new TypeScriptService(workspaceRoot);
-        return new TypeScriptExtractor(() => tsService.getProgram(), workspaceRoot);
+        let tsService = this.servicesByRoot.get(workspaceRoot);
+        if (!tsService) {
+            tsService = new TypeScriptService(workspaceRoot);
+            this.servicesByRoot.set(workspaceRoot, tsService);
+        }
+        return new TypeScriptExtractor(() => tsService!.getProgram(), workspaceRoot);
     }
 }
