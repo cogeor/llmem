@@ -8,6 +8,26 @@ import { loadDesignDocs } from './design-docs';
 import { createLogger } from '../common/logger';
 import { WorkspaceIO } from '../workspace/workspace-io';
 import { asWorkspaceRoot } from '../core/paths';
+import { FolderTreeStore } from '../graph/folder-tree-store';
+import { FolderEdgelistStore } from '../graph/folder-edges-store';
+
+/**
+ * Static-generator output ownership (per CLAUDE.md):
+ *   This module writes the following files into `<destinationDir>`:
+ *     - `graph_data.js`    — `window.GRAPH_DATA = ...`
+ *     - `work_tree.js`     — `window.WORK_TREE = ...`         (skipped in graphOnly)
+ *     - `design_docs.js`   — `window.DESIGN_DOCS = ...`        (skipped in graphOnly)
+ *     - `folder_tree.js`   — `window.FOLDER_TREE = ...`        (loop 11)
+ *     - `folder_edges.js`  — `window.FOLDER_EDGES = ...`       (loop 11)
+ *
+ * The `.artifacts/webview/` output directory is treated as a cache
+ * by `npm run serve` and the extension. After changing this file
+ * (or the loop 09 stores it loads from), DELETE `.artifacts/webview/`
+ * before re-running — stale copies of the above files will mask
+ * regressions, since the dist-webview short-circuit at line ~80
+ * skips esbuild but the data-script emission ALWAYS runs and overwrites
+ * just the JS scripts. Mixed-version assets are the failure mode.
+ */
 
 const log = createLogger('webview-generator');
 
@@ -167,6 +187,31 @@ export async function generateStaticWebview(
 
     fs.writeFileSync(graphDataPath, graphDataContent, 'utf8');
 
+    // 5b. Folder tree + folder edges (loop 11).
+    //
+    // Loop 10 guarantees `.artifacts/folder-tree.json` and `.artifacts/folder-edgelist.json`
+    // are on disk by the time this generator runs: every upstream call site
+    // (`src/claude/web-launcher.ts:generateGraph`, `src/claude/cli/commands/scan.ts`)
+    // calls `buildAndSaveFolderArtifacts` before invoking the generator.
+    //
+    // The artifact-dir convention is one segment up from `destinationDir` —
+    // production callers pass `<workspaceRoot>/<artifactRoot>/webview`, so
+    // the JSONs live in the parent directory. Resolve via `path.dirname(destinationDir)`
+    // rather than re-deriving the workspace root, so the function stays
+    // single-source-of-truth on its `destinationDir` argument.
+    const artifactDir = path.dirname(destinationDir);
+
+    const folderTree = await new FolderTreeStore(artifactDir, io).load();
+    const folderEdges = await new FolderEdgelistStore(artifactDir, io).load();
+
+    const folderTreePath = path.join(destinationDir, 'folder_tree.js');
+    const folderTreeContent = `window.FOLDER_TREE = ${JSON.stringify(folderTree, null, 2)};`;
+    fs.writeFileSync(folderTreePath, folderTreeContent, 'utf8');
+
+    const folderEdgesPath = path.join(destinationDir, 'folder_edges.js');
+    const folderEdgesContent = `window.FOLDER_EDGES = ${JSON.stringify(folderEdges, null, 2)};`;
+    fs.writeFileSync(folderEdgesPath, folderEdgesContent, 'utf8');
+
     // 6. Bundle Design Docs (skip in graph-only mode)
     if (!graphOnly) {
         const designDocs = await loadDesignDocs(workspaceRoot, io);
@@ -177,11 +222,17 @@ export async function generateStaticWebview(
 
     // Build injection script based on what was generated
     const injectionScript = graphOnly
-        ? `<script src="graph_data.js"></script>`
+        ? `
+    <script src="graph_data.js"></script>
+    <script src="folder_tree.js"></script>
+    <script src="folder_edges.js"></script>
+    `
         : `
     <script src="graph_data.js"></script>
     <script src="work_tree.js"></script>
     <script src="design_docs.js"></script>
+    <script src="folder_tree.js"></script>
+    <script src="folder_edges.js"></script>
     `;
 
     // Insert before <script type="module" src="js/main.js">
