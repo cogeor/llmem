@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="styles/tree.css">
     <link rel="stylesheet" href="styles/detail.css">
     <link rel="stylesheet" href="styles/graph.css">
-    <link rel="stylesheet" href="styles/folder-tree.css">
+    <link rel="stylesheet" href="styles/folder-structure.css">
 </head>
 
 <body>
@@ -37,13 +37,16 @@
         <!-- Splitter 1 -->
         <div class="splitter" id="splitter-1"></div>
 
-        <!-- Folder Structure Pane (was "Design"; now hosts FolderTreeView per memo/design/02). -->
+        <!-- Design Pane -->
         <div id="design-pane" class="pane" style="flex: 1;">
             <div class="pane-header">
-                <span class="pane-title" id="design-title"><span class="pane-icon"></span>Folder Structure</span>
+                <span class="pane-title" id="design-title"><span class="pane-icon"></span></span>
+                <div class="toolbar">
+                    <div id="design-mode-toggle"></div>
+                </div>
             </div>
             <div class="pane-content">
-                <div id="design-view"></div>
+                <div id="design-view" class="detail-view"></div>
             </div>
         </div>
 
@@ -63,9 +66,10 @@
                 <div id="graph-view" class="graph-container">
                     <div class="graph-canvas"></div>
                 </div>
-                <!-- Loop 14: PackageView mount point. Hidden by default; loop 16
-                     re-enables the router visibility toggle and removes this style. -->
+                <!-- PackageView mount point (cards + arcs, memo/design/02 second half). -->
                 <div id="package-view" style="display: none; width: 100%; height: 100%; overflow: auto;"></div>
+                <!-- FolderStructureView mount point (orthogonal folder graph, memo/design/02 first half). -->
+                <div id="folder-structure-view" style="display: none; width: 100%; height: 100%; overflow: auto;"></div>
             </div>
         </div>
     </div>

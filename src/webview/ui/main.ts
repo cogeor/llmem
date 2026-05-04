@@ -5,12 +5,14 @@ import { Router } from './router';
 import { createDataProvider } from './services/dataProviderFactory';
 import { Worktree } from './components/Worktree';
 import { GraphTypeToggle } from './components/GraphTypeToggle';
-import { FolderTreeView } from './components/FolderTreeView';
+import { DesignModeToggle } from './components/DesignModeToggle';
+import { DesignTextView } from './components/DesignTextView';
 import { GraphView } from './components/GraphView';
 import { PackageView } from './components/PackageView';
+import { FolderStructureView } from './components/FolderStructureView';
 import { ViewToggle } from './components/ViewToggle';
 import { Splitter } from './libs/Splitter';
-import { explorerIcon, folder as folderIcon, graphIcon, sun } from './icons';
+import { explorerIcon, designIcon, graphIcon, sun } from './icons';
 import '../live-reload'; // WebSocket live reload for HTTP server mode
 
 // Create data provider for this environment (auto-detects VS Code vs standalone)
@@ -18,10 +20,12 @@ const dataProvider = createDataProvider();
 
 // Elements
 const elWorktree = document.getElementById('worktree-root') as HTMLElement;
+const elDesignModeToggle = document.getElementById('design-mode-toggle') as HTMLElement;
 const elGraphToggle = document.getElementById('graph-type-toggle') as HTMLElement;
 const elDesignView = document.getElementById('design-view') as HTMLElement;
 const elGraphView = document.getElementById('graph-view') as HTMLElement;
 const elPackageView = document.getElementById('package-view') as HTMLElement;
+const elFolderStructureView = document.getElementById('folder-structure-view') as HTMLElement;
 const elViewToggle = document.getElementById('view-toggle') as HTMLElement;
 
 // Splitter elements
@@ -75,9 +79,10 @@ const router = new Router({
 });
 
 // Components - inject dataProvider
-// We only init Worktree and FolderTreeView if not in graph-only mode
+// We only init Worktree and DesignView if not in graph-only mode
 let worktree: Worktree | undefined;
-let folderTreeView: FolderTreeView | undefined;
+let designModeToggle: DesignModeToggle | undefined;
+let designTextView: DesignTextView | undefined;
 
 if (!isGraphOnlyMode) {
     worktree = new Worktree({
@@ -86,10 +91,21 @@ if (!isGraphOnlyMode) {
         dataProvider
     });
 
-    folderTreeView = new FolderTreeView({
+    designTextView = new DesignTextView({
         el: elDesignView,
         state,
         dataProvider
+    });
+
+    designModeToggle = new DesignModeToggle({
+        el: elDesignModeToggle,
+        state,
+        onSave: () => {
+            // Trigger save in DesignTextView
+            if (designTextView) {
+                (designTextView as any).triggerSave();
+            }
+        }
     });
 }
 
@@ -110,23 +126,33 @@ const packageView = new PackageView({
     dataProvider
 });
 
-// Header view toggle (Graph / Packages). Folder tree always lives in
-// the middle pane and is not router-managed.
+const folderStructureView = new FolderStructureView({
+    el: elFolderStructureView,
+    state,
+    dataProvider,
+});
+
+// Header view toggle (Graph / Design / Packages / Folders).
 const viewToggle = new ViewToggle({
     el: elViewToggle,
     state,
 });
 
 // Register Routes
+if (designTextView) {
+    router.registerRoute('design', designTextView);
+}
 router.registerRoute('graph', graphView);
 router.registerRoute('packages', packageView);
+router.registerRoute('folders', folderStructureView);
 
 // Subscribe to refresh events (hot reload)
 dataProvider.onRefresh(async () => {
     console.log('[Webview] Refresh triggered - reloading graph');
     // Only refresh graph view - Worktree structure doesn't change on edge refresh
     await graphView.mount();
-    if (folderTreeView) await folderTreeView.mount();
+    if (designTextView) await designTextView.mount();
+    await folderStructureView.mount();
 });
 
 // Subscribe to watched paths restoration (persisted state from disk)
@@ -154,8 +180,7 @@ function initHeaderIcons() {
     // safe: author-controlled SVG icon string from icons.ts
     if (explorerTitle) explorerTitle.innerHTML = explorerIcon;
     // safe: author-controlled SVG icon string from icons.ts
-    // Folder Structure pane icon (was design icon prior to memo/design/02 wire-up).
-    if (designTitle) designTitle.innerHTML = folderIcon;
+    if (designTitle) designTitle.innerHTML = designIcon;
     // safe: author-controlled SVG icon string from icons.ts
     if (graphTitle) graphTitle.innerHTML = graphIcon;
     // safe: author-controlled SVG icon string from icons.ts (ThemeManager updates this later)
@@ -181,10 +206,12 @@ function initHeaderIcons() {
             graphTypeToggle.mount(),
             graphView.mount(),
             packageView.mount(),
+            folderStructureView.mount(),
         ];
 
         if (worktree) mountPromises.push(worktree.mount());
-        if (folderTreeView) mountPromises.push(folderTreeView.mount());
+        if (designModeToggle) mountPromises.push(designModeToggle.mount());
+        if (designTextView) mountPromises.push(designTextView.mount());
 
         await Promise.all(mountPromises);
 
@@ -193,4 +220,3 @@ function initHeaderIcons() {
         console.error("Initialization failed", e);
     }
 })();
-

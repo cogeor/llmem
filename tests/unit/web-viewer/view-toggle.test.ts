@@ -1,7 +1,7 @@
 // tests/unit/web-viewer/view-toggle.test.ts
 //
-// Pin the contract for the bi-state ViewToggle:
-//   - Two buttons render in order: Graph, Packages.
+// Pin the contract for the four-state ViewToggle:
+//   - Four buttons render in order: Graph, Design, Packages, Folders.
 //   - Clicking each button calls state.set with the matching currentView.
 //   - The active button reflects state.currentView via the 'active' class.
 //
@@ -35,7 +35,7 @@ const { ViewToggle } = require('../../../src/webview/ui/components/ViewToggle') 
 };
 
 interface FakeAppState {
-    currentView: 'graph' | 'packages';
+    currentView: 'graph' | 'design' | 'packages' | 'folders';
 }
 
 function makeFakeState(initial: FakeAppState): {
@@ -78,29 +78,33 @@ function getEl(): HTMLElement {
     return el;
 }
 
-test('ViewToggle renders two buttons in order: Graph, Packages', () => {
+test('ViewToggle renders four buttons in order: Graph, Design, Packages, Folders', () => {
     const el = getEl();
-    const state = makeFakeState({ currentView: 'graph' });
+    const state = makeFakeState({ currentView: 'design' });
     const toggle = new ViewToggle({ el, state });
     toggle.mount();
 
     const buttons = Array.from(el.querySelectorAll('.view-toggle-btn')) as HTMLElement[];
-    assert.equal(buttons.length, 2, 'two buttons render');
+    assert.equal(buttons.length, 4, 'four buttons render');
     assert.equal(buttons[0].textContent?.trim(), 'Graph');
-    assert.equal(buttons[1].textContent?.trim(), 'Packages');
+    assert.equal(buttons[1].textContent?.trim(), 'Design');
+    assert.equal(buttons[2].textContent?.trim(), 'Packages');
+    assert.equal(buttons[3].textContent?.trim(), 'Folders');
 
     // Each button has a stable data-view attribute the click handler reads.
     assert.equal(buttons[0].dataset.view, 'graph');
-    assert.equal(buttons[1].dataset.view, 'packages');
+    assert.equal(buttons[1].dataset.view, 'design');
+    assert.equal(buttons[2].dataset.view, 'packages');
+    assert.equal(buttons[3].dataset.view, 'folders');
 });
 
 test('ViewToggle clicking each button calls state.set with the matching currentView', () => {
     const el = getEl();
-    const state = makeFakeState({ currentView: 'graph' });
+    const state = makeFakeState({ currentView: 'design' });
     const toggle = new ViewToggle({ el, state });
     toggle.mount();
 
-    for (const view of ['graph', 'packages'] as const) {
+    for (const view of ['graph', 'design', 'packages', 'folders'] as const) {
         const btn = el.querySelector(`[data-view="${view}"]`) as HTMLElement;
         assert.ok(btn, `button for ${view} must exist`);
         btn.click();
@@ -115,46 +119,42 @@ test('ViewToggle clicking each button calls state.set with the matching currentV
 
 test('ViewToggle marks the active button with the "active" class for the current route', () => {
     const el = getEl();
-    const state = makeFakeState({ currentView: 'graph' });
+    const state = makeFakeState({ currentView: 'design' });
     const toggle = new ViewToggle({ el, state });
     toggle.mount();
 
+    const designBtn = el.querySelector('[data-view="design"]') as HTMLElement;
     const graphBtn = el.querySelector('[data-view="graph"]') as HTMLElement;
     const packagesBtn = el.querySelector('[data-view="packages"]') as HTMLElement;
+    const foldersBtn = el.querySelector('[data-view="folders"]') as HTMLElement;
 
+    assert.ok(designBtn.classList.contains('active'), 'design active for currentView=design');
+    assert.ok(!graphBtn.classList.contains('active'));
+    assert.ok(!packagesBtn.classList.contains('active'));
+    assert.ok(!foldersBtn.classList.contains('active'));
+
+    state.set({ currentView: 'folders' });
+
+    const foldersBtnAfter = el.querySelector('[data-view="folders"]') as HTMLElement;
+    const designBtnAfter = el.querySelector('[data-view="design"]') as HTMLElement;
     assert.ok(
-        graphBtn.classList.contains('active'),
-        'graph button must be marked active for currentView=graph',
+        foldersBtnAfter.classList.contains('active'),
+        'folders active after state changes to folders',
     );
     assert.ok(
-        !packagesBtn.classList.contains('active'),
-        'packages button must not be active for currentView=graph',
-    );
-
-    // Switch to packages — re-render fires via the state subscription.
-    state.set({ currentView: 'packages' });
-
-    const packagesBtnAfter = el.querySelector('[data-view="packages"]') as HTMLElement;
-    const graphBtnAfter = el.querySelector('[data-view="graph"]') as HTMLElement;
-    assert.ok(
-        packagesBtnAfter.classList.contains('active'),
-        'packages button must be active after state changes to packages',
-    );
-    assert.ok(
-        !graphBtnAfter.classList.contains('active'),
-        'graph button must NOT be active after state changes to packages',
+        !designBtnAfter.classList.contains('active'),
+        'design no longer active after state changes',
     );
 });
 
 test('ViewToggle ignores clicks outside .view-toggle-btn', () => {
     const el = getEl();
-    const state = makeFakeState({ currentView: 'graph' });
+    const state = makeFakeState({ currentView: 'design' });
     const toggle = new ViewToggle({ el, state });
     toggle.mount();
 
     const initialCallCount = state.setCalls.length;
 
-    // Synthesize a click on a non-button child (the wrapper div).
     const wrapper = el.querySelector('.view-toggle') as HTMLElement;
     assert.ok(wrapper, 'wrapper element must exist');
     wrapper.click();

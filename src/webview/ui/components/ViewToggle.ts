@@ -1,9 +1,16 @@
 /**
  * ViewToggle Component.
  *
- * Toggle for the right-pane route: 'graph' | 'packages'. The router
- * subscribes to state.currentView and swaps visibility between
- * #graph-view and #package-view inside #graph-pane.
+ * Top-strip tab switcher for state.currentView. The router subscribes
+ * to state and swaps visibility of route components.
+ *
+ * Routes:
+ *   - 'graph'    → #graph-view
+ *   - 'design'   → #design-view (solo in #design-pane; router hides
+ *                  #graph-pane when this route is active so design
+ *                  fills the remaining width)
+ *   - 'packages' → #package-view
+ *   - 'folders'  → #folder-structure-view (orthogonal folder graph)
  *
  * The component intentionally calls `state.set({ currentView })` rather
  * than `router.setRoute(...)` — Router has no `setRoute` method; the
@@ -13,7 +20,7 @@
 import { AppState } from '../types';
 import { State } from '../state';
 
-type ViewName = 'graph' | 'packages';
+type ViewName = 'graph' | 'design' | 'packages' | 'folders';
 
 interface Props {
     el: HTMLElement;
@@ -53,14 +60,18 @@ export class ViewToggle {
 
     private render(active: ViewName): void {
         const isGraph = active === 'graph';
+        const isDesign = active === 'design';
         const isPackages = active === 'packages';
+        const isFolders = active === 'folders';
         // safe: structural template; class names and labels are
         // author-controlled literals; `active` is the AppState union
         // and only drives boolean ternaries (which produce 'active' or '').
         this.el.innerHTML = `
             <div class="view-toggle" role="tablist">
                 <button class="view-toggle-btn ${isGraph ? 'active' : ''}" data-view="graph" type="button" role="tab" aria-selected="${isGraph}">Graph</button>
+                <button class="view-toggle-btn ${isDesign ? 'active' : ''}" data-view="design" type="button" role="tab" aria-selected="${isDesign}">Design</button>
                 <button class="view-toggle-btn ${isPackages ? 'active' : ''}" data-view="packages" type="button" role="tab" aria-selected="${isPackages}">Packages</button>
+                <button class="view-toggle-btn ${isFolders ? 'active' : ''}" data-view="folders" type="button" role="tab" aria-selected="${isFolders}">Folders</button>
             </div>
         `;
     }
@@ -70,7 +81,7 @@ export class ViewToggle {
             const target = (ev.target as HTMLElement).closest('.view-toggle-btn');
             if (target === null) return;
             const view = (target as HTMLElement).dataset.view;
-            if (view !== 'graph' && view !== 'packages') return;
+            if (view !== 'graph' && view !== 'design' && view !== 'packages' && view !== 'folders') return;
             this.state.set({ currentView: view });
         });
     }

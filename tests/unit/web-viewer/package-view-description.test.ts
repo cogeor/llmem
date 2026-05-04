@@ -87,7 +87,7 @@ const { PackageView } = require('../../../src/webview/ui/components/PackageView'
 };
 
 interface FakeAppState {
-    currentView: 'graph' | 'packages';
+    currentView: 'graph' | 'design' | 'packages' | 'folders';
     selectedPath: string | null;
     selectedType: 'file' | 'directory' | null;
 }
