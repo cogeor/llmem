@@ -200,6 +200,8 @@ const WRITE_ALLOWLIST: ReadonlySet<string> = new Set([
   'src/artifact/storage.ts',
   'src/claude/cli/commands/init.ts',
   'src/graph/edgelist.ts',
+  'src/graph/folder-edges-store.ts',
+  'src/graph/folder-tree-store.ts',
   'src/graph/worktree-state.ts',
   'src/scripts/generate_edgelist.ts',
   'src/scripts/scan_codebase.ts',
@@ -437,6 +439,26 @@ const KNOWN_WRITE_VIOLATIONS: readonly KnownFsWriteViolation[] = [
     rel: 'src/graph/worktree-state.ts',
     method: 'writeFile',
     reason: 'L23 back-compat fallback in WatchService.save when no `io` is passed; L24 removes once `io` is required.',
+  },
+  {
+    rel: 'src/graph/folder-tree-store.ts',
+    method: 'mkdir',
+    reason: 'Loop 09 back-compat fallback in FolderTreeStore.save when no `io` is passed; mirrors BaseEdgeListStore. Loops 10+ thread `io` through every caller.',
+  },
+  {
+    rel: 'src/graph/folder-tree-store.ts',
+    method: 'writeFile',
+    reason: 'Loop 09 back-compat fallback in FolderTreeStore.save when no `io` is passed; mirrors BaseEdgeListStore. Loops 10+ thread `io` through every caller.',
+  },
+  {
+    rel: 'src/graph/folder-edges-store.ts',
+    method: 'mkdir',
+    reason: 'Loop 09 back-compat fallback in FolderEdgelistStore.save when no `io` is passed; mirrors BaseEdgeListStore. Loops 10+ thread `io` through every caller.',
+  },
+  {
+    rel: 'src/graph/folder-edges-store.ts',
+    method: 'writeFile',
+    reason: 'Loop 09 back-compat fallback in FolderEdgelistStore.save when no `io` is passed; mirrors BaseEdgeListStore. Loops 10+ thread `io` through every caller.',
   },
   {
     rel: 'src/artifact/storage.ts',
