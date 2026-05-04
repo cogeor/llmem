@@ -133,6 +133,11 @@ const KNOWN_VIOLATIONS: readonly BrowserViolation[] = [
     to: 'src/graph/folder-tree.ts',
     reason: 'Loop 14: type-only import of FolderTreeData / FolderNode for the PackageView component (cards rendered from the loaded tree); future schema-split loop fixes it.',
   },
+  {
+    from: 'src/webview/ui/components/PackageView.ts',
+    to: 'src/graph/folder-edges.ts',
+    reason: 'Loop 15: type-only import of FolderEdgelistData / FolderEdge for the PackageView arcs (folder edges rendered as vis-network arcs); future schema-split loop fixes it.',
+  },
 ];
 
 function toRepoRel(absPath: string): string {
