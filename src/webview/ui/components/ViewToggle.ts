@@ -1,26 +1,19 @@
 /**
- * ViewToggle Component (Loop 16).
+ * ViewToggle Component.
  *
- * Tri-state toggle for the top-level webview route. Sibling to
- * DesignModeToggle (which is bi-state for state.designViewMode); this
- * component switches state.currentView between 'graph' | 'design' |
- * 'packages'. The router subscribes to state and swaps visibility of the
- * corresponding pane elements (see router.ts loop-16 parent-grouped
- * visibility toggle).
+ * Toggle for the right-pane route: 'graph' | 'packages'. The router
+ * subscribes to state.currentView and swaps visibility between
+ * #graph-view and #package-view inside #graph-pane.
  *
  * The component intentionally calls `state.set({ currentView })` rather
  * than `router.setRoute(...)` — Router has no `setRoute` method; the
- * state-subscriber pattern is the existing idiom (see main.ts:59).
- *
- * Loop 14 shipped a two-button (Design / Graph) variant of this file;
- * loop 16 supersedes it with the three-button (Graph / Design / Packages)
- * variant required by the design/02 spec.
+ * state-subscriber pattern is the existing idiom (see main.ts).
  */
 
 import { AppState } from '../types';
 import { State } from '../state';
 
-type ViewName = 'graph' | 'design' | 'packages';
+type ViewName = 'graph' | 'packages';
 
 interface Props {
     el: HTMLElement;
@@ -60,7 +53,6 @@ export class ViewToggle {
 
     private render(active: ViewName): void {
         const isGraph = active === 'graph';
-        const isDesign = active === 'design';
         const isPackages = active === 'packages';
         // safe: structural template; class names and labels are
         // author-controlled literals; `active` is the AppState union
@@ -68,7 +60,6 @@ export class ViewToggle {
         this.el.innerHTML = `
             <div class="view-toggle" role="tablist">
                 <button class="view-toggle-btn ${isGraph ? 'active' : ''}" data-view="graph" type="button" role="tab" aria-selected="${isGraph}">Graph</button>
-                <button class="view-toggle-btn ${isDesign ? 'active' : ''}" data-view="design" type="button" role="tab" aria-selected="${isDesign}">Design</button>
                 <button class="view-toggle-btn ${isPackages ? 'active' : ''}" data-view="packages" type="button" role="tab" aria-selected="${isPackages}">Packages</button>
             </div>
         `;
@@ -79,7 +70,7 @@ export class ViewToggle {
             const target = (ev.target as HTMLElement).closest('.view-toggle-btn');
             if (target === null) return;
             const view = (target as HTMLElement).dataset.view;
-            if (view !== 'graph' && view !== 'design' && view !== 'packages') return;
+            if (view !== 'graph' && view !== 'packages') return;
             this.state.set({ currentView: view });
         });
     }

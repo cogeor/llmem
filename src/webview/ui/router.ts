@@ -57,23 +57,12 @@ export class Router {
             return;
         }
 
-        // Loop 16: parent-grouped visibility toggle.
+        // Parent-grouped visibility toggle.
         //
-        // Loop 14 disabled the global visibility toggle because the 3-column
-        // layout shows #design-pane and #graph-pane side-by-side: a global
-        // toggle would hide the design pane any time the active view was
-        // 'graph' or 'packages'. Loop 16 re-enables the toggle but scopes
-        // it to peers within the same DOM parent so that:
-        //   - #graph-view and #package-view share #graph-pane's content area
-        //     and SWAP based on currentView (one visible, one hidden).
-        //   - #design-view lives alone in #design-pane and is left untouched
-        //     by this toggle (it is the design pane's only registered route).
-        //
-        // The grouping uses the live DOM parent of each route's `el`. Solo
-        // routes (no peers in their group) are skipped — leaving the loop-15
-        // inline `display: none` on #package-view in place when the active
-        // view doesn't share its parent. See PLAN.md loop 16 task 2 for the
-        // full display-state matrix.
+        // The two registered routes ('graph', 'packages') share the
+        // #graph-pane content area; the parent-grouped toggle hides the
+        // inactive one. The middle pane (#design-pane / FolderTreeView)
+        // is not a router-managed route — it is always visible.
         const groups = new Map<Element, Array<{ name: string; el: HTMLElement }>>();
         for (const [name, comp] of Object.entries(this.routes)) {
             if (comp.el === undefined || comp.el === null) continue;
@@ -93,21 +82,6 @@ export class Router {
                 }
             }
         }
-
-        // Pane-level visibility: 'design' is the only solo route (its
-        // pane has no peer routes), so the parent-grouped toggle above
-        // can't give it a visible response. Toggle the right (graph)
-        // pane and its splitter at the pane level so the user sees the
-        // active tab actually take over the layout:
-        //   - currentView='design'   → hide #graph-pane + splitter-2;
-        //                              design-pane expands to full width.
-        //   - currentView='graph'    → show #graph-pane + splitter-2.
-        //   - currentView='packages' → show #graph-pane + splitter-2.
-        const graphPane = document.getElementById('graph-pane');
-        const splitter2 = document.getElementById('splitter-2');
-        const showGraphPane = viewName !== 'design';
-        if (graphPane) graphPane.style.display = showGraphPane ? '' : 'none';
-        if (splitter2) splitter2.style.display = showGraphPane ? '' : 'none';
     }
 
     unmount() {

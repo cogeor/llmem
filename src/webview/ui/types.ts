@@ -77,7 +77,7 @@ export interface DesignDoc {
 }
 
 export interface AppState {
-    currentView: "design" | "graph" | "packages";
+    currentView: "graph" | "packages";
     graphType: "import" | "call";
     selectedPath: string | null;
     selectedType: "file" | "directory" | null;

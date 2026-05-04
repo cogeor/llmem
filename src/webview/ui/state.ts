@@ -2,7 +2,7 @@
 import { AppState } from './types';
 
 export const initialState: AppState = {
-    currentView: "graph", // "design" | "graph" | "packages"
+    currentView: "graph", // "graph" | "packages"
     graphType: "import",   // "import" | "call"
     selectedPath: "src",   // Default to src for design view
     selectedType: "directory",

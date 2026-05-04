@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="styles/tree.css">
     <link rel="stylesheet" href="styles/detail.css">
     <link rel="stylesheet" href="styles/graph.css">
+    <link rel="stylesheet" href="styles/folder-tree.css">
 </head>
 
 <body>
@@ -36,16 +37,13 @@
         <!-- Splitter 1 -->
         <div class="splitter" id="splitter-1"></div>
 
-        <!-- Design Pane -->
+        <!-- Folder Structure Pane (was "Design"; now hosts FolderTreeView per memo/design/02). -->
         <div id="design-pane" class="pane" style="flex: 1;">
             <div class="pane-header">
-                <span class="pane-title" id="design-title"><span class="pane-icon"></span></span>
-                <div class="toolbar">
-                    <div id="design-mode-toggle"></div>
-                </div>
+                <span class="pane-title" id="design-title"><span class="pane-icon"></span>Folder Structure</span>
             </div>
             <div class="pane-content">
-                <div id="design-view" class="detail-view"></div>
+                <div id="design-view"></div>
             </div>
         </div>
 
