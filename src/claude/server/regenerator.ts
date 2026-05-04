@@ -44,11 +44,18 @@ export interface RegenerateDeps {
  */
 export async function regenerateWebview(deps: RegenerateDeps): Promise<void> {
     log.info('Regenerating webview...');
+    // Loop 11 followup — `generateGraph` itself now emits folder-tree +
+    // folder-edges artifacts. We pass `io` through so the launcher reuses
+    // our long-lived `WorkspaceIO` (avoids a redundant realpath
+    // canonicalization on every file-watcher tick). An aggregator failure
+    // throws out of `generateGraphLauncher`, aborting before the websocket
+    // broadcast — same fail-loud posture as the previous explicit call.
     const result = await generateGraphLauncher({
         workspaceRoot: deps.workspaceRoot,
         artifactRoot: deps.artifactRoot,
         graphOnly: false,
         assetRoot: deps.assetRoot,
+        io: deps.io,
     });
 
     if (deps.verbose) {
@@ -59,6 +66,7 @@ export async function regenerateWebview(deps: RegenerateDeps): Promise<void> {
             callEdges: result.callEdgeCount,
         });
     }
+
     log.info('Webview updated');
 
     deps.webSocket.broadcast({
@@ -88,6 +96,12 @@ export async function rescanSourcesAndRegenerate(
     }
 
     log.info('Edges regenerated');
+    // Loop 11 followup: folder-artifact emission lives inside `generateGraph`,
+    // which `regenerateWebview` invokes below. Every code path that writes
+    // import-edgelist.json / call-edgelist.json must end with a
+    // regenerateWebview() call to keep the folder artifacts in sync. Do
+    // NOT add a buildAndSaveFolderArtifacts call here — the delegation
+    // chain (regenerateWebview → generateGraph) already covers it.
     await regenerateWebview(deps);
 }
 

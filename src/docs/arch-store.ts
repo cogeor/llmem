@@ -21,6 +21,7 @@
 import * as path from 'path';
 import type { WorkspaceRoot, AbsPath, RelPath } from '../core/paths';
 import { asAbsPath, asRelPath } from '../core/paths';
+import type { WorkspaceIO } from '../workspace/workspace-io';
 
 export const ARCH_DIR = '.arch';
 
@@ -63,4 +64,62 @@ export function getDesignDocKey(archRoot: AbsPath, archPath: AbsPath): string {
  */
 export function archToSourcePath(archRoot: AbsPath, archPath: AbsPath): RelPath {
     return asRelPath(path.relative(archRoot, archPath).replace(/\\/g, '/'));
+}
+
+/**
+ * Walk `.arch/` and return the set of folder paths (workspace-relative,
+ * forward-slash) that contain a `README.md`. Used by the folder-tree
+ * aggregator (Loop 10) to mark `documented: true` on `FolderNode` entries.
+ *
+ * Folder-path conventions match `buildFolderTree`:
+ *   - `'.'` for the workspace root (`.arch/README.md` exists).
+ *   - `'src/parser'` for `.arch/src/parser/README.md`.
+ *
+ * Backslashes never appear in the result because `WorkspaceIO.readDir`
+ * returns plain entry names (no separators inside) and we concatenate
+ * with literal `/`.
+ *
+ * Returns an empty set if `.arch/` does not exist. Uses `WorkspaceIO`
+ * for realpath-strong containment; symlinks pointing outside the
+ * workspace surface as `PathEscapeError`. This helper does not catch —
+ * callers can decide whether to swallow or rethrow.
+ *
+ * Builds a fresh set per call. The regenerator runs this on every
+ * regenerate event; callers that want caching can layer it on later.
+ *
+ * README casing: case-insensitive match (matches the existing
+ * `getDesignDocKey` rule above).
+ */
+export async function scanArchFolders(io: WorkspaceIO): Promise<Set<string>> {
+    const out = new Set<string>();
+    if (!(await io.exists(ARCH_DIR))) return out;
+
+    async function walk(relDir: string): Promise<void> {
+        const entries = await io.readDir(relDir);
+        let hasReadme = false;
+        for (const entry of entries) {
+            const childRel = relDir === ''
+                ? entry
+                : `${relDir}/${entry}`;
+            const stat = await io.stat(childRel);
+            if (stat.isDirectory()) {
+                await walk(childRel);
+            } else if (entry.toLowerCase() === 'readme.md') {
+                hasReadme = true;
+            }
+        }
+        if (hasReadme) {
+            // Strip the leading `.arch/` segment; emit `'.'` for the
+            // workspace root (where .arch/README.md lives).
+            if (relDir === ARCH_DIR) {
+                out.add('.');
+            } else {
+                // relDir is e.g. ".arch/src/parser" → "src/parser"
+                out.add(relDir.slice(ARCH_DIR.length + 1));
+            }
+        }
+    }
+
+    await walk(ARCH_DIR);
+    return out;
 }

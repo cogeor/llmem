@@ -13,6 +13,7 @@ import * as path from 'path';
 import { z } from 'zod';
 
 import { scanFolderRecursive } from '../../../application/scan';
+import { buildAndSaveFolderArtifacts } from '../../../application/folder-artifacts';
 import { WorkspaceIO } from '../../../workspace/workspace-io';
 import { asWorkspaceRoot } from '../../../core/paths';
 import { detectWorkspace } from '../workspace';
@@ -53,11 +54,12 @@ export const scanCommand: CommandSpec<typeof scanArgs> = {
             `(${result.filesSkipped} skipped, ${result.errors.length} errors).`,
         );
 
-        // Wired by loops 08 + 10 of design/02:
-        //   - buildFolderTree from src/graph/folder-tree.ts
-        //   - buildFolderEdges from src/graph/folder-edges.ts
-        //   - persist via FolderTreeStore / FolderEdgelistStore
-        // Until those land, the scan emits import-edgelist.json + call-edgelist.json only.
+        // Loop 10 — emit folder-tree.json + folder-edgelist.json next to
+        // the edge lists. Closes the loop-05 stub. Order matters: this
+        // runs AFTER scanFolderRecursive (so the edge lists are on disk)
+        // and BEFORE the parse-error exit gate (so partial-success scans
+        // still produce folder artifacts).
+        await buildAndSaveFolderArtifacts({ artifactDir, io });
 
         if (result.errors.length > 0) {
             process.exit(1);

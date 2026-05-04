@@ -13,6 +13,9 @@ import { prepareWebviewDataFromSplitEdgeLists } from '../graph/webview-data';
 import { generateStaticWebview } from '../webview/generator';
 import { WatchService } from '../graph/worktree-state';
 import { createLogger } from '../common/logger';
+import { buildAndSaveFolderArtifacts } from '../application/folder-artifacts';
+import { WorkspaceIO } from '../workspace/workspace-io';
+import { asWorkspaceRoot } from '../core/paths';
 
 const log = createLogger('web-launcher');
 
@@ -39,6 +42,19 @@ export interface GraphGenerationOptions {
      * `LLMEM_ASSET_ROOT` set.
      */
     assetRoot?: string;
+    /**
+     * Optional realpath-strong I/O surface anchored on the workspace root.
+     * Threaded into `buildAndSaveFolderArtifacts` so the folder-artifact
+     * step shares the caller's `WorkspaceIO` (which already paid the
+     * one-shot realpath canonicalization). When omitted, `generateGraph`
+     * constructs a fresh `WorkspaceIO` for the folder-artifact step.
+     *
+     * The CLI commands (`serve`, `generate`) call `generateGraph` without
+     * an `io` and rely on this fallback. The server's regenerator passes
+     * its long-lived `io` through to avoid duplicate canonicalization on
+     * every file-watcher event.
+     */
+    io?: WorkspaceIO;
 }
 
 /**
@@ -271,6 +287,26 @@ export async function generateGraph(
 
     const importData = importStore.getData();
     const callData = callStore.getData();
+
+    // Loop 11 followup — emit folder-tree.json + folder-edgelist.json next
+    // to the edge lists. Mirrors the call shape used previously by
+    // `regenerator.ts:regenerateWebview`: same options object, same
+    // fail-loud posture (a thrown aggregator aborts `generateGraph`
+    // before the static webview is written, so we never publish a
+    // webview whose folder-tree/edges script tags reference missing JSON).
+    //
+    // Placement: AFTER the edge-list load (so we know the source data
+    // exists and is valid) and BEFORE the static-generate step (so loop
+    // 11's static generator can read the artifacts when it emits the
+    // `folder_tree.js` / `folder_edges.js` script tags).
+    //
+    // The regenerator path (`regenerator.ts`) used to call this helper
+    // separately; that call has been removed to avoid double-emit per
+    // user action. Direct `bin/llmem scan` continues to call the helper
+    // itself (it does not go through `generateGraph`).
+    const folderArtifactsIo =
+        options.io ?? (await WorkspaceIO.create(asWorkspaceRoot(workspaceRoot)));
+    await buildAndSaveFolderArtifacts({ artifactDir, io: folderArtifactsIo });
 
     // Load watched files state
     const watchService = new WatchService(artifactDir, workspaceRoot);
