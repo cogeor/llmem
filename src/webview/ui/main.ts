@@ -8,6 +8,7 @@ import { GraphTypeToggle } from './components/GraphTypeToggle';
 import { DesignModeToggle } from './components/DesignModeToggle';
 import { DesignTextView } from './components/DesignTextView';
 import { GraphView } from './components/GraphView';
+import { PackageView } from './components/PackageView';
 import { Splitter } from './libs/Splitter';
 import { explorerIcon, designIcon, graphIcon, sun } from './icons';
 import '../live-reload'; // WebSocket live reload for HTTP server mode
@@ -21,6 +22,7 @@ const elDesignModeToggle = document.getElementById('design-mode-toggle') as HTML
 const elGraphToggle = document.getElementById('graph-type-toggle') as HTMLElement;
 const elDesignView = document.getElementById('design-view') as HTMLElement;
 const elGraphView = document.getElementById('graph-view') as HTMLElement;
+const elPackageView = document.getElementById('package-view') as HTMLElement;
 
 // Splitter elements
 const elSplitter1 = document.getElementById('splitter-1') as HTMLElement;
@@ -114,11 +116,18 @@ const graphView = new GraphView({
     dataProvider
 });
 
+const packageView = new PackageView({
+    el: elPackageView,
+    state,
+    dataProvider
+});
+
 // Register Routes
 if (designTextView) {
     router.registerRoute('design', designTextView);
 }
 router.registerRoute('graph', graphView);
+router.registerRoute('packages', packageView);
 
 // Subscribe to refresh events (hot reload)
 dataProvider.onRefresh(async () => {
@@ -176,7 +185,8 @@ function initHeaderIcons() {
         // Mount all components
         const mountPromises = [
             graphTypeToggle.mount(),
-            graphView.mount()
+            graphView.mount(),
+            packageView.mount(), // loop 14
         ];
 
         if (worktree) mountPromises.push(worktree.mount());
