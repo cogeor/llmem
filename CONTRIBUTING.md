@@ -77,7 +77,7 @@ All code must pass linting before submission. Fix lint errors before opening a p
 - **VS Code / Antigravity IDE**: Press `F5` to launch an Extension Development Host with the extension loaded.
 - **Claude Code**: Start the graph server and MCP server separately:
   ```bash
-  npm run serve            # Graph server (http://localhost:7474)
+  npm run serve            # Graph server (http://localhost:5757)
   node dist/claude/index.js  # MCP server (stdio, used by Claude)
   ```
 

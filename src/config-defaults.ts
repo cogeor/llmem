@@ -41,4 +41,4 @@ export const MAX_FILE_SIZE_KB_CAP = 10240;
  * helper (`server/index.ts`), the help text (`cli/main.ts`), and the
  * `init` TOML stub (`commands/init.ts`). Change here and rebuild.
  */
-export const DEFAULT_PORT = 7474;
+export const DEFAULT_PORT = 5757;
