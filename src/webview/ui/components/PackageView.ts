@@ -32,7 +32,9 @@ import type { FolderTreeData, FolderNode } from '../../../graph/folder-tree';
 import type { FolderEdgelistData, FolderEdge } from '../../../graph/folder-edges';
 import { DataProvider } from '../services/dataProvider';
 import { State } from '../state';
+import { AppState, DesignDoc } from '../types';
 import { escape } from '../utils/escape';
+import { DesignRender } from './DesignRender';
 
 /**
  * Minimal vis-network surface used by PackageView. The lib is loaded
@@ -164,6 +166,14 @@ export class PackageView {
     private bottomPanel: HTMLElement | null = null;
     /** Container for the "Show all edges" toggle (Phase B). */
     private controls: HTMLElement | null = null;
+    /** Container for the description panel that renders the selected folder's README (loop 16). */
+    private descriptionPanel: HTMLElement | null = null;
+    /** In-memory snapshot of the design docs map; populated in mount() (loop 16). */
+    private designDocs: Record<string, DesignDoc> = {};
+    /** Current DesignRender instance for the description panel; null when no doc shown (loop 16). */
+    private descriptionRenderer: DesignRender | null = null;
+    /** State subscription teardown (loop 16). */
+    private unsubscribe?: () => void;
     /**
      * Per-network mutation snapshot to restore on hoverNode → blurNode.
      * Map of edgeId → original color/width. Cleared on blur.
@@ -210,6 +220,29 @@ export class PackageView {
         // bails out cleanly if edges is null OR window.vis is missing OR
         // the arc container couldn't be created.
         this.setupNetwork();
+
+        // Loop 16: load design docs for the description panel. Wrapped in
+        // try/catch because (a) loop 14/15 test stubs do not implement
+        // loadDesignDocs and (b) a fresh repo with no .arch/ shouldn't
+        // bring down the cards/arcs render. On failure, keep the cards but
+        // skip the description-panel feature (renderDescriptionPanel falls
+        // through to the empty-state suggestion).
+        try {
+            this.designDocs = await this.dataProvider.loadDesignDocs();
+        } catch (err) {
+            console.warn(
+                '[PackageView] loadDesignDocs failed; description panel disabled.',
+                err,
+            );
+            this.designDocs = {};
+        }
+
+        // Wire delegated card-click + state subscription AFTER render() so
+        // the .package-tree element exists.
+        this.attachCardClickHandler();
+        this.unsubscribe = this.state.subscribe((s: AppState) =>
+            this.onStateChange(s),
+        );
     }
 
     private render(root: FolderNode): void {
@@ -224,10 +257,12 @@ export class PackageView {
             </div>
             <div class="package-tree">${cards}</div>
             <div class="package-arc-container"></div>
+            <div class="package-description-panel" style="display:none;"></div>
             <div class="package-bottom-panel" style="display:none;"></div>
         `;
         this.controls = this.el.querySelector('.package-controls');
         this.arcContainer = this.el.querySelector('.package-arc-container');
+        this.descriptionPanel = this.el.querySelector('.package-description-panel');
         this.bottomPanel = this.el.querySelector('.package-bottom-panel');
     }
 
@@ -470,10 +505,11 @@ export class PackageView {
     }
 
     /**
-     * Click a folder node → for loop 15, route to the 'graph' view scoped
-     * to that folder's path. Loop 16's description-panel wiring extends this
-     * to ALSO update state.selectedFolder for the description panel; loop 15
-     * just navigates.
+     * Click a folder node in the vis-network arc layer → route to the
+     * 'graph' view scoped to that folder's path. Loop 16 keeps this drill-
+     * down behavior on the network nodes; the description-panel update
+     * lives on the .package-card click handler in attachCardClickHandler()
+     * and stays inside the 'packages' route.
      */
     private handleNodeClick(folderPath: string): void {
         this.state.set({
@@ -482,6 +518,102 @@ export class PackageView {
             selectedType: 'directory',
             selectionSource: 'graph',
         });
+    }
+
+    /**
+     * Loop 16: delegated click handler on the .package-tree container.
+     * Clicking a folder card updates the selectedPath/selectedType so the
+     * description panel renders the README for that folder. We do NOT
+     * change currentView — the click stays inside the 'packages' route.
+     */
+    private attachCardClickHandler(): void {
+        const tree = this.el.querySelector('.package-tree');
+        if (tree === null) return;
+        tree.addEventListener('click', (ev) => {
+            const card = (ev.target as HTMLElement).closest('.package-card');
+            if (card === null) return;
+            const path = (card as HTMLElement).dataset.path ?? '';
+            this.handleCardClick(path);
+        });
+    }
+
+    private handleCardClick(folderPath: string): void {
+        this.state.set({
+            selectedPath: folderPath,
+            selectedType: 'directory',
+            selectionSource: 'graph',
+        });
+    }
+
+    /**
+     * Loop 16: react to state changes. Only the 'packages' route renders
+     * the description panel — bail out for other routes so we don't leak
+     * a stale README into the design pane.
+     */
+    private onStateChange(s: AppState): void {
+        if (s.currentView !== 'packages') return;
+        if (s.selectedType !== 'directory' || s.selectedPath === null) {
+            this.hideDescriptionPanel();
+            return;
+        }
+        this.renderDescriptionPanel(s.selectedPath);
+    }
+
+    /**
+     * Loop 16: render the README for the selected folder via DesignRender.
+     *
+     * Key resolution mirrors DesignTextView.fetchDesignDoc:462-471 — a
+     * directory's README may be served as `<path>/README.html` (after the
+     * arch-store .md → .html converter pipeline runs), `<path>/README.txt`,
+     * or the original `<path>/README.md`. Try each in that order so we
+     * succeed regardless of which converter shape the host emits.
+     */
+    private renderDescriptionPanel(folderPath: string): void {
+        if (this.descriptionPanel === null) return;
+        const candidates = [
+            `${folderPath}/README.html`,
+            `${folderPath}/README.txt`,
+            `${folderPath}/README.md`,
+        ];
+        let doc: DesignDoc | undefined;
+        for (const key of candidates) {
+            if (this.designDocs[key] !== undefined) {
+                doc = this.designDocs[key];
+                break;
+            }
+        }
+        if (doc === undefined) {
+            const safePath = escape(folderPath);
+            // safe: structural template; safePath is escape()-wrapped;
+            // surrounding strings are author-controlled literals.
+            this.descriptionPanel.innerHTML =
+                `<div class="package-description-empty">` +
+                `No design doc yet — run <code>llmem document ${safePath}</code>.` +
+                `</div>`;
+            this.descriptionPanel.style.display = 'block';
+            this.descriptionRenderer = null;
+            return;
+        }
+        // Use DesignRender in 'view' mode — package view is read-only;
+        // onModeChange is a no-op and onSave is omitted.
+        this.descriptionRenderer = new DesignRender({
+            markdown: doc.markdown,
+            html: doc.html,
+            mode: 'view',
+            onModeChange: () => {
+                /* no-op: package view is read-only */
+            },
+        });
+        this.descriptionPanel.innerHTML = '';
+        this.descriptionPanel.style.display = 'block';
+        this.descriptionRenderer.mount(this.descriptionPanel);
+    }
+
+    private hideDescriptionPanel(): void {
+        if (this.descriptionPanel === null) return;
+        this.descriptionPanel.style.display = 'none';
+        this.descriptionPanel.innerHTML = '';
+        this.descriptionRenderer = null;
     }
 
     /**
@@ -676,12 +808,17 @@ export class PackageView {
             }
             this.network = null;
         }
+        this.unsubscribe?.();
+        this.unsubscribe = undefined;
         this.el.innerHTML = '';
         this.tree = null;
         this.edges = null;
         this.arcContainer = null;
         this.bottomPanel = null;
         this.controls = null;
+        this.descriptionPanel = null;
+        this.descriptionRenderer = null;
+        this.designDocs = {};
         this.showAllEdges = false;
         this.hoverSnapshot.clear();
     }

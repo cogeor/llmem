@@ -1,6 +1,26 @@
+/**
+ * ViewToggle Component (Loop 16).
+ *
+ * Tri-state toggle for the top-level webview route. Sibling to
+ * DesignModeToggle (which is bi-state for state.designViewMode); this
+ * component switches state.currentView between 'graph' | 'design' |
+ * 'packages'. The router subscribes to state and swaps visibility of the
+ * corresponding pane elements (see router.ts loop-16 parent-grouped
+ * visibility toggle).
+ *
+ * The component intentionally calls `state.set({ currentView })` rather
+ * than `router.setRoute(...)` — Router has no `setRoute` method; the
+ * state-subscriber pattern is the existing idiom (see main.ts:59).
+ *
+ * Loop 14 shipped a two-button (Design / Graph) variant of this file;
+ * loop 16 supersedes it with the three-button (Graph / Design / Packages)
+ * variant required by the design/02 spec.
+ */
 
 import { AppState } from '../types';
 import { State } from '../state';
+
+type ViewName = 'graph' | 'design' | 'packages';
 
 interface Props {
     el: HTMLElement;
@@ -17,34 +37,47 @@ export class ViewToggle {
         this.state = state;
     }
 
-    mount() {
-        this.el.addEventListener('click', (e) => {
-            const target = e.target as HTMLElement;
-            const btn = target.closest('[data-view]') as HTMLElement;
-            if (!btn) return;
-            // Loop 14: validate the dataset value rather than passing the
-            // raw string into a typed state setter.
-            const next = btn.dataset.view;
-            if (next === 'design' || next === 'graph') {
-                this.state.set({ currentView: next });
-            }
-        });
-
-        this.unsubscribe = this.state.subscribe((s: AppState) => this.render(s));
+    mount(): void {
+        // Attach the delegated click handler once. The state-driven
+        // re-render rewrites innerHTML; the listener stays alive on
+        // this.el (the parent), so per-button click capture continues
+        // to work after each render.
+        this.attachClickHandler();
+        // subscribe() invokes the callback immediately with the current
+        // state, performing the initial render synchronously.
+        this.unsubscribe = this.state.subscribe((s: AppState) =>
+            this.render(s.currentView),
+        );
     }
 
-    render({ currentView }: AppState) {
-        // safe: currentView is a controlled string union; only equality
-        // comparisons are interpolated. All other content is static.
+    private render(active: ViewName): void {
+        const isGraph = active === 'graph';
+        const isDesign = active === 'design';
+        const isPackages = active === 'packages';
+        // safe: structural template; class names and labels are
+        // author-controlled literals; `active` is the AppState union
+        // and only drives boolean ternaries (which produce 'active' or '').
         this.el.innerHTML = `
-            <div class="segmented" role="group">
-                <button data-view="design" class="${currentView === 'design' ? 'is-active' : ''}">Design Script</button>
-                <button data-view="graph" class="${currentView === 'graph' ? 'is-active' : ''}">Graph view</button>
+            <div class="view-toggle" role="tablist">
+                <button class="view-toggle-btn ${isGraph ? 'active' : ''}" data-view="graph" type="button" role="tab" aria-selected="${isGraph}">Graph</button>
+                <button class="view-toggle-btn ${isDesign ? 'active' : ''}" data-view="design" type="button" role="tab" aria-selected="${isDesign}">Design</button>
+                <button class="view-toggle-btn ${isPackages ? 'active' : ''}" data-view="packages" type="button" role="tab" aria-selected="${isPackages}">Packages</button>
             </div>
         `;
     }
 
-    unmount() {
+    private attachClickHandler(): void {
+        this.el.addEventListener('click', (ev) => {
+            const target = (ev.target as HTMLElement).closest('.view-toggle-btn');
+            if (target === null) return;
+            const view = (target as HTMLElement).dataset.view;
+            if (view !== 'graph' && view !== 'design' && view !== 'packages') return;
+            this.state.set({ currentView: view });
+        });
+    }
+
+    unmount(): void {
         this.unsubscribe?.();
+        this.unsubscribe = undefined;
     }
 }

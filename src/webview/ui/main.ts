@@ -9,6 +9,7 @@ import { DesignModeToggle } from './components/DesignModeToggle';
 import { DesignTextView } from './components/DesignTextView';
 import { GraphView } from './components/GraphView';
 import { PackageView } from './components/PackageView';
+import { ViewToggle } from './components/ViewToggle';
 import { Splitter } from './libs/Splitter';
 import { explorerIcon, designIcon, graphIcon, sun } from './icons';
 import '../live-reload'; // WebSocket live reload for HTTP server mode
@@ -23,6 +24,7 @@ const elGraphToggle = document.getElementById('graph-type-toggle') as HTMLElemen
 const elDesignView = document.getElementById('design-view') as HTMLElement;
 const elGraphView = document.getElementById('graph-view') as HTMLElement;
 const elPackageView = document.getElementById('package-view') as HTMLElement;
+const elViewToggle = document.getElementById('view-toggle') as HTMLElement;
 
 // Splitter elements
 const elSplitter1 = document.getElementById('splitter-1') as HTMLElement;
@@ -122,6 +124,14 @@ const packageView = new PackageView({
     dataProvider
 });
 
+// Loop 16: tri-state header toggle (Graph / Design / Packages). Distinct
+// from DesignModeToggle (which is a bi-state view ↔ edit toggle for the
+// design pane) — both coexist; this one drives state.currentView.
+const viewToggle = new ViewToggle({
+    el: elViewToggle,
+    state,
+});
+
 // Register Routes
 if (designTextView) {
     router.registerRoute('design', designTextView);
@@ -183,6 +193,7 @@ function initHeaderIcons() {
         document.getElementById('theme-toggle')?.addEventListener('click', () => themeManager.toggle());
 
         // Mount all components
+        viewToggle.mount();
         const mountPromises = [
             graphTypeToggle.mount(),
             graphView.mount(),

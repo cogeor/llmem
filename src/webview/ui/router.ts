@@ -57,14 +57,42 @@ export class Router {
             return;
         }
 
-        // Toggle visibility - DISABLED for 3-column layout
-        // Object.entries(this.routes).forEach(([name, comp]) => {
-        //     if (name === viewName) {
-        //         if (comp.el) comp.el.style.display = 'block';
-        //     } else {
-        //         if (comp.el) comp.el.style.display = 'none';
-        //     }
-        // });
+        // Loop 16: parent-grouped visibility toggle.
+        //
+        // Loop 14 disabled the global visibility toggle because the 3-column
+        // layout shows #design-pane and #graph-pane side-by-side: a global
+        // toggle would hide the design pane any time the active view was
+        // 'graph' or 'packages'. Loop 16 re-enables the toggle but scopes
+        // it to peers within the same DOM parent so that:
+        //   - #graph-view and #package-view share #graph-pane's content area
+        //     and SWAP based on currentView (one visible, one hidden).
+        //   - #design-view lives alone in #design-pane and is left untouched
+        //     by this toggle (it is the design pane's only registered route).
+        //
+        // The grouping uses the live DOM parent of each route's `el`. Solo
+        // routes (no peers in their group) are skipped — leaving the loop-15
+        // inline `display: none` on #package-view in place when the active
+        // view doesn't share its parent. See PLAN.md loop 16 task 2 for the
+        // full display-state matrix.
+        const groups = new Map<Element, Array<{ name: string; el: HTMLElement }>>();
+        for (const [name, comp] of Object.entries(this.routes)) {
+            if (comp.el === undefined || comp.el === null) continue;
+            const parent = comp.el.parentElement;
+            if (parent === null) continue;
+            const list = groups.get(parent) ?? [];
+            list.push({ name, el: comp.el });
+            groups.set(parent, list);
+        }
+        for (const list of groups.values()) {
+            if (list.length < 2) continue; // Solo route — no peer to hide.
+            for (const entry of list) {
+                if (entry.name === viewName) {
+                    entry.el.style.display = 'block';
+                } else {
+                    entry.el.style.display = 'none';
+                }
+            }
+        }
     }
 
     unmount() {
