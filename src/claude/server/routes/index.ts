@@ -10,6 +10,8 @@
  */
 
 import { handleArchRoute } from './arch';
+import { handleFolderEdgesRoute } from './folder-edges';
+import { handleFolderTreeRoute } from './folder-tree';
 import { handleRegenerateRoute } from './regenerate';
 import { handleStatsRoute } from './stats';
 import { handleWatchRoute } from './watch';
@@ -38,5 +40,11 @@ export function registerRoutes(ctx: ServerContext): void {
     );
     ctx.httpHandler.registerApiHandler('/api/arch', (req, res) =>
         handleArchRoute(req, res, ctx),
+    );
+    ctx.httpHandler.registerApiHandler('/api/folder-edges', (req, res) =>
+        handleFolderEdgesRoute(req, res, ctx),
+    );
+    ctx.httpHandler.registerApiHandler('/api/folder-tree', (req, res) =>
+        handleFolderTreeRoute(req, res, ctx),
     );
 }
