@@ -1,6 +1,8 @@
 
 import { DataProvider, HostKind, WatchToggleResult } from './dataProvider';
 import { GraphData, WorkTreeNode, VisNode, VisEdge, DesignDoc } from '../types';
+import type { FolderTreeData } from '../../../graph/folder-tree';
+import type { FolderEdgelistData } from '../../../graph/folder-edges';
 
 /**
  * Minimal shape of the VS Code webview API. The full type lives in
@@ -70,6 +72,28 @@ export class VSCodeDataProvider implements DataProvider {
      */
     private pendingWatchToggles: Map<string, {
         resolve: (result: WatchToggleResult) => void;
+        reject: (error: Error) => void;
+        timeoutHandle: ReturnType<typeof setTimeout>;
+    }> = new Map();
+
+    /**
+     * Pending folder-tree load requests, keyed by `requestId`. Loop 13.
+     *
+     * Mirrors `pendingWatchToggles`. Each call to `loadFolderTree()`
+     * generates a unique requestId and stores its resolver here. The
+     * extension host is expected to echo the requestId back in a
+     * `data:folderTree` message — but **this handler does not exist
+     * yet** (`src/extension/` off-limits this loop). The 30s timeout
+     * fires the rejection so VS Code consumers see a clear error.
+     */
+    private pendingFolderTreeRequests: Map<string, {
+        resolve: (data: FolderTreeData) => void;
+        reject: (error: Error) => void;
+        timeoutHandle: ReturnType<typeof setTimeout>;
+    }> = new Map();
+
+    private pendingFolderEdgesRequests: Map<string, {
+        resolve: (data: FolderEdgelistData) => void;
         reject: (error: Error) => void;
         timeoutHandle: ReturnType<typeof setTimeout>;
     }> = new Map();
@@ -164,6 +188,36 @@ export class VSCodeDataProvider implements DataProvider {
                 // provider instance. Drop it silently.
                 break;
             }
+
+            case 'data:folderTree': {
+                const requestId: unknown = message.requestId;
+                if (typeof requestId !== 'string') break;
+                const pending = this.pendingFolderTreeRequests.get(requestId);
+                if (!pending) break;
+                clearTimeout(pending.timeoutHandle);
+                this.pendingFolderTreeRequests.delete(requestId);
+                if (message.error) {
+                    pending.reject(new Error(String(message.error)));
+                } else {
+                    pending.resolve(message.data as FolderTreeData);
+                }
+                break;
+            }
+
+            case 'data:folderEdges': {
+                const requestId: unknown = message.requestId;
+                if (typeof requestId !== 'string') break;
+                const pending = this.pendingFolderEdgesRequests.get(requestId);
+                if (!pending) break;
+                clearTimeout(pending.timeoutHandle);
+                this.pendingFolderEdgesRequests.delete(requestId);
+                if (message.error) {
+                    pending.reject(new Error(String(message.error)));
+                } else {
+                    pending.resolve(message.data as FolderEdgelistData);
+                }
+                break;
+            }
         }
     }
 
@@ -218,6 +272,78 @@ export class VSCodeDataProvider implements DataProvider {
                     reject(new Error(`Timeout loading nodes for ${folderPath}`));
                 }
             }, 30000);
+        });
+    }
+
+    /**
+     * Load the folder-tree artifact via the extension host. Loop 13.
+     *
+     * **NOTE: panel-side handler not yet wired.** `src/extension/` was
+     * off-limits in loop 13, so this method posts a correctly-typed
+     * `loadFolderTree` request and registers a pending entry — but no
+     * extension-host code listens for it today. The future loop that
+     * lands the handler in `src/extension/panel.ts` must:
+     *   1. handle `case 'loadFolderTree':` in the panel's message switch;
+     *   2. read `.artifacts/folder-tree.json` (or call into
+     *      `application/viewer-data.ts`); and
+     *   3. post back `{ type: 'data:folderTree', requestId, data }` (or
+     *      `{ ..., error }`) using the same requestId.
+     * Until that lands, calls reject after the 30s timeout with an
+     * explicit "not yet wired" message.
+     */
+    async loadFolderTree(): Promise<FolderTreeData> {
+        return new Promise((resolve, reject) => {
+            const requestId = generateRequestId();
+
+            const timeoutHandle = setTimeout(() => {
+                if (this.pendingFolderTreeRequests.has(requestId)) {
+                    this.pendingFolderTreeRequests.delete(requestId);
+                    reject(new Error(
+                        '[VSCodeDataProvider] loadFolderTree: not yet wired in extension host. ' +
+                        'The panel-side `data:folderTree` handler in `src/extension/panel.ts` ' +
+                        'is missing (loop 13 left this gap intentionally — see PLAN.md).',
+                    ));
+                }
+            }, 30000);
+
+            this.pendingFolderTreeRequests.set(requestId, { resolve, reject, timeoutHandle });
+
+            this.vscode.postMessage({
+                type: 'loadFolderTree',
+                requestId,
+            });
+        });
+    }
+
+    /**
+     * Load the folder-edgelist artifact via the extension host. Loop 13.
+     *
+     * Same wiring posture as `loadFolderTree()`: posts a
+     * `loadFolderEdges` request, expects a future panel-side handler to
+     * echo back `data:folderEdges` with the same requestId. No handler
+     * exists today (`src/extension/` off-limits in loop 13).
+     */
+    async loadFolderEdges(): Promise<FolderEdgelistData> {
+        return new Promise((resolve, reject) => {
+            const requestId = generateRequestId();
+
+            const timeoutHandle = setTimeout(() => {
+                if (this.pendingFolderEdgesRequests.has(requestId)) {
+                    this.pendingFolderEdgesRequests.delete(requestId);
+                    reject(new Error(
+                        '[VSCodeDataProvider] loadFolderEdges: not yet wired in extension host. ' +
+                        'The panel-side `data:folderEdges` handler in `src/extension/panel.ts` ' +
+                        'is missing (loop 13 left this gap intentionally — see PLAN.md).',
+                    ));
+                }
+            }, 30000);
+
+            this.pendingFolderEdgesRequests.set(requestId, { resolve, reject, timeoutHandle });
+
+            this.vscode.postMessage({
+                type: 'loadFolderEdges',
+                requestId,
+            });
         });
     }
 

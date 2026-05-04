@@ -3,8 +3,15 @@
     "compilerOptions": {
         "module": "esnext",
         "target": "es2020",
-        "lib": ["es2020", "dom", "dom.iterable"],
-        "types": [],
+        // Loop 13: bumped lib to include es2021 (`String.prototype.replaceAll`)
+        // and added node types so TS can resolve `import * as path from 'path'`
+        // when the type-only imports from `src/graph/folder-tree.ts` /
+        // `folder-edges.ts` pull those source files into the type-check
+        // program. Neither change affects the browser bundle: esbuild bundles
+        // the webview from `main.ts` and elides type-only imports, so node
+        // builtins never reach the runtime.
+        "lib": ["es2020", "es2021.string", "dom", "dom.iterable"],
+        "types": ["node"],
         "moduleResolution": "bundler",
         "noEmit": true,
         "isolatedModules": true

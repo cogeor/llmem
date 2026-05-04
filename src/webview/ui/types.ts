@@ -1,4 +1,7 @@
 
+import type { FolderTreeData } from '../../graph/folder-tree';
+import type { FolderEdgelistData } from '../../graph/folder-edges';
+
 export interface VisNode {
     id: string;
     label: string;
@@ -96,5 +99,7 @@ declare global {
         WORK_TREE?: WorkTreeNode; // Root node
         DESIGN_DOCS?: { [key: string]: DesignDoc };  // Updated: Now includes markdown + HTML
         GRAPH_DATA_URL?: string; // Optional if loading via URL
+        FOLDER_TREE?: FolderTreeData;     // loop 13 (emitted by loop 11)
+        FOLDER_EDGES?: FolderEdgelistData; // loop 13 (emitted by loop 11)
     }
 }

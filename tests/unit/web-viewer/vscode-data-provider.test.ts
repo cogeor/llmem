@@ -26,6 +26,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 
+import type { FolderTreeData } from '../../../src/graph/folder-tree';
+import type { FolderEdgelistData } from '../../../src/graph/folder-edges';
+
 const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
 const g = globalThis as unknown as Record<string, unknown>;
 g.window = dom.window as unknown;
@@ -65,6 +68,8 @@ const { VSCodeDataProvider } = require('../../../src/webview/ui/services/vscodeD
             addedFiles?: string[];
             removedFiles?: string[];
         }>;
+        loadFolderTree(): Promise<FolderTreeData>;
+        loadFolderEdges(): Promise<FolderEdgelistData>;
         hostKind: 'vscode' | 'browser';
     };
 };
@@ -222,4 +227,190 @@ test('VSCodeDataProvider: toggleWatch rejects with timeout when no response arri
     } finally {
         (globalThis as { setTimeout: typeof globalThis.setTimeout }).setTimeout = realSetTimeout;
     }
+});
+
+// ---------------------------------------------------------------------------
+// Loop 13 — folder-tree / folder-edges request methods.
+//
+// The methods post `{ type: 'loadFolderTree' | 'loadFolderEdges', requestId }`
+// and resolve / reject on a matching `data:folderTree` / `data:folderEdges`
+// response with the same requestId. The panel-side handler does NOT exist
+// yet (loop 13 left `src/extension/` off-limits), so production calls reject
+// after a 30s timeout — but the tests drive the response synchronously to
+// pin the wire shape a future panel-side implementer must match.
+// ---------------------------------------------------------------------------
+
+test('VSCodeDataProvider.loadFolderTree posts the correct message type with a fresh requestId', async () => {
+    const p = freshProvider();
+    // Attach a catch sink so the unhandled-rejection guard in node:test
+    // doesn't pick up the eventual 30s timeout if the test exits before
+    // the promise settles. We resolve it explicitly below to drain.
+    const promise = p.loadFolderTree().catch(() => undefined);
+
+    const sent = postedMessages.find(
+        (m): m is { type: string; requestId: string } =>
+            !!m && typeof m === 'object' && (m as { type?: string }).type === 'loadFolderTree',
+    );
+    assert.ok(sent, 'loadFolderTree should post a message of type "loadFolderTree"');
+    assert.equal(typeof sent.requestId, 'string');
+    assert.ok(sent.requestId.length > 0, 'requestId should be non-empty');
+
+    // Drain the pending promise so it doesn't leak past the test boundary.
+    dispatchExtensionMessage({
+        type: 'data:folderTree',
+        requestId: sent.requestId,
+        data: { schemaVersion: 1, timestamp: '', root: { path: '', name: '', fileCount: 0, totalLOC: 0, documented: false, children: [] } },
+    });
+    await promise;
+});
+
+test('VSCodeDataProvider.loadFolderTree resolves on data:folderTree with matching requestId', async () => {
+    const p = freshProvider();
+    const promise = p.loadFolderTree();
+
+    const sent = postedMessages.find(
+        (m): m is { type: string; requestId: string } =>
+            !!m && typeof m === 'object' && (m as { type?: string }).type === 'loadFolderTree',
+    )!;
+    assert.ok(sent, 'expected a posted loadFolderTree message');
+
+    const fixture: FolderTreeData = {
+        schemaVersion: 1,
+        timestamp: '2026-05-03T00:00:00.000Z',
+        root: { path: '', name: '', fileCount: 0, totalLOC: 0, documented: false, children: [] },
+    };
+    dispatchExtensionMessage({
+        type: 'data:folderTree',
+        requestId: sent.requestId,
+        data: fixture,
+    });
+
+    const result = await promise;
+    assert.deepEqual(result, fixture);
+});
+
+test('VSCodeDataProvider.loadFolderTree rejects when host responds with an error', async () => {
+    const p = freshProvider();
+    const promise = p.loadFolderTree();
+
+    const sent = postedMessages.find(
+        (m): m is { type: string; requestId: string } =>
+            !!m && typeof m === 'object' && (m as { type?: string }).type === 'loadFolderTree',
+    )!;
+
+    dispatchExtensionMessage({
+        type: 'data:folderTree',
+        requestId: sent.requestId,
+        error: 'No folder tree available — run `llmem scan` first.',
+    });
+
+    await assert.rejects(
+        promise,
+        /No folder tree available/,
+    );
+});
+
+test('VSCodeDataProvider.loadFolderTree ignores responses with unknown requestId', async () => {
+    const p = freshProvider();
+    const promise = p.loadFolderTree();
+
+    // Dispatch a bogus requestId — the pending promise must NOT resolve.
+    dispatchExtensionMessage({
+        type: 'data:folderTree',
+        requestId: 'bogus-' + Date.now(),
+        data: {
+            schemaVersion: 1,
+            timestamp: '',
+            root: { path: '', name: '', fileCount: 0, totalLOC: 0, documented: false, children: [] },
+        },
+    });
+
+    // Race against a small timeout — if the promise resolves, keying is broken.
+    const settled = await Promise.race([
+        promise.then(() => 'resolved' as const),
+        new Promise<'pending'>((r) => setTimeout(() => r('pending'), 30)),
+    ]);
+    assert.equal(settled, 'pending');
+
+    // Now resolve correctly so the test exits cleanly without a 30s timeout.
+    const sent = postedMessages.find(
+        (m): m is { type: string; requestId: string } =>
+            !!m && typeof m === 'object' && (m as { type?: string }).type === 'loadFolderTree',
+    )!;
+    dispatchExtensionMessage({
+        type: 'data:folderTree',
+        requestId: sent.requestId,
+        data: {
+            schemaVersion: 1,
+            timestamp: '',
+            root: { path: '', name: '', fileCount: 0, totalLOC: 0, documented: false, children: [] },
+        },
+    });
+    await promise;
+});
+
+test('VSCodeDataProvider.loadFolderEdges posts the correct message type with a fresh requestId', async () => {
+    const p = freshProvider();
+    const promise = p.loadFolderEdges().catch(() => undefined);
+
+    const sent = postedMessages.find(
+        (m): m is { type: string; requestId: string } =>
+            !!m && typeof m === 'object' && (m as { type?: string }).type === 'loadFolderEdges',
+    );
+    assert.ok(sent, 'loadFolderEdges should post a message of type "loadFolderEdges"');
+    assert.equal(typeof sent.requestId, 'string');
+    assert.ok(sent.requestId.length > 0, 'requestId should be non-empty');
+
+    dispatchExtensionMessage({
+        type: 'data:folderEdges',
+        requestId: sent.requestId,
+        data: { schemaVersion: 1, timestamp: '', edges: [], weightP90: 0 },
+    });
+    await promise;
+});
+
+test('VSCodeDataProvider.loadFolderEdges resolves on data:folderEdges with matching requestId', async () => {
+    const p = freshProvider();
+    const promise = p.loadFolderEdges();
+
+    const sent = postedMessages.find(
+        (m): m is { type: string; requestId: string } =>
+            !!m && typeof m === 'object' && (m as { type?: string }).type === 'loadFolderEdges',
+    )!;
+
+    const fixture: FolderEdgelistData = {
+        schemaVersion: 1,
+        timestamp: '2026-05-03T00:00:00.000Z',
+        edges: [],
+        weightP90: 0,
+    };
+    dispatchExtensionMessage({
+        type: 'data:folderEdges',
+        requestId: sent.requestId,
+        data: fixture,
+    });
+
+    const result = await promise;
+    assert.deepEqual(result, fixture);
+});
+
+test('VSCodeDataProvider.loadFolderEdges rejects when host responds with an error', async () => {
+    const p = freshProvider();
+    const promise = p.loadFolderEdges();
+
+    const sent = postedMessages.find(
+        (m): m is { type: string; requestId: string } =>
+            !!m && typeof m === 'object' && (m as { type?: string }).type === 'loadFolderEdges',
+    )!;
+
+    dispatchExtensionMessage({
+        type: 'data:folderEdges',
+        requestId: sent.requestId,
+        error: 'No folder edges available — run `llmem scan` first.',
+    });
+
+    await assert.rejects(
+        promise,
+        /No folder edges available/,
+    );
 });

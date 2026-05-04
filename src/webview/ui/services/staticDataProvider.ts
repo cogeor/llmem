@@ -4,6 +4,21 @@ import { GraphData, WorkTreeNode, DesignDoc } from '../types';
 import { WatchApiClient } from './watchApiClient';
 import { designDocCache } from './designDocCache';
 import { liveReloadClient } from '../../live-reload';
+import type { FolderTreeData } from '../../../graph/folder-tree';
+import type { FolderEdgelistData } from '../../../graph/folder-edges';
+
+/**
+ * Schema-version constants for the folder artifacts. Loop 13 mirrors the
+ * runtime-truth gate from `FolderTreeSchema.parse` / `FolderEdgelistSchema.parse`
+ * with a manual `schemaVersion` check because runtime-importing the schemas
+ * from `src/graph/folder-tree.ts` / `folder-edges.ts` would pull in their
+ * Node-only `path` import (used by `folderOf`), breaking the browser
+ * bundle. The version literals MUST stay in sync with
+ * `FOLDER_TREE_SCHEMA_VERSION` / `FOLDER_EDGES_SCHEMA_VERSION` defined in
+ * those modules; if they ever bump, this file's checks must bump too.
+ */
+const FOLDER_TREE_SCHEMA_VERSION_EXPECTED = 1;
+const FOLDER_EDGES_SCHEMA_VERSION_EXPECTED = 1;
 
 /**
  * DataProvider for standalone HTML mode.
@@ -47,6 +62,42 @@ export class StaticDataProvider implements DataProvider {
     async loadDesignDocs(): Promise<Record<string, DesignDoc>> {
         // Use cached docs instead of window.DESIGN_DOCS directly
         return designDocCache.getAll();
+    }
+
+    async loadFolderTree(): Promise<FolderTreeData> {
+        const raw = window.FOLDER_TREE;
+        if (raw === undefined) {
+            throw new Error(
+                '[StaticDataProvider] window.FOLDER_TREE is not set — folder_tree.js failed to load or the static webview was generated without folder artifacts.',
+            );
+        }
+        // Manual schema-version gate (browser bundle cannot pull
+        // FolderTreeSchema — see `FOLDER_TREE_SCHEMA_VERSION_EXPECTED` note above).
+        const candidate = raw as { schemaVersion?: unknown };
+        if (candidate.schemaVersion !== FOLDER_TREE_SCHEMA_VERSION_EXPECTED) {
+            throw new Error(
+                `[StaticDataProvider] window.FOLDER_TREE has unexpected schemaVersion ${String(candidate.schemaVersion)} ` +
+                `(expected ${FOLDER_TREE_SCHEMA_VERSION_EXPECTED}). Generator and consumer have drifted; rebuild the static webview.`,
+            );
+        }
+        return raw;
+    }
+
+    async loadFolderEdges(): Promise<FolderEdgelistData> {
+        const raw = window.FOLDER_EDGES;
+        if (raw === undefined) {
+            throw new Error(
+                '[StaticDataProvider] window.FOLDER_EDGES is not set — folder_edges.js failed to load or the static webview was generated without folder artifacts.',
+            );
+        }
+        const candidate = raw as { schemaVersion?: unknown };
+        if (candidate.schemaVersion !== FOLDER_EDGES_SCHEMA_VERSION_EXPECTED) {
+            throw new Error(
+                `[StaticDataProvider] window.FOLDER_EDGES has unexpected schemaVersion ${String(candidate.schemaVersion)} ` +
+                `(expected ${FOLDER_EDGES_SCHEMA_VERSION_EXPECTED}). Generator and consumer have drifted; rebuild the static webview.`,
+            );
+        }
+        return raw;
     }
 
     /**

@@ -1,5 +1,7 @@
 
 import { GraphData, WorkTreeNode, VisNode, VisEdge, DesignDoc } from '../types';
+import type { FolderTreeData } from '../../../graph/folder-tree';
+import type { FolderEdgelistData } from '../../../graph/folder-edges';
 
 /**
  * Result of a watch toggle operation
@@ -54,6 +56,26 @@ export interface DataProvider {
 
     /** Load all design documents (path -> DesignDoc with markdown + HTML) */
     loadDesignDocs(): Promise<Record<string, DesignDoc>>;
+
+    /**
+     * Load the folder-tree artifact (folder hierarchy with file counts,
+     * documentation flags, and recursive LOC totals). Loop 13.
+     *
+     * Required on every host — every consumer of `'packages'` view needs
+     * the tree. VS Code mode currently throws because the panel-side
+     * handler is not yet wired (loop 13 constraint: `src/extension/`
+     * off-limits). The static path reads `window.FOLDER_TREE`.
+     */
+    loadFolderTree(): Promise<FolderTreeData>;
+
+    /**
+     * Load the folder-edgelist artifact (folder→folder import + call edges
+     * with `weightP90` density threshold). Loop 13.
+     *
+     * Same constraint as `loadFolderTree()`: VS Code mode throws until the
+     * panel-side handler lands.
+     */
+    loadFolderEdges(): Promise<FolderEdgelistData>;
 
     /**
      * Subscribe to refresh events.
