@@ -93,6 +93,21 @@ export class Router {
                 }
             }
         }
+
+        // Pane-level visibility: 'design' is the only solo route (its
+        // pane has no peer routes), so the parent-grouped toggle above
+        // can't give it a visible response. Toggle the right (graph)
+        // pane and its splitter at the pane level so the user sees the
+        // active tab actually take over the layout:
+        //   - currentView='design'   → hide #graph-pane + splitter-2;
+        //                              design-pane expands to full width.
+        //   - currentView='graph'    → show #graph-pane + splitter-2.
+        //   - currentView='packages' → show #graph-pane + splitter-2.
+        const graphPane = document.getElementById('graph-pane');
+        const splitter2 = document.getElementById('splitter-2');
+        const showGraphPane = viewName !== 'design';
+        if (graphPane) graphPane.style.display = showGraphPane ? '' : 'none';
+        if (splitter2) splitter2.style.display = showGraphPane ? '' : 'none';
     }
 
     unmount() {

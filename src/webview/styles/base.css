@@ -49,6 +49,13 @@ body {
   overflow: hidden;
   box-sizing: border-box;
   transition: background-color 0.3s, color 0.3s;
+  /* Flex column so #view-toggle takes its natural height and #app
+     fills the remainder. Without this, both children could claim
+     the full viewport and overflow:hidden would clip whichever lost
+     the layout race (typically the unstyled toggle), making clicks
+     inside the app reflow the toggle off-screen. */
+  display: flex;
+  flex-direction: column;
 }
 
 *,
@@ -68,4 +75,48 @@ button {
 button:focus {
   outline: 1px solid var(--focus-outline);
   outline-offset: 1px;
+}
+
+/* View Toggle (top header tabs: Graph / Design / Packages).
+   Fixed height so the body flex layout can compute the remaining
+   space for #app. Without explicit dimensions the host has zero CSS
+   and only sizes itself to its (innerHTML-rebuilt) content, which
+   produces brief reflows on every state change. */
+.view-toggle-host {
+  flex: 0 0 auto;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--header-bg, var(--background));
+}
+
+.view-toggle {
+  display: flex;
+  gap: 2px;
+  height: 100%;
+  align-items: center;
+}
+
+.view-toggle-btn {
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--foreground);
+  opacity: 0.7;
+  transition: background-color 0.15s, opacity 0.15s;
+}
+
+.view-toggle-btn:hover {
+  background-color: var(--hover-background);
+  opacity: 1;
+}
+
+.view-toggle-btn.active {
+  background-color: var(--selection-background);
+  color: var(--selection-foreground);
+  opacity: 1;
 }

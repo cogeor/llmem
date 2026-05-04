@@ -31,6 +31,12 @@ export class ViewToggle {
     private el: HTMLElement;
     private state: State;
     private unsubscribe?: () => void;
+    /** Last rendered view; used to skip innerHTML rewrites when only
+     *  unrelated state (selectedPath, watched paths, etc.) changed.
+     *  Without this guard, every node click triggers a full innerHTML
+     *  replacement of the header strip, causing a brief reflow that
+     *  contributed to the "header disappears on graph click" bug. */
+    private lastView: ViewName | null = null;
 
     constructor({ el, state }: Props) {
         this.el = el;
@@ -45,9 +51,11 @@ export class ViewToggle {
         this.attachClickHandler();
         // subscribe() invokes the callback immediately with the current
         // state, performing the initial render synchronously.
-        this.unsubscribe = this.state.subscribe((s: AppState) =>
-            this.render(s.currentView),
-        );
+        this.unsubscribe = this.state.subscribe((s: AppState) => {
+            if (s.currentView === this.lastView) return;
+            this.lastView = s.currentView as ViewName;
+            this.render(s.currentView);
+        });
     }
 
     private render(active: ViewName): void {

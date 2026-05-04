@@ -1,9 +1,14 @@
-/* Main App Container - Flex Row */
+/* Main App Container - Flex Row.
+   Body is flex-column with #view-toggle (fixed height) above us;
+   we take the remaining vertical space. min-height:0 is required so
+   nested overflow:auto children inside .pane-content can actually
+   scroll instead of expanding the flex item past its parent. */
 .layout-row {
     display: flex;
     flex-direction: row;
-    height: 100vh;
-    width: 100vw;
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
     overflow: hidden;
 }
 
