@@ -4,14 +4,21 @@
  * Loop 11 extracted this from `GraphServer.setupApiEndpoints`. POST is the
  * only mutating verb and goes through `requireApiToken`. GET is read-only
  * and unauthenticated.
+ *
+ * Loop 06: migrated method gate, body read+parse, and auth call onto the
+ * shared middleware in `./middleware`. Added a same-origin gate to POST
+ * (mirrors `regenerate.ts`/`watch.ts`) — when `Origin` is present and
+ * mismatched, the request is rejected 403 before auth runs. GET keeps its
+ * current posture: no auth, no origin gate, read-only.
  */
 
 import type * as http from 'http';
 import {
-    BodyTooLargeError,
-    readRequestBody,
-} from '../http-handler';
-import { requireApiToken } from './auth';
+    readJsonBody,
+    requireApiToken,
+    requireMethod,
+    requireSameOrigin,
+} from './middleware';
 import type { ServerContext } from './types';
 
 export async function handleArchRoute(
@@ -19,17 +26,14 @@ export async function handleArchRoute(
     res: http.ServerResponse,
     ctx: ServerContext,
 ): Promise<void> {
+    if (!requireMethod(req, res, ctx, ['GET', 'POST'])) return;
     if (req.method === 'GET') {
         return handleGetArch(req, res, ctx);
     }
-    if (req.method === 'POST') {
-        if (!requireApiToken(req, res, ctx.config, ctx.httpHandler)) return;
-        return handlePostArch(req, res, ctx);
-    }
-    ctx.httpHandler.sendJson(res, 405, {
-        success: false,
-        message: `Method ${req.method} not allowed`,
-    });
+    // POST path: same-origin gate + auth gate before the body is read.
+    if (!requireSameOrigin(req, res, ctx)) return;
+    if (!requireApiToken(req, res, ctx)) return;
+    return handlePostArch(req, res, ctx);
 }
 
 async function handleGetArch(
@@ -84,30 +88,8 @@ async function handlePostArch(
     res: http.ServerResponse,
     ctx: ServerContext,
 ): Promise<void> {
-    let body: string;
-    try {
-        body = await readRequestBody(req);
-    } catch (err) {
-        if (err instanceof BodyTooLargeError) {
-            ctx.httpHandler.sendJson(res, 413, {
-                success: false,
-                message: 'Request body too large',
-            });
-            return;
-        }
-        throw err;
-    }
-
-    let parsed: { path?: string; markdown?: unknown };
-    try {
-        parsed = JSON.parse(body);
-    } catch {
-        ctx.httpHandler.sendJson(res, 400, {
-            success: false,
-            message: 'Invalid JSON body',
-        });
-        return;
-    }
+    const parsed = await readJsonBody<{ path?: string; markdown?: unknown }>(req, res, ctx);
+    if (parsed === null) return; // 413 or 400 already sent.
 
     const { path: docPath, markdown } = parsed;
 

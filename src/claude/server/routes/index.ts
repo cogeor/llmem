@@ -19,7 +19,15 @@ import { handleWatchedRoute } from './watched';
 import type { ServerContext } from './types';
 
 export type { ServerContext } from './types';
-export { requireApiToken } from './auth';
+// Loop 06: middleware helpers are the canonical export. The previous
+// `requireApiToken` re-export pointed at `routes/auth.ts`, which has been
+// deleted; the inlined body now lives in `routes/middleware.ts`.
+export {
+    readJsonBody,
+    requireApiToken,
+    requireMethod,
+    requireSameOrigin,
+} from './middleware';
 
 /**
  * Wire every route into `ctx.httpHandler`'s API registry. Idempotent in the

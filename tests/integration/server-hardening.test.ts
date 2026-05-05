@@ -389,15 +389,21 @@ test('auth: GET /api/stats does not require token (read-only)', async () => {
 });
 
 // ---------------------------------------------------------------------------
-// 4. Method + same-origin gate on /api/regenerate (Loop 18)
+// 4. Method + same-origin gate on /api/regenerate (Loop 18) — and on
+//    /api/watch (POST + DELETE) and /api/arch (POST) as of Loop 06.
 //
-// The route used to accept any verb. With `apiToken` empty (local-dev mode)
-// a plain GET — which a browser will issue for `<img src=...>`, `<link>`,
-// etc. — could trigger a full regeneration. Loop 18 added two gates that
-// run BEFORE the auth check:
+// The regenerate route used to accept any verb. With `apiToken` empty
+// (local-dev mode) a plain GET — which a browser will issue for
+// `<img src=...>`, `<link>`, etc. — could trigger a full regeneration.
+// Loop 18 added two gates on regenerate that run BEFORE the auth check:
 //
 //   - Method gate: non-POST → 405 with `Allow: POST`.
 //   - Same-origin gate: POST with a present-but-mismatched `Origin` → 403.
+//
+// Loop 06 wired the same `requireSameOrigin` helper onto the other two
+// mutating routes (`/api/watch` and POST `/api/arch`) and added rejection
+// tests below mirroring the regenerate cross-origin / absent-Origin
+// shape exactly.
 //
 // Decision #1 from Loop 18 PLAN: ABSENT `Origin` is allowed. curl,
 // server-to-server, and various browser flows omit it; the API token is
@@ -604,6 +610,170 @@ test('origin-gate: POST /api/regenerate with NO Origin header returns 200 (Decis
             const result = await req({
                 method: 'POST',
                 path: '/api/regenerate',
+                // No Origin header.
+            });
+            assert.equal(result.status, 200, `body=${result.body}`);
+            const parsed = JSON.parse(result.body);
+            assert.equal(parsed.success, true);
+        });
+    } finally {
+        fs.rmSync(config.workspaceRoot, { recursive: true, force: true });
+    }
+});
+
+// ---------------------------------------------------------------------------
+// 5. Same-origin gate on /api/watch and /api/arch (Loop 06)
+//
+// Loop 06 wires `requireSameOrigin` onto the two remaining mutating
+// routes. The behavior contract: when `Origin` is present and does not
+// match the request's `Host`, return 403 with a `/cross-origin/i` body
+// before any side effect runs (no `addWatchedPath`, no `archWatcher.writeDoc`).
+// Absent `Origin` keeps the same Decision #1 allow path.
+// ---------------------------------------------------------------------------
+
+test('origin-gate: POST /api/watch with cross-origin Origin returns 403 (gate runs before auth)', async () => {
+    const config = buildConfig({ apiToken: 'secret' });
+    let regenerateCalls = 0;
+    try {
+        await withServerExposingPort(
+            { config, regenerateWebview: async () => { regenerateCalls += 1; } },
+            async (req) => {
+                const result = await req({
+                    method: 'POST',
+                    path: '/api/watch',
+                    headers: {
+                        Authorization: 'Bearer secret',
+                        Origin: 'http://evil.example',
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ path: 'foo' }),
+                });
+                assert.equal(result.status, 403, `body=${result.body}`);
+                const parsed = JSON.parse(result.body);
+                assert.equal(parsed.success, false);
+                assert.match(parsed.message, /cross-origin/i);
+                // Critical: the gate must short-circuit before the watch
+                // flow could call `regenerateWebview`. A cross-origin POST
+                // that reached the application would defeat the gate.
+                assert.equal(regenerateCalls, 0,
+                    'regenerateWebview must not be called for cross-origin requests');
+            },
+        );
+    } finally {
+        fs.rmSync(config.workspaceRoot, { recursive: true, force: true });
+    }
+});
+
+test('origin-gate: DELETE /api/watch with cross-origin Origin returns 403 (gate runs for both verbs)', async () => {
+    const config = buildConfig({ apiToken: 'secret' });
+    let regenerateCalls = 0;
+    try {
+        await withServerExposingPort(
+            { config, regenerateWebview: async () => { regenerateCalls += 1; } },
+            async (req) => {
+                const result = await req({
+                    method: 'DELETE',
+                    path: '/api/watch',
+                    headers: {
+                        Authorization: 'Bearer secret',
+                        Origin: 'http://evil.example',
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ path: 'foo' }),
+                });
+                assert.equal(result.status, 403, `body=${result.body}`);
+                const parsed = JSON.parse(result.body);
+                assert.equal(parsed.success, false);
+                assert.match(parsed.message, /cross-origin/i);
+                assert.equal(regenerateCalls, 0,
+                    'regenerateWebview must not be called for cross-origin DELETE');
+            },
+        );
+    } finally {
+        fs.rmSync(config.workspaceRoot, { recursive: true, force: true });
+    }
+});
+
+test('origin-gate: POST /api/arch with cross-origin Origin returns 403 (gate runs before writeDoc)', async () => {
+    const config = buildConfig({ apiToken: 'secret' });
+    let writeDocCalls = 0;
+    try {
+        await withServerExposingPort(
+            {
+                config,
+                archWatcher: {
+                    readDoc: async () => null,
+                    writeDoc: async () => {
+                        writeDocCalls += 1;
+                        return true;
+                    },
+                } as any,
+            },
+            async (req) => {
+                const result = await req({
+                    method: 'POST',
+                    path: '/api/arch',
+                    headers: {
+                        Authorization: 'Bearer secret',
+                        Origin: 'http://evil.example',
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ path: 'foo', markdown: 'bar' }),
+                });
+                assert.equal(result.status, 403, `body=${result.body}`);
+                const parsed = JSON.parse(result.body);
+                assert.equal(parsed.success, false);
+                assert.match(parsed.message, /cross-origin/i);
+                assert.equal(writeDocCalls, 0,
+                    'archWatcher.writeDoc must not be called for cross-origin requests');
+            },
+        );
+    } finally {
+        fs.rmSync(config.workspaceRoot, { recursive: true, force: true });
+    }
+});
+
+test('origin-gate: POST /api/watch with NO Origin header is NOT 403 (Decision #1: absent = allow)', async () => {
+    // Decision #1 from Loop 18 PLAN, applied to the watch route in Loop 06.
+    // With no Origin header the same-origin gate must let the request
+    // through to the application layer. The exact downstream status
+    // depends on `addWatchedPath` against the empty test workspace —
+    // 'foo' is not a real file, so we expect 400 from the application,
+    // NOT 403 from the origin gate.
+    const config = buildConfig({ apiToken: '' });
+    try {
+        await withServerExposingPort({ config }, async (req) => {
+            const result = await req({
+                method: 'POST',
+                path: '/api/watch',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: 'foo' }),
+                // No Origin header.
+            });
+            assert.notEqual(result.status, 403,
+                `absent Origin must not 403; got ${result.status}: ${result.body}`);
+            const parsed = JSON.parse(result.body);
+            assert.equal(parsed.success, false,
+                `'foo' is not a real file in the empty workspace, so addWatchedPath must report success=false`);
+        });
+    } finally {
+        fs.rmSync(config.workspaceRoot, { recursive: true, force: true });
+    }
+});
+
+test('origin-gate: POST /api/arch with NO Origin header is NOT 403 (Decision #1: absent = allow)', async () => {
+    // Decision #1 from Loop 18 PLAN, applied to the arch POST route in
+    // Loop 06. With no Origin header the same-origin gate must let the
+    // request through. The default test `archWatcher.writeDoc` returns
+    // true, so the application returns 200.
+    const config = buildConfig({ apiToken: '' });
+    try {
+        await withServerExposingPort({ config }, async (req) => {
+            const result = await req({
+                method: 'POST',
+                path: '/api/arch',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: 'foo', markdown: 'bar' }),
                 // No Origin header.
             });
             assert.equal(result.status, 200, `body=${result.body}`);

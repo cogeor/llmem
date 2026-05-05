@@ -26,7 +26,6 @@ import {
     readRequestBody,
     type ReadBodyOptions,
 } from '../http-handler';
-import { requireApiToken as requireApiTokenLegacy } from './auth';
 import type { ServerContext } from './types';
 
 export type { ReadBodyOptions };
@@ -114,21 +113,46 @@ export function requireSameOrigin(
 /**
  * API token gate.
  *
- * Empty `ctx.config.apiToken` ⇒ allow (local-dev mode). When configured,
- * the request must carry `Authorization: Bearer <token>` byte-for-byte;
- * otherwise 401.
+ * Three-bullet contract (lifted from the deleted `auth.ts` and unchanged
+ * since Loop 11 — see PLAN.md task 11.5):
  *
- * Implemented as a thin context-shaped wrapper around the existing
- * `auth.ts:requireApiToken` so the comparison logic lives in exactly one
- * place during loop 05/06. Loop 06 (or a follow-up cleanup) deletes the
- * `auth.ts` copy once all callers have migrated.
+ *   - `ctx.config.apiToken` undefined OR empty string -> allow. This is
+ *     local-dev mode: the bind address is 127.0.0.1, so the surface is
+ *     local-only. Configuring a token is the way to harden it.
+ *   - `apiToken` configured AND request carries
+ *     `Authorization: Bearer <token>` byte-for-byte -> allow.
+ *   - `apiToken` configured AND header missing/mismatched -> 401, return
+ *     false. The caller MUST NOT continue.
+ *
+ * Loop 06 inlined the body that previously lived in `routes/auth.ts`.
+ * Returning a boolean (rather than throwing) keeps the call sites flat:
+ *
+ *   ```
+ *   if (!requireApiToken(req, res, ctx)) return;
+ *   ```
  */
 export function requireApiToken(
     req: http.IncomingMessage,
     res: http.ServerResponse,
     ctx: ServerContext,
 ): boolean {
-    return requireApiTokenLegacy(req, res, ctx.config, ctx.httpHandler);
+    const configured = ctx.config.apiToken;
+    if (!configured) {
+        // Local dev mode: no token configured, accept the request.
+        return true;
+    }
+
+    const authHeader = req.headers['authorization'] ?? '';
+    const expected = `Bearer ${configured}`;
+    if (authHeader === expected) {
+        return true;
+    }
+
+    ctx.httpHandler.sendJson(res, 401, {
+        success: false,
+        message: 'Unauthorized',
+    });
+    return false;
 }
 
 /**
