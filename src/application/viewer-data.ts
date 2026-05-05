@@ -77,8 +77,8 @@ function toWorkspaceRel(workspaceRoot: WorkspaceRoot, abs: string): string {
  * Collect all data required for the viewer from disk.
  *
  * If edge lists exist under `ctx.artifactRoot`, they are loaded. Otherwise
- * a TS scan populates them and saves. `.arch` and `.artifacts`
- * directories are created (recursive) when missing.
+ * a TS scan populates them and saves. The `ctx.archRoot` and
+ * `ctx.artifactRoot` directories are created (recursive) when missing.
  */
 export async function collectViewerData(
     ctx: WorkspaceContext,

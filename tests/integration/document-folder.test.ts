@@ -13,6 +13,7 @@ import * as path from 'node:path';
 
 import {
     processFolderInfoReport,
+    buildDocumentFolderPrompt,
 } from '../../src/application/document-folder';
 import { asRelPath } from '../../src/core/paths';
 import { createWorkspaceContext } from '../../src/application/workspace-context';
@@ -112,6 +113,57 @@ test('processFolderInfoReport refuses path-escape (../../..) via PathEscapeError
             }),
             (err: Error) => err.name === 'PathEscapeError',
             'A folder path that escapes the workspace must throw PathEscapeError',
+        );
+    } finally {
+        fs.rmSync(tmpRoot, { recursive: true, force: true });
+    }
+});
+
+test('buildDocumentFolderPrompt reads from ctx.artifactRoot, not literal .artifacts', async () => {
+    const tmpRoot = makeTmp('llmem-doc-folder-artroot-');
+    try {
+        // Create the source folder being documented.
+        fs.mkdirSync(path.join(tmpRoot, 'src', 'demo'), { recursive: true });
+
+        // Lay down edge-list fixtures under a NON-default artifact root.
+        const customRel = 'custom-artifacts';
+        const customAbs = path.join(tmpRoot, customRel);
+        fs.mkdirSync(customAbs, { recursive: true });
+        const emptyEdges = JSON.stringify({
+            schemaVersion: 1,
+            timestamp: new Date().toISOString(),
+            nodes: [],
+            edges: [],
+        });
+        fs.writeFileSync(path.join(customAbs, 'import-edgelist.json'), emptyEdges);
+        fs.writeFileSync(path.join(customAbs, 'call-edgelist.json'), emptyEdges);
+
+        // ALSO seed the default artifact directory to prove we are not
+        // silently reading from there. Use a poison sentinel so a
+        // regression would surface as a parse error or unexpected node
+        // count.
+        const poisonAbs = path.join(tmpRoot, '.artifacts');
+        fs.mkdirSync(poisonAbs, { recursive: true });
+        fs.writeFileSync(path.join(poisonAbs, 'import-edgelist.json'), '{ not valid json');
+        fs.writeFileSync(path.join(poisonAbs, 'call-edgelist.json'), '{ not valid json');
+
+        const ctx = await createWorkspaceContext({
+            workspaceRoot: tmpRoot,
+            configOverrides: { artifactRoot: customRel },
+        });
+
+        // If the implementation still hardcoded the default artifact
+        // directory, this would throw on the poison JSON. With the fix,
+        // it loads from `custom-artifacts` and returns an empty-graph
+        // prompt.
+        const data = await buildDocumentFolderPrompt(ctx, {
+            folderPath: asRelPath('src/demo'),
+        });
+        assert.equal(data.stats.nodes, 0);
+        assert.equal(data.stats.edges, 0);
+        assert.ok(
+            data.prompt.includes('src/demo'),
+            'prompt should mention the documented folder path',
         );
     } finally {
         fs.rmSync(tmpRoot, { recursive: true, force: true });

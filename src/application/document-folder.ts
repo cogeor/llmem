@@ -22,10 +22,10 @@
  *     removed. The proper fix is workspace-root threading; the
  *     workaround was actively harmful.
  *
- * The artifacts directory (.artifacts/import-edgelist.json /
- * call-edgelist.json) is read directly via the edge-list stores. The
- * folder analysis is a pure projection over those stores plus the
- * filtering helpers in `src/info/filter.ts`.
+ * The artifact directory (`ctx.artifactRoot`, holding
+ * `import-edgelist.json` and `call-edgelist.json`) is read directly
+ * via the edge-list stores. The folder analysis is a pure projection
+ * over those stores plus the filtering helpers in `src/info/filter.ts`.
  */
 
 import * as path from 'path';
@@ -141,16 +141,12 @@ export async function buildDocumentFolderPrompt(
         // ENOENT → leave existingDocs null (the prompt template handles it).
     }
 
-    // Load graphs from .artifacts (split stores). The artifact directory
-    // currently lives at the conventional `.artifacts` location relative
-    // to the workspace root; the configurable `artifactRoot` setting is
-    // an extension-side concern and is plumbed through the MCP tool
-    // boundary. TODO(Loop 09): replace this hardcoded `.artifacts` with
-    // `ctx.artifactRoot` once `DocumentFolderRequest` is allowed to carry
-    // the artifactRoot through (see PLAN out-of-scope §
-    // DocumentFolderRequest). For Loop 04 we preserve the legacy default
-    // (computed from `ctx.workspaceRoot`) to minimize behavior drift.
-    const artifactDir = path.join(workspaceRoot, '.artifacts');
+    // Load graphs from the configured artifact root (split stores).
+    // Loop 09: this used to be a hardcoded join under the workspace
+    // root because Loop 04 left the wiring incomplete; now
+    // `ctx.artifactRoot` is the single source of truth and honors the
+    // user's `artifactRoot` config (see `src/config-defaults.ts`).
+    const artifactDir = ctx.artifactRoot;
     const artifactRel = path.relative(io.getRealRoot(), artifactDir).replace(/\\/g, '/');
     if (!(await io.exists(artifactRel))) {
         throw new Error(
