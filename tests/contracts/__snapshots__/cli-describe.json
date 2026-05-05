@@ -11,7 +11,7 @@
             "type": "boolean"
           },
           "port": {
-            "default": 3000,
+            "default": 5757,
             "maximum": 65535,
             "minimum": 0,
             "type": "integer"
@@ -38,7 +38,7 @@
         },
         {
           "command": "llmem serve --port 8080 --no-open",
-          "scenario": "Use port 8080 without opening a browser"
+          "scenario": "Use a custom port without opening a browser"
         },
         {
           "command": "llmem serve --regenerate",
