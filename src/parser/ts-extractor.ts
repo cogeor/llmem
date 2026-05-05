@@ -2,6 +2,23 @@ import * as ts from 'typescript';
 import * as path from 'path';
 import { FileArtifact, ImportSpec, ExportSpec, Entity, CallSite, Loc, EntityKind } from './types';
 import { ArtifactExtractor } from './interfaces';
+import { resolveModule, createResolutionCache } from './ts-module-resolver';
+
+/**
+ * Per-`extract()`-call resolver context.
+ *
+ * The cache lives here (NOT on the extractor instance) because
+ * `ts.ModuleResolutionCache` is keyed on compiler options + cwd. The
+ * extractor may be called against the disk-backed program in one call
+ * and the in-memory branch in another, with potentially different
+ * options — pinning a per-extractor cache would be unsound.
+ */
+interface ResolveContext {
+    workspaceRoot: string;
+    options: ts.CompilerOptions;
+    host: ts.ModuleResolutionHost;
+    cache: ts.ModuleResolutionCache;
+}
 
 export class TypeScriptExtractor implements ArtifactExtractor {
     private workspaceRoot: string;
@@ -17,6 +34,7 @@ export class TypeScriptExtractor implements ArtifactExtractor {
     public async extract(filePath: string, content?: string): Promise<FileArtifact | null> {
         let sourceFile: ts.SourceFile | undefined;
         let checker: ts.TypeChecker | undefined;
+        let resolveCtx: ResolveContext | undefined;
 
         if (content !== undefined) {
             // Honor the content contract (see ArtifactExtractor JSDoc):
@@ -25,33 +43,80 @@ export class TypeScriptExtractor implements ArtifactExtractor {
             const result = this.createInMemoryProgram(filePath, content);
             sourceFile = result.sourceFile;
             checker = result.checker;
+            // The resolver MUST share the host that backs the program so
+            // that self-relative imports of the in-memory file see it
+            // existing.
+            resolveCtx = {
+                workspaceRoot: this.workspaceRoot,
+                options: result.options,
+                host: result.host,
+                cache: createResolutionCache(result.options, this.workspaceRoot),
+            };
         } else {
             const program = this.programProvider();
 
             if (program) {
                 sourceFile = program.getSourceFile(filePath);
                 checker = program.getTypeChecker();
+                if (sourceFile) {
+                    const options = program.getCompilerOptions();
+                    // ts.Program does not expose its CompilerHost. The
+                    // resolver only needs ModuleResolutionHost surface
+                    // (fileExists/readFile/directoryExists), which a
+                    // freshly-created CompilerHost provides identically
+                    // for disk-backed lookups.
+                    const host = ts.createCompilerHost(options);
+                    resolveCtx = {
+                        workspaceRoot: this.workspaceRoot,
+                        options,
+                        host,
+                        cache: createResolutionCache(options, this.workspaceRoot),
+                    };
+                }
             }
 
             if (!sourceFile) {
                 // File not in main program (e.g. new file, or file outside root).
                 // Create a temporary program for single-file analysis.
                 // This is slower but ensures we get results.
-                const tempProgram = ts.createProgram([filePath], {
-                    target: ts.ScriptTarget.ES2020,
-                    module: ts.ModuleKind.CommonJS,
-                    allowJs: true
-                });
+                const fallbackOptions = this.getResolverOptions();
+                const tempProgram = ts.createProgram([filePath], fallbackOptions);
                 sourceFile = tempProgram.getSourceFile(filePath);
                 checker = tempProgram.getTypeChecker();
+                const host = ts.createCompilerHost(fallbackOptions);
+                resolveCtx = {
+                    workspaceRoot: this.workspaceRoot,
+                    options: fallbackOptions,
+                    host,
+                    cache: createResolutionCache(fallbackOptions, this.workspaceRoot),
+                };
             }
         }
 
-        if (!sourceFile || !checker) {
+        if (!sourceFile || !checker || !resolveCtx) {
             return null;
         }
 
-        return this.extractFromSource(sourceFile, checker);
+        return this.extractFromSource(sourceFile, checker, resolveCtx);
+    }
+
+    /**
+     * Compiler options used by the resolver when no live program is
+     * available (i.e. the "single-file fallback" branch). Mirrors what
+     * the in-memory branch uses, augmented with `allowJs` and an
+     * explicit `moduleResolution` so the wrapper doesn't fall back to
+     * Classic resolution.
+     */
+    private getResolverOptions(): ts.CompilerOptions {
+        const program = this.programProvider();
+        if (program) {
+            return program.getCompilerOptions();
+        }
+        return {
+            ...ts.getDefaultCompilerOptions(),
+            allowJs: true,
+            moduleResolution: ts.ModuleResolutionKind.NodeJs,
+        };
     }
 
     /**
@@ -62,18 +127,21 @@ export class TypeScriptExtractor implements ArtifactExtractor {
      * (i.e. real disk reads), so imports of sibling files / lib.d.ts /
      * tsconfig still work.
      *
-     * Compiler options match the existing `tempProgram` branch above —
-     * Loop 12 owns the resolver upgrade (paths, baseUrl, exports, etc.).
+     * Returns the host and options too so Loop 12's
+     * `ts.resolveModuleName` resolver can share the SAME host the
+     * program was built with — this lets self-relative imports of the
+     * in-memory file see it as existing.
      */
     private createInMemoryProgram(
         filePath: string,
         content: string
-    ): { sourceFile: ts.SourceFile | undefined; checker: ts.TypeChecker | undefined } {
-        const options: ts.CompilerOptions = {
-            target: ts.ScriptTarget.ES2020,
-            module: ts.ModuleKind.CommonJS,
-            allowJs: true,
-        };
+    ): {
+        sourceFile: ts.SourceFile | undefined;
+        checker: ts.TypeChecker | undefined;
+        host: ts.CompilerHost;
+        options: ts.CompilerOptions;
+    } {
+        const options = this.getResolverOptions();
 
         const baseHost = ts.createCompilerHost(options);
 
@@ -123,10 +191,16 @@ export class TypeScriptExtractor implements ArtifactExtractor {
         return {
             sourceFile: program.getSourceFile(filePath),
             checker: program.getTypeChecker(),
+            host,
+            options,
         };
     }
 
-    private extractFromSource(sourceFile: ts.SourceFile, checker: ts.TypeChecker): FileArtifact {
+    private extractFromSource(
+        sourceFile: ts.SourceFile,
+        checker: ts.TypeChecker,
+        ctx: ResolveContext
+    ): FileArtifact {
         const filePath = sourceFile.fileName;
         const imports: ImportSpec[] = [];
         const exports: ExportSpec[] = [];
@@ -172,21 +246,24 @@ export class TypeScriptExtractor implements ArtifactExtractor {
                         }
                     }
 
-                    // Resolve path
-                    let resolvedPath: string | null = null;
-                    const symbol = checker.getSymbolAtLocation(node.moduleSpecifier);
-                    if (symbol && symbol.valueDeclaration) {
-                        const decl = symbol.valueDeclaration as ts.SourceFile;
-                        // If it resolves to a file, get path. 
-                        // Note: declaration might be a ambient module decl in .d.ts
-                        if (decl.fileName) {
-                            // Make relative to workspace root to match fileIds
-                            resolvedPath = path.relative(this.workspaceRoot, decl.fileName).replace(/\\/g, '/');
-                        }
-                    }
-
-                    // resolvedPath stays null when the checker didn't resolve (e.g. node_modules
-                    // not in program). Loop 12 replaces this branch with ts.resolveModuleName.
+                    // Resolve path via ts.resolveModuleName (Loop 12).
+                    // External modules (kind === 'external') and unresolved
+                    // specifiers (kind === 'unresolved') yield resolvedPath
+                    // null; the original `source` string carries the
+                    // external identity downstream (artifact-converter
+                    // handles this in resolveImportTarget).
+                    const resolveResult = resolveModule(
+                        source,
+                        filePath,
+                        ctx.options,
+                        ctx.host,
+                        ctx.cache,
+                        ctx.workspaceRoot
+                    );
+                    const resolvedPath: string | null =
+                        resolveResult.kind === 'resolved' && !resolveResult.isExternal
+                            ? resolveResult.resolvedPath
+                            : null;
 
                     // Determine import kind based on specifiers
                     const hasNamespaceImport = specifiers.some(s => s.name === '*');
