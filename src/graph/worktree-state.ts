@@ -8,12 +8,10 @@
  * - watchedFiles: string[] (relative file paths)
  * - fileHashes: Record<string, string> (path -> hash for change detection)
  *
- * Loop 07: `WorkspaceIO` is now a *required* constructor argument. All
- * persistence and file-content reads route through it; the legacy
- * direct-`fs.*` fallback was deleted with the back-compat branches.
+ * Loop 08 deleted the last preserved free helper (`unsafeLegacyListParsableFiles`);
+ * the only remaining listing helper is `listParsableFilesIO`, which is realpath-strong.
  */
 
-import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { createLogger } from '../common/logger';
@@ -329,44 +327,6 @@ export class WatchService {
 export function isParsableFile(filename: string): boolean {
     const ext = path.extname(filename).toLowerCase();
     return PARSABLE_EXTS.includes(ext);
-}
-
-/**
- * @deprecated Test-only. Use `listParsableFilesIO(io, relPath)` for production code.
- *   Loop 08 deletes this symbol; do not introduce new callers.
- *
- * Legacy signature: takes an absolute path and walks via raw `fs.readdir`.
- * Preserved purely so loop 08 can delete it after auditing test usage.
- */
-export async function unsafeLegacyListParsableFiles(absolutePath: string): Promise<string[]> {
-    const files: string[] = [];
-
-    async function walkDir(dir: string) {
-        let entries;
-        try {
-            entries = await fs.readdir(dir, { withFileTypes: true });
-        } catch {
-            return;
-        }
-
-        for (const entry of entries) {
-            // Skip hidden and node_modules
-            if (entry.name.startsWith('.') || entry.name === 'node_modules') {
-                continue;
-            }
-
-            const fullPath = path.join(dir, entry.name);
-
-            if (entry.isDirectory()) {
-                await walkDir(fullPath);
-            } else if (entry.isFile() && isParsableFile(entry.name)) {
-                files.push(fullPath);
-            }
-        }
-    }
-
-    await walkDir(absolutePath);
-    return files.sort();
 }
 
 /**

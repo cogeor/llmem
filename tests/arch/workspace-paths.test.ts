@@ -181,40 +181,23 @@ interface WriteCallSite {
 }
 
 // Production files allowed to call write-mutating fs methods. Anything
-// outside this list will fail the scan.
-//
-// L24 retired:
-//   - 'src/claude/server/arch-watcher.ts' — fs.mkdirSync + fs.writeFileSync
-//     replaced by WorkspaceIO.mkdirRecursive + writeFile.
-//   - 'src/graph/plot/generator.ts' — fs.writeFileSync replaced by
-//     WorkspaceIO.writeFile (savePlot signature now takes an `io` arg).
-// Loop 07 added:
-//   - 'src/claude/cli/commands/init.ts' — `llmem init` writes
-//     `.llmem/config.toml` (the workspace config file). Cannot route
-//     through `WorkspaceIO` because the workspace markers and the
-//     containment surface presuppose `.llmem/` already exists; `init`
-//     creates that directory. The path is rooted at `detectWorkspace()`
-//     output and never escapes (mkdir + writeFile under the resolved
-//     `.llmem/` subdir only).
-// Loop 07 retired:
-//   - 'src/graph/edgelist.ts'
-//   - 'src/graph/folder-edges-store.ts'
-//   - 'src/graph/folder-tree-store.ts'
-//   - 'src/graph/worktree-state.ts'
-//     The four store files no longer call `fs.write*` / `fs.mkdir*`
-//     directly — `WorkspaceIO` is now a *required* constructor argument
-//     and all persistence routes through it.
-//   - 'src/scripts/generate_edgelist.ts'
-//   - 'src/scripts/scan_codebase.ts'
-//     The scripts now build a `WorkspaceContext` and route every store
-//     instantiation + mkdir through `ctx.io`; no direct `fs.*` calls
-//     remain.
+// outside this list will fail the scan. Each entry justifies its
+// presence:
+//   - 'src/artifact/storage.ts' — free-function back-compat surface
+//     (see file banner; live writers should use `ArtifactStorage`).
+//   - 'src/claude/cli/commands/init.ts' — bootstraps the `.llmem/`
+//     workspace marker before any `WorkspaceIO` can be constructed.
+//   - 'src/webview/generator.ts',
+//     'src/webview/shell-cache.ts',
+//     'src/webview/utils/md-converter.ts' — own the
+//     `.artifacts/webview/` cache surface end-to-end.
+//   - 'src/workspace/safe-fs.ts',
+//     'src/workspace/workspace-io.ts' — implement the containment
+//     surface itself; raw fs is required.
 const WRITE_ALLOWLIST: ReadonlySet<string> = new Set([
   'src/artifact/storage.ts',
   'src/claude/cli/commands/init.ts',
   'src/webview/generator.ts',
-  // Loop 01: owns `.artifacts/webview/` cache directory; only writes
-  // `.shell-hash` and rms the cache root on hash mismatch.
   'src/webview/shell-cache.ts',
   'src/webview/utils/md-converter.ts',
   'src/workspace/safe-fs.ts',
@@ -384,16 +367,22 @@ test('arch: WorkspaceIO blocks symlink escape via realpath containment', async (
 // strings/comments cannot produce false positives.
 //
 // Reads (`fs.readFile`, `fs.readdir`, `fs.access`, `fs.stat`) are
-// tolerated for now (Finding 9 is mostly about WRITES; reads will fall
-// out of scope as L24/L25/L26 thread `WorkspaceIO` through every caller).
+// tolerated by this scan. Finding 9's containment concern is about
+// WRITES; read-side containment is enforced separately by the
+// `WorkspaceIO` API surface, which all production read sites already
+// route through (the scan does not need to re-prove that here).
 //
 // Files in the SUBTREE_ALLOWLIST (`src/workspace/`, `src/core/`) are
 // allowed to call write-side `fs.*` directly — those subtrees own the
 // containment surface itself.
 //
-// Loop 23 does NOT remove any back-compat fallback paths, so the
-// `KNOWN_WRITE_VIOLATIONS` list documents each call site that still
-// flows through raw `fs.*`. L24/L25/L26 each remove their share.
+// The `KNOWN_WRITE_VIOLATIONS` list documents the small set of
+// write-side `fs.*` call sites that are deliberately preserved as
+// back-compat surfaces. Each entry must carry a one-line reason
+// explaining why the call cannot route through `WorkspaceIO`. Adding
+// a new transitional entry requires citing an expiration loop in the
+// reason; permanent entries (e.g. legacy free-function surfaces) say so
+// explicitly.
 // ---------------------------------------------------------------------------
 
 interface FsWriteCallSite {
@@ -426,25 +415,28 @@ const FS_WRITE_METHODS = new Set([
   'rmSync',
 ]);
 
-// Documented back-compat fallback paths. Loop 07 retired the four store
-// files (edgelist, worktree-state, folder-tree-store, folder-edges-store)
-// when their constructors were tightened to require `WorkspaceIO`.
-// `graph/plot/generator.ts` is owned by L24 (callers in src/scripts/).
+// Documented back-compat fallback paths. Loop 07 retired the four
+// graph-store entries (edgelist, worktree-state, folder-tree-store,
+// folder-edges-store) when their constructors were tightened to require
+// `WorkspaceIO`. The remaining entries below are permanent surfaces:
+// `src/artifact/storage.ts` exposes a free-function back-compat API
+// for callers that hold absolute paths (see the file's banner) and is
+// not routed through `WorkspaceIO` by design.
 const KNOWN_WRITE_VIOLATIONS: readonly KnownFsWriteViolation[] = [
   {
     rel: 'src/artifact/storage.ts',
     method: 'mkdir',
-    reason: 'L23 leaves the legacy free-function `writeFile` raw per PLAN §23.2.c fallback option; live writers use the new ArtifactStorage class instead.',
+    reason: 'Implicit mkdir inside the back-compat free-function `writeFile` in src/artifact/storage.ts (creates parent dirs before writing). Same lifecycle as the writeFile row below.',
   },
   {
     rel: 'src/artifact/storage.ts',
     method: 'writeFile',
-    reason: 'L23 leaves the legacy free-function `writeFile` raw per PLAN §23.2.c fallback option; live writers use the new ArtifactStorage class instead.',
+    reason: 'Free-function back-compat export `writeFile` in src/artifact/storage.ts; callers pass arbitrary absolute paths so containment cannot be enforced via WorkspaceIO. Live writers use the ArtifactStorage class instead. If the free function is retired, remove this row.',
   },
   {
     rel: 'src/artifact/storage.ts',
     method: 'unlink',
-    reason: 'L23 leaves the legacy free-function `deleteFile` raw per PLAN §23.2.c fallback option; live writers use the new ArtifactStorage class instead.',
+    reason: 'Free-function back-compat export `deleteFile` in src/artifact/storage.ts; callers pass arbitrary absolute paths so containment cannot be enforced via WorkspaceIO. Live writers use the ArtifactStorage class instead. If the free function is retired, remove this row.',
   },
 ];
 
@@ -553,8 +545,9 @@ test('fs-write-discipline: src/{graph,info,artifact}/ has no undocumented direct
     );
   }
 
-  // Also flag stale KNOWN_WRITE_VIOLATIONS entries — once L24/L25/L26
-  // remove the back-compat path the entry must come off.
+  // Also flag stale KNOWN_WRITE_VIOLATIONS entries — when a back-compat
+  // path is retired the corresponding row must come off in the same
+  // commit, otherwise this assertion fails loudly.
   const stale = KNOWN_WRITE_VIOLATIONS.filter(
     (v) => !observedKeys.has(fileMethodKey(v)),
   );
