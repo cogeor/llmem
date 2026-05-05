@@ -13,6 +13,8 @@ import type { DesignDoc } from '../webview/design-docs';
 import { renderMarkdown } from '../webview/markdown-renderer';
 import { WorkspaceIO } from '../workspace/workspace-io';
 import { renderShell, type ShellHostHooks } from '../webview/shell';
+import { FolderTreeStore } from '../graph/folder-tree-store';
+import { FolderEdgelistStore } from '../graph/folder-edges-store';
 
 const log = createLogger('panel');
 
@@ -153,6 +155,18 @@ export class LLMemPanel {
             case 'loadFolderNodes':
                 await this._loadFolderNodes(message.folderPath);
                 break;
+            // Loop 02: panel-side echo for whole-tree / whole-edgelist data
+            // requests posted by `VSCodeDataProvider.loadFolderTree()` and
+            // `loadFolderEdges()`. The webview-side handler ignores responses
+            // whose `requestId` is not a string (see vscodeDataProvider.ts
+            // lines 194 and 209), so we forward `message.requestId` as-is —
+            // typed-unioning the message shape is loop 14's concern.
+            case 'loadFolderTree':
+                await this._loadFolderTree(message.requestId);
+                break;
+            case 'loadFolderEdges':
+                await this._loadFolderEdges(message.requestId);
+                break;
             case 'toggleWatch':
                 // Loop 14: pass through the webview-supplied requestId so
                 // the response message can be matched back to the right
@@ -253,6 +267,91 @@ export class LLMemPanel {
                 type: 'data:folderNodes',
                 folderPath,
                 error: e.message
+            });
+        }
+    }
+
+    /**
+     * Load `.artifacts/folder-tree.json` and post `data:folderTree` back to
+     * the webview, echoing the original `requestId`. Loop 02.
+     *
+     * Constructs `WorkspaceIO` per-call to mirror the existing
+     * `_handleToggleWatch` posture (loop 04 hoists this to a
+     * workspace-scoped instance). `FolderTreeStore.load()` raises
+     * `FolderTreeLoadError` for missing-file / parse-error / schema-error
+     * / unknown-version cases — relay `error.message` back so the
+     * webview-side `pendingFolderTreeRequests.reject(...)` path fires.
+     */
+    private async _loadFolderTree(requestId: string | undefined) {
+        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!workspaceRoot) {
+            this._panel.webview.postMessage({
+                type: 'data:folderTree',
+                requestId,
+                error: 'No workspace folder open',
+            });
+            return;
+        }
+
+        const config = getConfig();
+        const artifactRoot = path.join(workspaceRoot, config.artifactRoot);
+
+        try {
+            // L26 parity with `_handleToggleWatch`: WorkspaceIO per-method.
+            const io = await WorkspaceIO.create(asWorkspaceRoot(workspaceRoot));
+            const store = new FolderTreeStore(artifactRoot, io);
+            const data = await store.load();
+            this._panel.webview.postMessage({
+                type: 'data:folderTree',
+                requestId,
+                data,
+            });
+        } catch (e) {
+            const message = e instanceof Error ? e.message : String(e);
+            log.error('Failed to load folder tree', { error: message });
+            this._panel.webview.postMessage({
+                type: 'data:folderTree',
+                requestId,
+                error: message,
+            });
+        }
+    }
+
+    /**
+     * Load `.artifacts/folder-edgelist.json` and post `data:folderEdges`
+     * back to the webview, echoing the original `requestId`. Loop 02.
+     * Same posture as `_loadFolderTree` — see the comment there.
+     */
+    private async _loadFolderEdges(requestId: string | undefined) {
+        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!workspaceRoot) {
+            this._panel.webview.postMessage({
+                type: 'data:folderEdges',
+                requestId,
+                error: 'No workspace folder open',
+            });
+            return;
+        }
+
+        const config = getConfig();
+        const artifactRoot = path.join(workspaceRoot, config.artifactRoot);
+
+        try {
+            const io = await WorkspaceIO.create(asWorkspaceRoot(workspaceRoot));
+            const store = new FolderEdgelistStore(artifactRoot, io);
+            const data = await store.load();
+            this._panel.webview.postMessage({
+                type: 'data:folderEdges',
+                requestId,
+                data,
+            });
+        } catch (e) {
+            const message = e instanceof Error ? e.message : String(e);
+            log.error('Failed to load folder edges', { error: message });
+            this._panel.webview.postMessage({
+                type: 'data:folderEdges',
+                requestId,
+                error: message,
             });
         }
     }

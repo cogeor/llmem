@@ -234,10 +234,9 @@ test('VSCodeDataProvider: toggleWatch rejects with timeout when no response arri
 //
 // The methods post `{ type: 'loadFolderTree' | 'loadFolderEdges', requestId }`
 // and resolve / reject on a matching `data:folderTree` / `data:folderEdges`
-// response with the same requestId. The panel-side handler does NOT exist
-// yet (loop 13 left `src/extension/` off-limits), so production calls reject
-// after a 30s timeout — but the tests drive the response synchronously to
-// pin the wire shape a future panel-side implementer must match.
+// response with the same requestId. The panel-side handler echoes
+// `data:folderTree` / `data:folderEdges` (loop 02). These tests pin the wire
+// shape both sides agree on.
 // ---------------------------------------------------------------------------
 
 test('VSCodeDataProvider.loadFolderTree posts the correct message type with a fresh requestId', async () => {

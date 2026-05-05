@@ -80,11 +80,10 @@ export class VSCodeDataProvider implements DataProvider {
      * Pending folder-tree load requests, keyed by `requestId`. Loop 13.
      *
      * Mirrors `pendingWatchToggles`. Each call to `loadFolderTree()`
-     * generates a unique requestId and stores its resolver here. The
-     * extension host is expected to echo the requestId back in a
-     * `data:folderTree` message — but **this handler does not exist
-     * yet** (`src/extension/` off-limits this loop). The 30s timeout
-     * fires the rejection so VS Code consumers see a clear error.
+     * generates a unique requestId and stores its resolver here.
+     * Panel-side handler in `src/extension/panel.ts::_loadFolderTree`
+     * reads `.artifacts/folder-tree.json` via `FolderTreeStore` and
+     * echoes `data:folderTree` (loop 02).
      */
     private pendingFolderTreeRequests: Map<string, {
         resolve: (data: FolderTreeData) => void;
@@ -278,18 +277,9 @@ export class VSCodeDataProvider implements DataProvider {
     /**
      * Load the folder-tree artifact via the extension host. Loop 13.
      *
-     * **NOTE: panel-side handler not yet wired.** `src/extension/` was
-     * off-limits in loop 13, so this method posts a correctly-typed
-     * `loadFolderTree` request and registers a pending entry — but no
-     * extension-host code listens for it today. The future loop that
-     * lands the handler in `src/extension/panel.ts` must:
-     *   1. handle `case 'loadFolderTree':` in the panel's message switch;
-     *   2. read `.artifacts/folder-tree.json` (or call into
-     *      `application/viewer-data.ts`); and
-     *   3. post back `{ type: 'data:folderTree', requestId, data }` (or
-     *      `{ ..., error }`) using the same requestId.
-     * Until that lands, calls reject after the 30s timeout with an
-     * explicit "not yet wired" message.
+     * Posts a `loadFolderTree` request; the panel-side handler at
+     * `src/extension/panel.ts::_loadFolderTree` echoes `data:folderTree`
+     * with the matching `requestId` (loop 02).
      */
     async loadFolderTree(): Promise<FolderTreeData> {
         return new Promise((resolve, reject) => {
@@ -299,9 +289,7 @@ export class VSCodeDataProvider implements DataProvider {
                 if (this.pendingFolderTreeRequests.has(requestId)) {
                     this.pendingFolderTreeRequests.delete(requestId);
                     reject(new Error(
-                        '[VSCodeDataProvider] loadFolderTree: not yet wired in extension host. ' +
-                        'The panel-side `data:folderTree` handler in `src/extension/panel.ts` ' +
-                        'is missing (loop 13 left this gap intentionally — see PLAN.md).',
+                        '[VSCodeDataProvider] loadFolderTree: timeout waiting for panel response after 30s',
                     ));
                 }
             }, 30000);
@@ -319,9 +307,9 @@ export class VSCodeDataProvider implements DataProvider {
      * Load the folder-edgelist artifact via the extension host. Loop 13.
      *
      * Same wiring posture as `loadFolderTree()`: posts a
-     * `loadFolderEdges` request, expects a future panel-side handler to
-     * echo back `data:folderEdges` with the same requestId. No handler
-     * exists today (`src/extension/` off-limits in loop 13).
+     * `loadFolderEdges` request; panel-side handler at
+     * `src/extension/panel.ts::_loadFolderEdges` echoes `data:folderEdges`
+     * with the matching `requestId` (loop 02).
      */
     async loadFolderEdges(): Promise<FolderEdgelistData> {
         return new Promise((resolve, reject) => {
@@ -331,9 +319,7 @@ export class VSCodeDataProvider implements DataProvider {
                 if (this.pendingFolderEdgesRequests.has(requestId)) {
                     this.pendingFolderEdgesRequests.delete(requestId);
                     reject(new Error(
-                        '[VSCodeDataProvider] loadFolderEdges: not yet wired in extension host. ' +
-                        'The panel-side `data:folderEdges` handler in `src/extension/panel.ts` ' +
-                        'is missing (loop 13 left this gap intentionally — see PLAN.md).',
+                        '[VSCodeDataProvider] loadFolderEdges: timeout waiting for panel response after 30s',
                     ));
                 }
             }, 30000);

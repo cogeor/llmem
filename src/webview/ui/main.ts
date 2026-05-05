@@ -13,32 +13,41 @@ import { FolderStructureView } from './components/FolderStructureView';
 import { ViewToggle } from './components/ViewToggle';
 import { Splitter } from './libs/Splitter';
 import { explorerIcon, designIcon, graphIcon, sun } from './icons';
+import { requireElement } from './dom-validation';
 import '../live-reload'; // WebSocket live reload for HTTP server mode
-
-// Create data provider for this environment (auto-detects VS Code vs standalone)
-const dataProvider = createDataProvider();
-
-// Elements
-const elWorktree = document.getElementById('worktree-root') as HTMLElement;
-const elDesignModeToggle = document.getElementById('design-mode-toggle') as HTMLElement;
-const elGraphToggle = document.getElementById('graph-type-toggle') as HTMLElement;
-const elDesignView = document.getElementById('design-view') as HTMLElement;
-const elGraphView = document.getElementById('graph-view') as HTMLElement;
-const elPackageView = document.getElementById('package-view') as HTMLElement;
-const elFolderStructureView = document.getElementById('folder-structure-view') as HTMLElement;
-const elViewToggle = document.getElementById('view-toggle') as HTMLElement;
-
-// Splitter elements
-const elSplitter1 = document.getElementById('splitter-1') as HTMLElement;
-const elSplitter2 = document.getElementById('splitter-2') as HTMLElement;
-const elExplorerPane = document.getElementById('explorer-pane') as HTMLElement;
-const elDesignPane = document.getElementById('design-pane') as HTMLElement;
-const elGraphPane = document.getElementById('graph-pane') as HTMLElement;
 
 // Helper to detect VS Code environment. The full API surface is private to
 // `VSCodeDataProvider`; the global is only declared here so we can probe
 // for it (Loop 14: components must not call `acquireVsCodeApi` directly).
+// `declare` must live at module scope (TS forbids it inside a block), so
+// it is hoisted out of the loop-02 top-level try/catch below.
 declare const acquireVsCodeApi: () => { postMessage(msg: unknown): void };
+
+try {
+
+// Create data provider for this environment (auto-detects VS Code vs standalone)
+const dataProvider = createDataProvider();
+
+// Elements — `requireElement` (loop 02) replaces the previous
+// `as HTMLElement` casts so a missing mount-point ID surfaces a clear
+// error at the lookup site rather than as a `Cannot read properties of
+// null` from inside a downstream component constructor.
+const elWorktree = requireElement('worktree-root');
+const elDesignModeToggle = requireElement('design-mode-toggle');
+const elGraphToggle = requireElement('graph-type-toggle');
+const elDesignView = requireElement('design-view');
+const elGraphView = requireElement('graph-view');
+const elPackageView = requireElement('package-view');
+const elFolderStructureView = requireElement('folder-structure-view');
+const elViewToggle = requireElement('view-toggle');
+
+// Splitter elements
+const elSplitter1 = requireElement('splitter-1');
+const elSplitter2 = requireElement('splitter-2');
+const elExplorerPane = requireElement('explorer-pane');
+const elDesignPane = requireElement('design-pane');
+const elGraphPane = requireElement('graph-pane');
+
 const isVsCode = typeof acquireVsCodeApi !== 'undefined';
 
 // Detect graph-only mode (no WORK_TREE means graph-only, but ONLY in standalone mode)
@@ -170,8 +179,10 @@ if (!isVsCode && (window as any).WATCHED_FILES) {
     state.set({ watchedPaths: new Set(watchedFiles) });
 }
 
-// Inject header icons
-function initHeaderIcons() {
+// Inject header icons. Arrow-function form keeps the declaration valid
+// inside the loop-02 top-level try block (the `function` form would trip
+// `no-inner-declarations`).
+const initHeaderIcons = () => {
     const explorerTitle = document.querySelector('#explorer-title .pane-icon');
     const designTitle = document.querySelector('#design-title .pane-icon');
     const graphTitle = document.querySelector('#graph-title .pane-icon');
@@ -185,7 +196,7 @@ function initHeaderIcons() {
     if (graphTitle) graphTitle.innerHTML = graphIcon;
     // safe: author-controlled SVG icon string from icons.ts (ThemeManager updates this later)
     if (themeToggle) themeToggle.innerHTML = sun;
-}
+};
 
 // Bootstrap
 (async () => {
@@ -220,3 +231,18 @@ function initHeaderIcons() {
         console.error("Initialization failed", e);
     }
 })();
+
+} catch (e) {
+    // Loop 02: surface element-lookup errors that fire at module-evaluation
+    // time (before the async bootstrap IIFE runs) so the user sees a
+    // useful banner instead of a blank panel.
+    console.error('[webview/main] Initialization failed', e);
+    const body = document.body;
+    if (body) {
+        const banner = document.createElement('pre');
+        banner.style.cssText = 'color:#c00;padding:16px;font:12px monospace;white-space:pre-wrap;';
+        banner.textContent = `LLMem webview failed to initialize:\n${e instanceof Error ? e.message : String(e)}`;
+        body.appendChild(banner);
+    }
+    throw e; // re-raise so VS Code surfaces it in the dev console
+}

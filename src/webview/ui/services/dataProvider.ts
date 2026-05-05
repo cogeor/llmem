@@ -62,9 +62,9 @@ export interface DataProvider {
      * documentation flags, and recursive LOC totals). Loop 13.
      *
      * Required on every host — every consumer of `'packages'` view needs
-     * the tree. VS Code mode currently throws because the panel-side
-     * handler is not yet wired (loop 13 constraint: `src/extension/`
-     * off-limits). The static path reads `window.FOLDER_TREE`.
+     * the tree. VS Code mode resolves through the panel's
+     * `data:folderTree` echo (`src/extension/panel.ts::_loadFolderTree`,
+     * loop 02). The static path reads `window.FOLDER_TREE`.
      */
     loadFolderTree(): Promise<FolderTreeData>;
 
@@ -72,8 +72,8 @@ export interface DataProvider {
      * Load the folder-edgelist artifact (folder→folder import + call edges
      * with `weightP90` density threshold). Loop 13.
      *
-     * Same constraint as `loadFolderTree()`: VS Code mode throws until the
-     * panel-side handler lands.
+     * VS Code mode resolves through the panel's `data:folderEdges` echo
+     * (`src/extension/panel.ts::_loadFolderEdges`, loop 02).
      */
     loadFolderEdges(): Promise<FolderEdgelistData>;
 
