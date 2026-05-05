@@ -24,8 +24,8 @@
  *     `src/webview/index.html` and attaches `window.vis` synchronously.
  */
 
-import type { FolderTreeData } from '../../../graph/folder-tree';
-import type { FolderEdgelistData, FolderEdge } from '../../../graph/folder-edges';
+import type { FolderTreeData } from '../../../contracts/folder-tree';
+import type { FolderEdgelistData, FolderEdge } from '../../../contracts/folder-edges';
 import { WebviewLogger, createWebviewLogger } from '../services/webview-logger';
 import {
     buildVisNodes,

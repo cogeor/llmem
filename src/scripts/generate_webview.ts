@@ -1,7 +1,7 @@
 import { prepareWebviewDataFromSplitEdgeLists } from '../graph/webview-data';
 import { ImportEdgeListStore, CallEdgeListStore } from '../graph/edgelist';
 import { generateStaticWebview, GeneratorOptions } from '../webview/generator';
-import { loadConfig, getConfig } from '../extension/config';
+import { loadConfig, getConfig } from '../runtime/config';
 import { createWorkspaceContext } from '../application/workspace-context';
 import * as path from 'path';
 

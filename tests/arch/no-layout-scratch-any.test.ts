@@ -45,6 +45,14 @@ interface ScratchAnySite {
 interface KnownViolation {
     readonly rel: string;
     readonly line: number;
+    /**
+     * Loop 17: every future row carries an explicit expiration phase
+     * (`'permanent'` or a target loop id like `'18'`). The list is
+     * empty today, so no row exercises the field — the type guards
+     * future entries against being added without an expiration
+     * handshake.
+     */
+    readonly phase: string;
     readonly reason: string;
 }
 
@@ -52,6 +60,9 @@ interface KnownViolation {
  * Loop 16 lands with a clean migration. Reserved for future loops that
  * need a transitional path-and-line entry while a refactor is in
  * flight.
+ *
+ * Loop 17: every future entry MUST carry `phase` (`'permanent'` or a
+ * target loop id) plus a `reason`. The list lands empty.
  */
 const KNOWN_VIOLATIONS: readonly KnownViolation[] = [];
 

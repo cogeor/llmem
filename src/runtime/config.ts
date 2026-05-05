@@ -1,21 +1,36 @@
 /**
- * LLMem Configuration Module
+ * LLMem runtime configuration loader (Loop 17).
  *
- * Loads and validates configuration from environment variables.
- * Provides typed configuration interface to other modules.
+ * Hosts the `loadConfig` / `getConfig` runtime previously living in
+ * `src/extension/config.ts`. Moving the runtime here lets non-extension
+ * callers (`src/scripts/scan_codebase.ts`,
+ * `src/scripts/generate_webview.ts`) load config without crossing the
+ * `scripts -> extension` boundary that `tests/arch/dependencies.test.ts`
+ * forbids.
+ *
+ * The body is byte-identical to the previous `src/extension/config.ts`:
+ *   - Reads the same env vars (`LLMEM_*`).
+ *   - Falls back to the same VS Code workspace settings (`llmem.*`).
+ *   - Validates the same numeric bounds.
+ *
+ * The `try { require('vscode') }` swallow stays as-is — the runtime
+ * legitimately tries to read VS Code workspace settings when running
+ * inside VS Code. Outside VS Code (CLI scripts / Claude server), the
+ * `require` throws and we fall back to env + defaults.
+ *
+ * The dependency-test rules do not forbid `runtime -> vscode` because
+ * `vscode` is a bare specifier, not a relative import. The rule the
+ * loop closed was the relative `scripts -> extension` boundary.
  */
 
 import { DEFAULT_CONFIG, ENV_VARS, MAX_FILES_PER_FOLDER_CAP, MAX_FILE_SIZE_KB_CAP } from '../config-defaults';
 import type { Config } from '../core/config-types';
 
 /**
- * Configuration interface for LLMem extension
- *
- * Loop 04: the type lives in `src/core/config-types.ts`. This module
- * re-exports it as a transitional shim so existing
- * `import { Config } from '../extension/config'` callers keep working
- * while Loop 09/10 moves the runtime (`getConfig`/`loadConfig`) out of
- * `extension/`. After that, this re-export can go away too.
+ * Re-export the canonical `Config` interface from `src/core/config-types.ts`.
+ * Loop 04 lifted the type out of the extension module; Loop 17 keeps the
+ * re-export so callers can `import { Config }` from the runtime entry
+ * without reaching into core directly.
  */
 export type { Config };
 
@@ -23,7 +38,7 @@ export type { Config };
 let configInstance: Config | null = null;
 
 /**
- * Load configuration from environment variables
+ * Load configuration from environment variables.
  *
  * Priority (highest to lowest):
  *   1. Environment variables (LLMEM_* prefix)
@@ -85,9 +100,9 @@ export function loadConfig(): Config {
 }
 
 /**
- * Get the current configuration
+ * Get the current configuration.
  *
- * @throws Error if loadConfig() has not been called
+ * @throws Error if loadConfig() has not been called.
  * @returns Current configuration object
  */
 export function getConfig(): Config {
@@ -99,16 +114,12 @@ export function getConfig(): Config {
     return configInstance;
 }
 
-/**
- * Check if configuration has been loaded
- */
+/** Check if configuration has been loaded */
 export function isConfigLoaded(): boolean {
     return configInstance !== null;
 }
 
-/**
- * Reset configuration (for testing purposes)
- */
+/** Reset configuration (for testing purposes) */
 export function resetConfig(): void {
     configInstance = null;
 }

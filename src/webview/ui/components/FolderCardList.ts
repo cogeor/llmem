@@ -18,7 +18,7 @@
  *     ("card click drives state.set without changing currentView").
  */
 
-import type { FolderNode } from '../../../graph/folder-tree';
+import type { FolderNode } from '../../../contracts/folder-tree';
 import { escape } from '../utils/escape';
 import { WebviewLogger, createWebviewLogger } from '../services/webview-logger';
 

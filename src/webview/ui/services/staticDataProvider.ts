@@ -5,8 +5,8 @@ import { WatchApiClient } from './watchApiClient';
 import { designDocCache } from './designDocCache';
 import { liveReloadClient } from '../../live-reload';
 import { WebviewLogger, createWebviewLogger } from './webview-logger';
-import type { FolderTreeData } from '../../../graph/folder-tree';
-import type { FolderEdgelistData } from '../../../graph/folder-edges';
+import type { FolderTreeData } from '../../../contracts/folder-tree';
+import type { FolderEdgelistData } from '../../../contracts/folder-edges';
 
 /**
  * Schema-version constants for the folder artifacts. Loop 13 mirrors the

@@ -89,21 +89,21 @@ const RULES: readonly BoundaryRule[] = [
   },
 ];
 
-// Each entry is paired with the loop that fixes it. When a loop lands its
-// fix, that row must be deleted from this list — otherwise the test will
-// fail with "STALE", which is the exact signal the next reviewer needs.
-const KNOWN_VIOLATIONS: readonly KnownViolation[] = [
-  {
-    from: 'src/scripts/scan_codebase.ts',
-    to: 'src/extension/config.ts',
-    reason: 'getConfig+loadConfig runtime; future loop moves runtime out of extension/',
-  },
-  {
-    from: 'src/scripts/generate_webview.ts',
-    to: 'src/extension/config.ts',
-    reason: 'getConfig+loadConfig runtime; future loop moves runtime out of extension/',
-  },
-];
+// Loop 17 cleared the last two boundary violations by moving the
+// `loadConfig` / `getConfig` runtime out of `src/extension/config.ts`
+// into `src/runtime/config.ts` and deleting the old extension module.
+// The list lands EMPTY. It is reserved for future transitional rows.
+//
+// Each future row MUST carry:
+//   - `phase: 'NN'` — the loop id that retires the row, OR
+//   - `phase: 'permanent'` — for a row that is kept by design.
+// Plus a `reason` string that ends in "Loop NN fixes it" (or
+// "permanent: <why>") so the expiration handshake is explicit.
+//
+// The `RULES` array is intentionally unchanged — the rules themselves
+// (`scripts -> extension`, etc.) are forward-looking gates that catch
+// regressions even with the list empty.
+const KNOWN_VIOLATIONS: readonly KnownViolation[] = [];
 
 function toRepoRel(absPath: string): string {
   return path.relative(REPO_ROOT, absPath).replace(/\\/g, '/');

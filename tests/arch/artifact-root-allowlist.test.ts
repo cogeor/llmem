@@ -77,6 +77,16 @@ interface Match {
 
 interface AllowlistEntry {
     readonly file: string;      // forward-slash repo-relative path
+    /**
+     * Loop 17: every row carries an explicit expiration handshake.
+     * `'permanent'` for rows kept by design (categories A–C, plus the
+     * source-of-truth defaults in D and the test self-references in
+     * G/H/I). A target loop id (e.g. `'18'`) for rows expected to
+     * retire in a specific future loop. Today every existing row is
+     * `'permanent'` — see the per-category notes in the ALLOWLIST
+     * literal below.
+     */
+    readonly phase: string;
     readonly reason: string;    // one-line justification
 }
 
@@ -243,46 +253,63 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     // A. Repo-root config files
     // -----------------------------------------------------------------------
     { file: '.env.example',
+      phase: 'permanent',
       reason: 'Example env file documents `ARTIFACT_ROOT=.artifacts` as the default.' },
     { file: '.eslintrc.json',
+      phase: 'permanent',
       reason: 'ESLint ignore pattern for the generated artifact directory.' },
     { file: '.gitignore',
+      phase: 'permanent',
       reason: 'git-ignore for the generated artifact directory.' },
     { file: '.vscodeignore',
+      phase: 'permanent',
       reason: 'VSIX packaging excludes the generated artifact directory.' },
     { file: 'package.json',
+      phase: 'permanent',
       reason: 'Extension contributes `llmem.artifactRoot` setting; canonical default value is `.artifacts`.' },
 
     // -----------------------------------------------------------------------
     // B. Top-level documentation
     // -----------------------------------------------------------------------
     { file: 'CLAUDE.md',
+      phase: 'permanent',
       reason: 'Codebase guide for Claude Code; documents artifact root layout.' },
     { file: 'CONTRIBUTING.md',
+      phase: 'permanent',
       reason: 'Documents legacy `rm -rf .artifacts/webview` step in case Loop 01 cache-invalidation regresses.' },
     { file: 'README.md',
+      phase: 'permanent',
       reason: 'User-facing README documents the default artifact root and resolution rules.' },
 
     // -----------------------------------------------------------------------
     // C. Memo / design docs
     // -----------------------------------------------------------------------
     { file: 'memo/ARCHITECTURE.md',
+      phase: 'permanent',
       reason: 'Architecture notes describe the artifact root layout.' },
     { file: 'memo/codebase-quality-implementation-plan-2026-05-03.md',
+      phase: 'permanent',
       reason: 'Older quality plan references the literal as a known hardcode site.' },
     { file: 'memo/codebase-quality-implementation-plan-2026-05-05.md',
+      phase: 'permanent',
       reason: 'Current quality plan; constraint #5 IS this loop. Permanent historical record.' },
     { file: 'memo/design/01_non_ts_call_graphs.md',
+      phase: 'permanent',
       reason: 'Design doc discusses `.artifacts/` vs `.llmem/` placement.' },
     { file: 'memo/design/02_folder_view.md',
+      phase: 'permanent',
       reason: 'Design doc describes folder-view artifacts under the artifact root.' },
     { file: 'memo/design/03_spec_to_code_mapping.md',
+      phase: 'permanent',
       reason: 'Design doc names the spec-index artifact path.' },
     { file: 'memo/design/04_platform.md',
+      phase: 'permanent',
       reason: 'Platform design doc references the bundle layout under the artifact root.' },
     { file: 'memo/design/05_claude_integration.md',
+      phase: 'permanent',
       reason: 'Claude integration design doc describes initial-scan output.' },
     { file: 'memo/design/06_cli_first.md',
+      phase: 'permanent',
       reason: 'CLI-first design doc; includes a config TOML example with the default value.' },
 
     // -----------------------------------------------------------------------
@@ -292,28 +319,40 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     //    category requires reviewer scrutiny in the PR.
     // -----------------------------------------------------------------------
     { file: 'src/claude/cli/commands/generate.ts',
+      phase: 'permanent',
       reason: 'Workspace-marker walker (`[\'.git\', \'package.json\', \'.llmem\', \'.arch\', \'.artifacts\']`).' },
     { file: 'src/claude/cli/commands/init.ts',
+      phase: 'permanent',
       reason: 'Emits a `.llmem/config.toml` template that contains `artifactRoot = ".artifacts"`.' },
     { file: 'src/claude/cli/commands/scan.ts',
+      phase: 'permanent',
       reason: 'CLI command description string ("write edge lists to .artifacts/").' },
     { file: 'src/claude/cli/commands/serve.ts',
+      phase: 'permanent',
       reason: 'Default `{ artifactRoot: \'.artifacts\' }` and `path.join(workspace, \'.artifacts\', \'webview\')` derived path.' },
     { file: 'src/claude/cli/commands/stats.ts',
+      phase: 'permanent',
       reason: 'Workspace-marker walker.' },
     { file: 'src/claude/cli/main.ts',
+      phase: 'permanent',
       reason: '--help text documents `LLMEM_ARTIFACT_ROOT` default value.' },
     { file: 'src/claude/cli/workspace.ts',
+      phase: 'permanent',
       reason: 'Workspace-marker walker + JSDoc that lists the markers checked.' },
     { file: 'src/claude/config.ts',
+      phase: 'permanent',
       reason: 'JSDoc documents `LLMEM_ARTIFACT_ROOT` env var default.' },
     { file: 'src/claude/index.ts',
+      phase: 'permanent',
       reason: 'Workspace-marker walker.' },
     { file: 'src/claude/server/index.ts',
+      phase: 'permanent',
       reason: 'JSDoc + `config.artifactRoot || \'.artifacts\'` fallback in HTTP server bootstrap.' },
     { file: 'src/claude/web-launcher.ts',
+      phase: 'permanent',
       reason: 'Default-param assignment for the legacy back-compat path; ignored when `ctx` is supplied.' },
     { file: 'src/config-defaults.ts',
+      phase: 'permanent',
       reason: 'Canonical default value for `RuntimeConfig.artifactRoot`. Single source of truth; if this entry ever moves, the rest of category D must follow.' },
 
     // -----------------------------------------------------------------------
@@ -324,12 +363,16 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     //    `src/config-defaults.ts`.
     // -----------------------------------------------------------------------
     { file: 'src/artifact/service.ts',
+      phase: 'permanent',
       reason: 'ALWAYS_IGNORED set in legacy artifact tree builder.' },
     { file: 'src/parser/config.ts',
+      phase: 'permanent',
       reason: 'IGNORED_FOLDERS set used by parser scans.' },
     { file: 'src/parser/ts-service.ts',
+      phase: 'permanent',
       reason: 'TS-specific skip set used by the TypeScript service walker.' },
     { file: 'src/webview/worktree.ts',
+      phase: 'permanent',
       reason: 'Webview worktree builder ignored-folders set.' },
 
     // -----------------------------------------------------------------------
@@ -338,38 +381,56 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     //    comments describe the on-disk shape for readers.
     // -----------------------------------------------------------------------
     { file: 'src/artifact/path-mapper.ts',
+      phase: 'permanent',
       reason: 'JSDoc describes the on-disk layout (`/.artifacts/path/to/source/file.ext/...`).' },
     { file: 'src/extension/panel.ts',
+      phase: 'permanent',
       reason: 'JSDoc on `_loadFolderTree` / `_loadFolderEdges` documents which artifact JSON files are read.' },
     { file: 'src/scripts/generate-call-edges.ts',
+      phase: 'permanent',
       reason: 'Dev script-side helper resolves `.artifacts` directly; scripts run outside the WorkspaceContext model, allowed by design.' },
     { file: 'src/scripts/generate_edgelist.ts',
+      phase: 'permanent',
       reason: 'Dev script-side `configOverrides: { artifactRoot: \'.artifacts\' }` literal default.' },
     { file: 'src/webview/generator.ts',
+      phase: 'permanent',
       reason: 'JSDoc + comments describe the `.artifacts/webview/` cache surface (this module owns it).' },
     { file: 'src/webview/shell-cache.ts',
+      phase: 'permanent',
       reason: 'Banner doc on the cache-invalidation guard for `.artifacts/webview/` (this module owns the cache writes).' },
     { file: 'src/webview/ui/services/vscodeDataProvider.ts',
+      phase: 'permanent',
       reason: 'JSDoc comment naming the artifact JSON file the host reads.' },
 
     // -----------------------------------------------------------------------
     // G. Architecture tests' own skip-directory lists
     // -----------------------------------------------------------------------
     { file: 'tests/arch/artifact-root-allowlist.test.ts',
+      phase: 'permanent',
       reason: 'This file IS the allowlist test — its banner, regex, scan, ALLOWLIST entries, and assertion messages all mention the literal by design. Self-reference is permanent.' },
     { file: 'tests/arch/console-discipline.test.ts',
+      phase: 'permanent',
       reason: 'Skip directory in walkSrc.' },
     { file: 'tests/arch/dependencies.test.ts',
+      phase: 'permanent',
       reason: 'Skip directory in walkSrc.' },
+    { file: 'tests/arch/file-size-budget.test.ts',
+      phase: 'permanent',
+      reason: 'Skip directory in walkSrc (loop 15 file-size budget; literal lives in shouldSkipDir).' },
     { file: 'tests/arch/graph-ids.test.ts',
+      phase: 'permanent',
       reason: 'Skip directory in walkSrc.' },
     { file: 'tests/arch/no-layout-scratch-any.test.ts',
+      phase: 'permanent',
       reason: 'Skip directory in walkSrc.' },
     { file: 'tests/arch/webview-shell-parity.test.ts',
+      phase: 'permanent',
       reason: 'Banner comment + cache-invalidation test for `.artifacts/webview/`.' },
     { file: 'tests/arch/workspace-context-singleton.test.ts',
+      phase: 'permanent',
       reason: 'Skip directory in walkSrc.' },
     { file: 'tests/arch/workspace-paths.test.ts',
+      phase: 'permanent',
       reason: 'Skip directory in walkSrc + WRITE_ALLOWLIST justifications mention the directory.' },
 
     // -----------------------------------------------------------------------
@@ -379,56 +440,80 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     //    snapshots, etc.
     // -----------------------------------------------------------------------
     { file: 'tests/contracts/__snapshots__/cli-describe.json',
+      phase: 'permanent',
       reason: 'Frozen CLI description snapshot mentions `.artifacts/` (matches src/claude/cli/commands/scan.ts).' },
     { file: 'tests/contracts/_helpers/build-server.ts',
+      phase: 'permanent',
       reason: 'Fixture builds a server with `artifactRoot: \'.artifacts\'` and a webviewDir under it.' },
     { file: 'tests/contracts/http-route-dtos.test.ts',
+      phase: 'permanent',
       reason: 'Constructs fixture artifact dir under tmp.' },
     { file: 'tests/integration/arch-watcher.test.ts',
+      phase: 'permanent',
       reason: 'TEST_ARTIFACTS_DIR constant for the watcher fixture.' },
     { file: 'tests/integration/cli/cli-describe.test.ts',
+      phase: 'permanent',
       reason: 'Fixture artifact dir for CLI describe assertions.' },
     { file: 'tests/integration/cli/cli-document.test.ts',
+      phase: 'permanent',
       reason: 'Comment + fixture artifact dir for CLI document assertions.' },
     { file: 'tests/integration/cli/cli-port-fallback.test.ts',
+      phase: 'permanent',
       reason: 'Banner + comment about pre-existing `.artifacts/` in this repo as the test workspace.' },
     { file: 'tests/integration/cli/cli-scan-folder-artifacts.test.ts',
+      phase: 'permanent',
       reason: 'Fixture artifact dir constructed under tmp (twice).' },
     { file: 'tests/integration/cli/cli-scan.test.ts',
+      phase: 'permanent',
       reason: 'Banner + fixture path assertions on scan output files.' },
     { file: 'tests/integration/cli/cli-serve-folder-artifacts.test.ts',
+      phase: 'permanent',
       reason: 'Fixture artifact dir for the serve-folder-artifacts integration.' },
     { file: 'tests/integration/cli/cli-serve-zero-config.test.ts',
+      phase: 'permanent',
       reason: 'Banner + asserts that scan wrote `.artifacts/import-edgelist.json`.' },
     { file: 'tests/integration/document-folder.test.ts',
+      phase: 'permanent',
       reason: 'Test name + "poison" fixture asserts hardcoded `.artifacts` is NOT used (Loop 09 contract).' },
     { file: 'tests/integration/graph-build.test.ts',
+      phase: 'permanent',
       reason: 'Fixture artifact dir for graph-build integration.' },
     { file: 'tests/integration/mcp-tools.test.ts',
+      phase: 'permanent',
       reason: 'Comment about reader/writer not consulting `.artifacts` directly.' },
     { file: 'tests/integration/server-hardening.test.ts',
+      phase: 'permanent',
       reason: 'Fixture builds a server with `artifactRoot: \'.artifacts\'` and webviewDir under it (multiple fixtures).' },
     { file: 'tests/integration/toggle-watch.test.ts',
+      phase: 'permanent',
       reason: 'Fixture artifact dir for the toggle-watch integration (multiple fixtures).' },
     { file: 'tests/integration/webview/generator-folder-globals.test.ts',
+      phase: 'permanent',
       reason: 'Banner mentions `.artifacts/webview/` cache rule (per CLAUDE.md).' },
 
     // -----------------------------------------------------------------------
     // I. Unit tests under tests/unit/
     // -----------------------------------------------------------------------
     { file: 'tests/unit/application/scan-containment.test.ts',
+      phase: 'permanent',
       reason: 'Fixture artifact dir for scan-containment unit test.' },
     { file: 'tests/unit/application/viewer-data.test.ts',
+      phase: 'permanent',
       reason: 'Fixture artifact dir for viewer-data unit test.' },
     { file: 'tests/unit/application/workspace-context.test.ts',
+      phase: 'permanent',
       reason: 'Asserts `RuntimeConfig.artifactRoot` default value is `.artifacts`.' },
     { file: 'tests/unit/claude-server/middleware.test.ts',
+      phase: 'permanent',
       reason: 'Fixture builds context with `artifactRoot: \'.artifacts\'`.' },
     { file: 'tests/unit/extension/panel-folder-handlers.test.ts',
+      phase: 'permanent',
       reason: 'Fixture artifact dir for panel folder-handlers unit test.' },
     { file: 'tests/unit/graph/folder-edges-store.test.ts',
+      phase: 'permanent',
       reason: 'Fixture artifact dir for folder-edges-store unit tests (multiple fixtures).' },
     { file: 'tests/unit/graph/folder-tree-store.test.ts',
+      phase: 'permanent',
       reason: 'Fixture artifact dir for folder-tree-store unit tests (multiple fixtures).' },
 ];
 

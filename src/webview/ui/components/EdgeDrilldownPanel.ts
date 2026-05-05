@@ -12,7 +12,7 @@
  * `tests/unit/web-viewer/package-view-edges.test.ts`.
  */
 
-import type { FolderEdge } from '../../../graph/folder-edges';
+import type { FolderEdge } from '../../../contracts/folder-edges';
 import { escape } from '../utils/escape';
 import { WebviewLogger, createWebviewLogger } from '../services/webview-logger';
 import { folderOf } from './folderViewModel';

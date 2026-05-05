@@ -19,8 +19,8 @@
  *   5. `unmount` lifecycle.
  */
 
-import type { FolderTreeData } from '../../../graph/folder-tree';
-import type { FolderEdgelistData, FolderEdge } from '../../../graph/folder-edges';
+import type { FolderTreeData } from '../../../contracts/folder-tree';
+import type { FolderEdgelistData, FolderEdge } from '../../../contracts/folder-edges';
 import { DataProvider } from '../services/dataProvider';
 import { State } from '../state';
 import { AppState, DesignDoc } from '../types';

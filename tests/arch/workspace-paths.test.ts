@@ -180,29 +180,81 @@ interface WriteCallSite {
   readonly method: string;
 }
 
+interface WriteAllowlistEntry {
+  /** Forward-slash, repo-relative path. */
+  readonly file: string;
+  /** `'permanent'` or a target loop id (e.g. `'18'`) that retires the row. */
+  readonly phase: string;
+  /** One-line justification — answers: why is this write legitimate here? */
+  readonly reason: string;
+}
+
 // Production files allowed to call write-mutating fs methods. Anything
-// outside this list will fail the scan. Each entry justifies its
-// presence:
-//   - 'src/artifact/storage.ts' — free-function back-compat surface
-//     (see file banner; live writers should use `ArtifactStorage`).
-//   - 'src/claude/cli/commands/init.ts' — bootstraps the `.llmem/`
-//     workspace marker before any `WorkspaceIO` can be constructed.
-//   - 'src/webview/generator.ts',
-//     'src/webview/shell-cache.ts',
-//     'src/webview/utils/md-converter.ts' — own the
-//     `.artifacts/webview/` cache surface end-to-end.
-//   - 'src/workspace/safe-fs.ts',
-//     'src/workspace/workspace-io.ts' — implement the containment
-//     surface itself; raw fs is required.
-const WRITE_ALLOWLIST: ReadonlySet<string> = new Set([
-  'src/artifact/storage.ts',
-  'src/claude/cli/commands/init.ts',
-  'src/webview/generator.ts',
-  'src/webview/shell-cache.ts',
-  'src/webview/utils/md-converter.ts',
-  'src/workspace/safe-fs.ts',
-  'src/workspace/workspace-io.ts',
-]);
+// outside this list will fail the scan.
+//
+// Loop 17 reshaped this allowlist from a bare `Set<string>` to a typed
+// array of `{ file, phase, reason }` rows so each entry carries an
+// expiration phase (`'permanent'` by default for these rows). The set
+// shape that the scan uses is derived from `file` below.
+const WRITE_ALLOWLIST_ENTRIES: readonly WriteAllowlistEntry[] = [
+  {
+    file: 'src/artifact/storage.ts',
+    phase: 'permanent',
+    reason:
+      'Free-function back-compat write surface (see file banner; live ' +
+      'writers should use `ArtifactStorage` which routes through ' +
+      '`WorkspaceIO`). Same lifecycle as the entries in ' +
+      'KNOWN_WRITE_VIOLATIONS below.',
+  },
+  {
+    file: 'src/claude/cli/commands/init.ts',
+    phase: 'permanent',
+    reason:
+      'Bootstraps the `.llmem/` workspace marker before any ' +
+      '`WorkspaceIO` exists — the marker file is what later code reads ' +
+      'to discover the workspace root.',
+  },
+  {
+    file: 'src/webview/generator.ts',
+    phase: 'permanent',
+    reason:
+      'Owns the `.artifacts/webview/` cache surface end-to-end. The ' +
+      'cache invalidation contract is co-located with the writer here.',
+  },
+  {
+    file: 'src/webview/shell-cache.ts',
+    phase: 'permanent',
+    reason:
+      'Owns shell-cache invalidation writes for the ' +
+      '`.artifacts/webview/` cache (see banner doc).',
+  },
+  {
+    file: 'src/webview/utils/md-converter.ts',
+    phase: 'permanent',
+    reason:
+      'Writes `.artifacts/webview/{slug}.html` from arch markdown — same ' +
+      'surface-owner contract as `generator.ts` (this is the markdown-to-' +
+      'HTML rendering side of the webview cache).',
+  },
+  {
+    file: 'src/workspace/safe-fs.ts',
+    phase: 'permanent',
+    reason:
+      'Implements the textual-containment surface itself; raw `fs` is ' +
+      'required because this module is what `WorkspaceIO` builds on.',
+  },
+  {
+    file: 'src/workspace/workspace-io.ts',
+    phase: 'permanent',
+    reason:
+      'Implements the realpath-strong containment surface itself; raw ' +
+      '`fs` is required for the same reason as `safe-fs.ts`.',
+  },
+];
+
+const WRITE_ALLOWLIST: ReadonlySet<string> = new Set(
+  WRITE_ALLOWLIST_ENTRIES.map((e) => e.file),
+);
 
 // Heuristic regex on raw source — documented per PLAN. Matches:
 //   fs.writeFile / fs.writeFileSync / fs.appendFile / fs.appendFileSync /
@@ -301,11 +353,27 @@ test('write-allowlist: every WRITE_ALLOWLIST entry is still observed (no STALE r
     for (const f of stale) {
       console.error(
         `STALE  ${f} no longer calls any fs.write* method; ` +
-          `remove from WRITE_ALLOWLIST in tests/arch/workspace-paths.test.ts.`
+          `remove from WRITE_ALLOWLIST_ENTRIES in tests/arch/workspace-paths.test.ts.`
       );
     }
     assert.fail(`${stale.length} stale WRITE_ALLOWLIST entry/entries detected.`);
   }
+
+  // Loop 17: integrity check — `WRITE_ALLOWLIST_ENTRIES` is the source
+  // of truth for `WRITE_ALLOWLIST`; the derived `Set` above must list
+  // every entry exactly once. This guards against future edits that
+  // mutate the `Set` directly without touching the entries array.
+  const justifiedFiles = new Set(WRITE_ALLOWLIST_ENTRIES.map((e) => e.file));
+  const missingJustification: string[] = [];
+  for (const f of WRITE_ALLOWLIST) {
+    if (!justifiedFiles.has(f)) missingJustification.push(f);
+  }
+  assert.deepEqual(
+    missingJustification,
+    [],
+    `WRITE_ALLOWLIST contains files without a justification entry; ` +
+      `add a row to WRITE_ALLOWLIST_ENTRIES with phase + reason.`,
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -394,6 +462,14 @@ interface FsWriteCallSite {
 interface KnownFsWriteViolation {
   readonly rel: string;
   readonly method: string;
+  /**
+   * `'permanent'` for rows that are kept by design (e.g. legacy free-
+   * function back-compat surfaces) or a target loop id (e.g. `'18'`)
+   * for rows that are expected to retire. Loop 17 made this field
+   * required so every transitional row carries an explicit expiration
+   * handshake.
+   */
+  readonly phase: string;
   readonly reason: string;
 }
 
@@ -426,16 +502,19 @@ const KNOWN_WRITE_VIOLATIONS: readonly KnownFsWriteViolation[] = [
   {
     rel: 'src/artifact/storage.ts',
     method: 'mkdir',
-    reason: 'Implicit mkdir inside the back-compat free-function `writeFile` in src/artifact/storage.ts (creates parent dirs before writing). Same lifecycle as the writeFile row below.',
+    phase: 'permanent',
+    reason: 'Implicit mkdir inside the back-compat free-function `writeFile` in src/artifact/storage.ts (creates parent dirs before writing). Same lifecycle as the writeFile row below. If the free function is retired, remove this row.',
   },
   {
     rel: 'src/artifact/storage.ts',
     method: 'writeFile',
+    phase: 'permanent',
     reason: 'Free-function back-compat export `writeFile` in src/artifact/storage.ts; callers pass arbitrary absolute paths so containment cannot be enforced via WorkspaceIO. Live writers use the ArtifactStorage class instead. If the free function is retired, remove this row.',
   },
   {
     rel: 'src/artifact/storage.ts',
     method: 'unlink',
+    phase: 'permanent',
     reason: 'Free-function back-compat export `deleteFile` in src/artifact/storage.ts; callers pass arbitrary absolute paths so containment cannot be enforced via WorkspaceIO. Live writers use the ArtifactStorage class instead. If the free function is retired, remove this row.',
   },
 ];

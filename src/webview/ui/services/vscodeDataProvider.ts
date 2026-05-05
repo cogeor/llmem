@@ -2,8 +2,8 @@
 import { DataProvider, HostKind, WatchToggleResult } from './dataProvider';
 import { GraphData, WorkTreeNode, VisNode, VisEdge, DesignDoc } from '../types';
 import { WebviewLogger, createWebviewLogger } from './webview-logger';
-import type { FolderTreeData } from '../../../graph/folder-tree';
-import type { FolderEdgelistData } from '../../../graph/folder-edges';
+import type { FolderTreeData } from '../../../contracts/folder-tree';
+import type { FolderEdgelistData } from '../../../contracts/folder-edges';
 
 /**
  * Minimal shape of the VS Code webview API. The full type lives in

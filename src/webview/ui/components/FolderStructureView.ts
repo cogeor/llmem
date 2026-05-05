@@ -13,10 +13,11 @@
  *     import/call edges (NOT the parent/child hierarchy this view shows).
  *
  * Pure browser code — uses `import type` for FolderTreeData/FolderNode
- * so the bundle stays clean of Node-only imports from src/graph/folder-tree.ts.
+ * imported from `src/contracts/folder-tree.ts` (Loop 17 contracts split)
+ * so the bundle stays clean of Node-only imports from src/graph/.
  */
 
-import type { FolderTreeData, FolderNode } from '../../../graph/folder-tree';
+import type { FolderTreeData, FolderNode } from '../../../contracts/folder-tree';
 import { DataProvider } from '../services/dataProvider';
 import { State } from '../state';
 import { AppState } from '../types';

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { HotReloadService } from './hot-reload';
-import { getConfig } from './config';
+import { getConfig } from '../runtime/config';
 import { collectViewerData, type ViewerData } from '../application/viewer-data';
 import { scanFile, scanFolderRecursive } from '../application/scan';
 import { addWatchedPath, removeWatchedPath } from '../application/toggle-watch';

@@ -1,9 +1,15 @@
 /**
- * Folder-edges domain primitive (Loop 08).
+ * Folder-edges domain primitive (Loop 08; refactored Loop 17).
  *
  * Pure aggregator that rolls file-level import + call edges up to
  * folder→folder edges, with a 90th-percentile threshold persisted on
  * the envelope. No I/O — accepts plain data and returns plain data.
+ *
+ * Loop 17 split the type-only / Zod-schema / error-class surface out into
+ * `src/contracts/folder-edges.ts` so browser code can import it without
+ * dragging the Node-only `path` import (used by `folderOf`) into the
+ * webview bundle. This module re-exports the contract symbols verbatim
+ * so existing Node callers keep working.
  *
  * Mirrors `folder-tree.ts` for the folder-path rule (`folderOf`):
  *   - Backslashes are normalized to forward slashes.
@@ -24,35 +30,34 @@
  *      NumPy-default linear-interpolation method (type 7).
  */
 
-import { z } from 'zod';
 import * as path from 'path';
 import { isExternalModuleId } from '../core/ids';
-
-export const FOLDER_EDGES_SCHEMA_VERSION = 1;
+import {
+    FOLDER_EDGES_SCHEMA_VERSION,
+    FolderEdgelistSchema,
+    FolderEdgelistLoadError,
+    type FolderEdge,
+    type FolderEdgeKind,
+    type FolderEdgelistData,
+} from '../contracts/folder-edges';
 
 // ---------------------------------------------------------------------------
-// Schemas
+// Re-exports from src/contracts/folder-edges (Loop 17 contracts split).
 // ---------------------------------------------------------------------------
 
-export const FolderEdgeKindSchema = z.enum(['import', 'call']);
-
-export const FolderEdgeSchema = z.object({
-    from: z.string(),
-    to: z.string(),
-    kind: FolderEdgeKindSchema,
-    weight: z.number().int().positive(),
-});
-
-export const FolderEdgelistSchema = z.object({
-    schemaVersion: z.literal(FOLDER_EDGES_SCHEMA_VERSION),
-    timestamp: z.string(),
-    edges: z.array(FolderEdgeSchema),
-    weightP90: z.number().nonnegative(),
-});
-
-export type FolderEdgeKind = z.infer<typeof FolderEdgeKindSchema>;
-export type FolderEdge = z.infer<typeof FolderEdgeSchema>;
-export type FolderEdgelistData = z.infer<typeof FolderEdgelistSchema>;
+export {
+    FOLDER_EDGES_SCHEMA_VERSION,
+    FolderEdgeKindSchema,
+    FolderEdgeSchema,
+    FolderEdgelistSchema,
+    FolderEdgelistLoadError,
+} from '../contracts/folder-edges';
+export type {
+    FolderEdge,
+    FolderEdgeKind,
+    FolderEdgelistData,
+    FolderEdgelistLoadErrorReason,
+} from '../contracts/folder-edges';
 
 // ---------------------------------------------------------------------------
 // Builder input
@@ -68,30 +73,6 @@ export interface BuildFolderEdgesInput {
      * the ID does not belong to a workspace file (external / unknown).
      */
     fileOf: (entityOrFileId: string) => string | null;
-}
-
-// ---------------------------------------------------------------------------
-// Error
-// ---------------------------------------------------------------------------
-
-export type FolderEdgelistLoadErrorReason =
-    | 'parse-error'
-    | 'schema-error'
-    | 'unknown-version';
-
-export class FolderEdgelistLoadError extends Error {
-    constructor(
-        public readonly filePath: string,
-        public readonly reason: FolderEdgelistLoadErrorReason,
-        public readonly detail: string,
-        cause?: unknown,
-    ) {
-        super(`[folder-edges] ${reason} loading ${filePath}: ${detail}`);
-        this.name = 'FolderEdgelistLoadError';
-        if (cause !== undefined) {
-            (this as { cause?: unknown }).cause = cause;
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------

@@ -25,23 +25,46 @@ import * as path from 'node:path';
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const SRC_ROOT = path.join(REPO_ROOT, 'src');
 
+interface CreateAllowlistEntry {
+    /** Forward-slash repo-relative path. */
+    readonly file: string;
+    /** `'permanent'` for rows kept by design; a target loop id otherwise. */
+    readonly phase: string;
+    /** One-line justification. */
+    readonly reason: string;
+}
+
 // Production files allowed to call `WorkspaceIO.create(...)`. After
 // Loop 04 only the factory itself remains as a direct caller; every
 // other host routes through `createWorkspaceContext`. The
 // `workspace-io.ts` self-reference (a `createWorkspaceIO` thin alias)
 // is kept as a co-located factory.
 //
-// Justifications per row:
-//   - workspace-context.ts: the factory itself — the single production
-//     direct caller of `WorkspaceIO.create`. Hosts call
-//     `createWorkspaceContext`, not this constructor.
-//   - workspace-io.ts: thin alias `createWorkspaceIO(root) ⇒
-//     WorkspaceIO.create(root)`. Pre-loop-04 ergonomics; kept because
-//     focused tests still import it directly.
-const ALLOWLIST: ReadonlySet<string> = new Set([
-    'src/application/workspace-context.ts',
-    'src/workspace/workspace-io.ts',
-]);
+// Loop 17 reshaped this allowlist from a bare `Set<string>` to a typed
+// `{ file, phase, reason }` array; the runtime `Set` is derived below.
+// Both rows are permanent.
+const ALLOWLIST_ENTRIES: readonly CreateAllowlistEntry[] = [
+    {
+        file: 'src/application/workspace-context.ts',
+        phase: 'permanent',
+        reason:
+            'The factory itself — the single production direct caller of ' +
+            '`WorkspaceIO.create`. Hosts call `createWorkspaceContext`, not ' +
+            'this constructor.',
+    },
+    {
+        file: 'src/workspace/workspace-io.ts',
+        phase: 'permanent',
+        reason:
+            'Thin alias `createWorkspaceIO(root) ⇒ WorkspaceIO.create(root)`. ' +
+            'Pre-loop-04 ergonomics; kept because focused tests still import ' +
+            'it directly.',
+    },
+];
+
+const ALLOWLIST: ReadonlySet<string> = new Set(
+    ALLOWLIST_ENTRIES.map((e) => e.file),
+);
 
 const CREATE_RE = /\bWorkspaceIO\.create\s*\(/g;
 
@@ -147,4 +170,20 @@ test('workspace-context-singleton: no STALE allowlist rows (every entry must sti
             `Either restore the call site or remove the row from the ALLOWLIST.`,
         );
     }
+
+    // Loop 17: integrity check — `ALLOWLIST_ENTRIES` is the source of
+    // truth; the derived `ALLOWLIST` set must list each entry exactly
+    // once, and every entry must carry phase + reason. Guards against
+    // future edits that mutate `ALLOWLIST` directly.
+    const justifiedFiles = new Set(ALLOWLIST_ENTRIES.map((e) => e.file));
+    const missingJustification: string[] = [];
+    for (const f of ALLOWLIST) {
+        if (!justifiedFiles.has(f)) missingJustification.push(f);
+    }
+    assert.deepEqual(
+        missingJustification,
+        [],
+        `ALLOWLIST contains files without an entry in ALLOWLIST_ENTRIES; ` +
+            `add a row with phase + reason.`,
+    );
 });

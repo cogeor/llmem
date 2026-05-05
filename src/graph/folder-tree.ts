@@ -1,16 +1,16 @@
 /**
- * Folder-tree domain primitive (Loop 08).
+ * Folder-tree domain primitive (Loop 08; refactored Loop 17).
  *
  * Pure aggregator that turns the flat list of file IDs from the import
  * edge-list (plus a set of folders that have docs) into a recursive
  * `FolderTree`. No I/O — accepts plain data and returns plain data.
  *
- * Mirrors the `edgelist-schema.ts` pattern:
- *   - Owns both the runtime Zod schemas and the inferred TypeScript types.
- *   - Exposes a `migrateFolderTree` that accepts versionless and
- *     `schemaVersion: 1` documents, rejecting everything else with a
- *     dedicated `FolderTreeLoadError` (parse-error | schema-error |
- *     unknown-version).
+ * Loop 17 split the type-only / Zod-schema / error-class surface out into
+ * `src/contracts/folder-tree.ts` so browser code can import the schema
+ * without dragging Node-only `path` (used by `folderOf`) into the
+ * webview bundle. This module re-exports the contract symbols verbatim
+ * so existing Node callers (`folder-artifacts.ts`, route handlers,
+ * unit/integration tests) keep working.
  *
  * Folder-path conventions
  * -----------------------
@@ -24,54 +24,30 @@
  *   folder as their POSIX counterparts.
  */
 
-import { z } from 'zod';
 import * as path from 'path';
 import { isExternalModuleId } from '../core/ids';
-
-export const FOLDER_TREE_SCHEMA_VERSION = 1;
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export interface FolderNode {
-    /** Forward-slash folder path. `""` for root, `"."` for top-level files. */
-    path: string;
-    /** Basename of `path` (`""` for root, `"."` for the top-level bucket). */
-    name: string;
-    /** Recursive count of files in this folder and all descendants. */
-    fileCount: number;
-    /** Recursive sum of `loc` for files in this folder and all descendants. */
-    totalLOC: number;
-    /** Whether `.arch/{path}/README.md` exists (passed in via `documentedFolders`). */
-    documented: boolean;
-    /** Sorted alphabetically by `name` for deterministic output. */
-    children: FolderNode[];
-}
+import {
+    FOLDER_TREE_SCHEMA_VERSION,
+    FolderTreeSchema,
+    FolderTreeLoadError,
+    type FolderTreeData,
+} from '../contracts/folder-tree';
 
 // ---------------------------------------------------------------------------
-// Schemas
+// Re-exports from src/contracts/folder-tree (Loop 17 contracts split).
 // ---------------------------------------------------------------------------
 
-// Recursive Zod schema — `z.lazy` is required for self-references.
-export const FolderNodeSchema: z.ZodType<FolderNode> = z.lazy(() =>
-    z.object({
-        path: z.string(),
-        name: z.string(),
-        fileCount: z.number().int().nonnegative(),
-        totalLOC: z.number().int().nonnegative(),
-        documented: z.boolean(),
-        children: z.array(FolderNodeSchema),
-    }),
-);
-
-export const FolderTreeSchema = z.object({
-    schemaVersion: z.literal(FOLDER_TREE_SCHEMA_VERSION),
-    timestamp: z.string(),
-    root: FolderNodeSchema,
-});
-
-export type FolderTreeData = z.infer<typeof FolderTreeSchema>;
+export {
+    FOLDER_TREE_SCHEMA_VERSION,
+    FolderNodeSchema,
+    FolderTreeSchema,
+    FolderTreeLoadError,
+} from '../contracts/folder-tree';
+export type {
+    FolderNode,
+    FolderTreeData,
+    FolderTreeLoadErrorReason,
+} from '../contracts/folder-tree';
 
 // ---------------------------------------------------------------------------
 // Builder input
@@ -85,30 +61,6 @@ export interface BuildFolderTreeInput {
      * Callers normalize before passing — the lookup is literal.
      */
     documentedFolders: Set<string>;
-}
-
-// ---------------------------------------------------------------------------
-// Error
-// ---------------------------------------------------------------------------
-
-export type FolderTreeLoadErrorReason =
-    | 'parse-error'
-    | 'schema-error'
-    | 'unknown-version';
-
-export class FolderTreeLoadError extends Error {
-    constructor(
-        public readonly filePath: string,
-        public readonly reason: FolderTreeLoadErrorReason,
-        public readonly detail: string,
-        cause?: unknown,
-    ) {
-        super(`[folder-tree] ${reason} loading ${filePath}: ${detail}`);
-        this.name = 'FolderTreeLoadError';
-        if (cause !== undefined) {
-            (this as { cause?: unknown }).cause = cause;
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -215,8 +167,8 @@ function ensureFolderPath(
  * Convert a mutable node to its frozen `FolderNode` shape, sorting children
  * alphabetically by `name` and aggregating counts bottom-up.
  */
-function freeze(node: MutableFolderNode): FolderNode {
-    const childArray: FolderNode[] = [];
+function freeze(node: MutableFolderNode): import('../contracts/folder-tree').FolderNode {
+    const childArray: import('../contracts/folder-tree').FolderNode[] = [];
     const sortedKeys = Array.from(node.children.keys()).sort();
     let childFileCount = 0;
     let childTotalLOC = 0;

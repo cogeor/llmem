@@ -22,8 +22,8 @@
  *     DesignTextView.ts:466-475`).
  */
 
-import type { FolderNode } from '../../../graph/folder-tree';
-import type { FolderEdgelistData, FolderEdge } from '../../../graph/folder-edges';
+import type { FolderNode } from '../../../contracts/folder-tree';
+import type { FolderEdgelistData, FolderEdge } from '../../../contracts/folder-edges';
 import type { DesignDoc } from '../types';
 
 // ---------------------------------------------------------------------------

@@ -7,7 +7,7 @@
  */
 
 import * as vscode from 'vscode';
-import { loadConfig, getConfig, isConfigLoaded, resetConfig, Config } from './config';
+import { loadConfig, getConfig, isConfigLoaded, resetConfig, Config } from '../runtime/config';
 import { startServer, stopServer } from '../mcp/server';
 import { LLMemPanel } from './panel';
 

@@ -1,7 +1,7 @@
 
 import { GraphData, WorkTreeNode, VisNode, VisEdge, DesignDoc } from '../types';
-import type { FolderTreeData } from '../../../graph/folder-tree';
-import type { FolderEdgelistData } from '../../../graph/folder-edges';
+import type { FolderTreeData } from '../../../contracts/folder-tree';
+import type { FolderEdgelistData } from '../../../contracts/folder-edges';
 
 /**
  * Result of a watch toggle operation

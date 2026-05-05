@@ -1,7 +1,7 @@
 /**
  * LLMem core configuration value type.
  *
- * The runtime loaders (`getConfig`/`loadConfig` in src/extension/config.ts;
+ * The runtime loaders (`getConfig`/`loadConfig` in src/runtime/config.ts;
  * `getClaudeConfig` in src/claude/config.ts) construct values of this
  * type. The type itself lives here so that leaf modules
  * (src/config-defaults.ts, src/mcp/server.ts, src/scripts/*) can reference

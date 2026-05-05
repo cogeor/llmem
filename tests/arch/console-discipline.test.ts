@@ -27,6 +27,20 @@
 // `DesignTextView.ts` save-trace leak — even inside the
 // allow-listed webview-logger module.
 //
+// Loop 17 adds two regression tests pinning the logger-locality
+// contract:
+//   1. `webview-logger.ts is the sole src/webview/ui/** allow-listed
+//      path` — walks the subtree and asserts `isAllowedPath` lights
+//      up exactly once: the webview-logger module. Catches future
+//      edits that accidentally widen the allow-list to all of
+//      `src/webview/ui/**`.
+//   2. `every observed console.* under src/webview/ui/** is in
+//      webview-logger.ts` — even if a future allow-list edit slipped
+//      past the first test, this one pins the per-subtree locality
+//      so a `console.*` introduced anywhere else under that subtree
+//      fires the regression. Both tests use the existing
+//      `walkSrc` / `collectConsoleCallSites` machinery.
+//
 // Implementation notes:
 //   - Detection uses the TypeScript Compiler API (no regex on raw
 //     source), so the substring `console.` inside string literals or
@@ -285,5 +299,65 @@ test('console-discipline: forbidden content-leak strings absent from src/webview
             console.error(`FORBIDDEN-STRING  ${o.rel}:${o.line}  contains "${o.needle}"`);
         }
         assert.fail(`${offenders.length} forbidden content-leak string(s) found.`);
+    }
+});
+
+// ----------------------------------------------------------------------------
+// Loop 17: webview-logger locality pins
+//
+// The `isAllowedPath` function lists `src/webview/ui/services/webview-logger.ts`
+// as the SOLE allow-listed path under `src/webview/ui/**`. The two tests
+// below guard the contract from two different angles:
+//
+//   1. Allow-list shape: walk every file under `src/webview/ui/**` and
+//      assert exactly one path lights up `isAllowedPath`. If a future
+//      edit accidentally re-allows an entire `src/webview/ui/...`
+//      prefix (e.g. typo'ing `startsWith('src/webview/ui/')`), this
+//      test fires.
+//
+//   2. Observed call sites: even if (1) somehow passed (e.g. a
+//      conditional that depended on file content rather than path),
+//      every direct `console.*` site observed under `src/webview/ui/**`
+//      MUST live in `webview-logger.ts`. This catches future
+//      `console.*` introductions that bypass the logger.
+// ----------------------------------------------------------------------------
+
+const WEBVIEW_UI_LOGGER = 'src/webview/ui/services/webview-logger.ts';
+
+test('console-discipline: webview-logger.ts is the sole src/webview/ui/** allow-listed path', () => {
+    const SRC_UI = path.join(SRC_ROOT, 'webview', 'ui');
+    const allowedUnderUi: string[] = [];
+    for (const abs of walkSrc(SRC_UI)) {
+        const rel = toRepoRel(abs);
+        if (isAllowedPath(rel)) allowedUnderUi.push(rel);
+    }
+    allowedUnderUi.sort();
+    assert.deepEqual(
+        allowedUnderUi,
+        [WEBVIEW_UI_LOGGER],
+        `Expected exactly one allow-listed path under src/webview/ui/** ` +
+            `('${WEBVIEW_UI_LOGGER}'); found ${allowedUnderUi.length}: ` +
+            `${JSON.stringify(allowedUnderUi)}.`,
+    );
+});
+
+test('console-discipline: every observed console.* under src/webview/ui/** is in webview-logger.ts', () => {
+    const observed = collectConsoleCallSites();
+    const offenders = observed.filter(
+        (site) => site.rel.startsWith('src/webview/ui/') && site.rel !== WEBVIEW_UI_LOGGER,
+    );
+    if (offenders.length > 0) {
+        for (const site of offenders) {
+            console.error(
+                `WEBVIEW-LOGGER-LOCALITY  ${siteKey(site)} calls console.* outside webview-logger.ts.\n  ` +
+                    `Route this call through the webview logger ` +
+                    `('${WEBVIEW_UI_LOGGER}'). The browser bundle ` +
+                    `must keep console.* confined to that single module.`,
+            );
+        }
+        assert.fail(
+            `${offenders.length} direct console.* call(s) under src/webview/ui/** ` +
+                `outside webview-logger.ts.`,
+        );
     }
 });

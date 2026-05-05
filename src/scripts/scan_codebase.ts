@@ -9,7 +9,7 @@ import { ImportEdgeListStore, CallEdgeListStore, SchemaMismatchError } from '../
 import { TypeScriptExtractor } from '../parser/ts-extractor';
 import { TypeScriptService } from '../parser/ts-service';
 import { artifactToEdgeList } from '../graph/artifact-converter';
-import { loadConfig, getConfig } from '../extension/config';
+import { loadConfig, getConfig } from '../runtime/config';
 import { createWorkspaceContext } from '../application/workspace-context';
 
 async function scan() {

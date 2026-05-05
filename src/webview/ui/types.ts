@@ -1,6 +1,6 @@
 
-import type { FolderTreeData } from '../../graph/folder-tree';
-import type { FolderEdgelistData } from '../../graph/folder-edges';
+import type { FolderTreeData } from '../../contracts/folder-tree';
+import type { FolderEdgelistData } from '../../contracts/folder-edges';
 
 export interface VisNode {
     id: string;

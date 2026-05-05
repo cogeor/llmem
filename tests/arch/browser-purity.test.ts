@@ -70,75 +70,20 @@ const FORBIDDEN_RELATIVE_PREFIXES: readonly string[] = [
   'src/graph/',
 ];
 
-const KNOWN_VIOLATIONS: readonly BrowserViolation[] = [
-  // Loop 12 cleared the Worktree.ts -> parser/config violation: the
-  // parsability bit (`isSupported`) is now precomputed server-side in
-  // `src/webview/worktree.ts::generateWorkTree` and travels with each file
-  // node in the worktree JSON. Browser code reads `node.isSupported` and
-  // never imports parser/config.
-
-  // Loop 13: webview UI now consumes the loop-08 folder-artifact types
-  // (`FolderTreeData`, `FolderEdgelistData`) for the upcoming PackageView
-  // (loops 14-16). All imports below are TYPE-ONLY (`import type`) so
-  // esbuild elides them from the browser bundle — the runtime contract is
-  // a manual `schemaVersion` equality check inside `staticDataProvider.ts`
-  // because runtime-importing the schemas would pull node-only `path`
-  // (used inside `folder-tree.ts::folderOf` / `folder-edges.ts::folderOf`)
-  // into the browser bundle. A future loop that splits the schema-only
-  // surface out of `folder-tree.ts` / `folder-edges.ts` (so the schemas
-  // don't co-live with the node-using builders) lets the static provider
-  // upgrade from manual gate to `Schema.parse` and clears these rows.
-  {
-    from: 'src/webview/ui/services/dataProvider.ts',
-    to: 'src/graph/folder-tree.ts',
-    reason: 'Loop 13: type-only import of FolderTreeData for the DataProvider interface; future schema-split loop fixes it.',
-  },
-  {
-    from: 'src/webview/ui/services/dataProvider.ts',
-    to: 'src/graph/folder-edges.ts',
-    reason: 'Loop 13: type-only import of FolderEdgelistData for the DataProvider interface; future schema-split loop fixes it.',
-  },
-  {
-    from: 'src/webview/ui/services/staticDataProvider.ts',
-    to: 'src/graph/folder-tree.ts',
-    reason: 'Loop 13: type-only import of FolderTreeData (the runtime gate is a manual schemaVersion check); future schema-split loop fixes it.',
-  },
-  {
-    from: 'src/webview/ui/services/staticDataProvider.ts',
-    to: 'src/graph/folder-edges.ts',
-    reason: 'Loop 13: type-only import of FolderEdgelistData (the runtime gate is a manual schemaVersion check); future schema-split loop fixes it.',
-  },
-  {
-    from: 'src/webview/ui/services/vscodeDataProvider.ts',
-    to: 'src/graph/folder-tree.ts',
-    reason: 'Loop 13: type-only import of FolderTreeData for the postMessage stub; future schema-split loop fixes it.',
-  },
-  {
-    from: 'src/webview/ui/services/vscodeDataProvider.ts',
-    to: 'src/graph/folder-edges.ts',
-    reason: 'Loop 13: type-only import of FolderEdgelistData for the postMessage stub; future schema-split loop fixes it.',
-  },
-  {
-    from: 'src/webview/ui/types.ts',
-    to: 'src/graph/folder-tree.ts',
-    reason: 'Loop 13: type-only import of FolderTreeData for the Window.FOLDER_TREE augmentation; future schema-split loop fixes it.',
-  },
-  {
-    from: 'src/webview/ui/types.ts',
-    to: 'src/graph/folder-edges.ts',
-    reason: 'Loop 13: type-only import of FolderEdgelistData for the Window.FOLDER_EDGES augmentation; future schema-split loop fixes it.',
-  },
-  {
-    from: 'src/webview/ui/components/PackageView.ts',
-    to: 'src/graph/folder-tree.ts',
-    reason: 'Loop 14: type-only import of FolderTreeData / FolderNode for the PackageView component (cards rendered from the loaded tree); future schema-split loop fixes it.',
-  },
-  {
-    from: 'src/webview/ui/components/PackageView.ts',
-    to: 'src/graph/folder-edges.ts',
-    reason: 'Loop 15: type-only import of FolderEdgelistData / FolderEdge for the PackageView arcs (folder edges rendered as vis-network arcs); future schema-split loop fixes it.',
-  },
-];
+// Loop 17 cleared the type-only graph imports by moving the DTOs / Zod
+// schemas / load-error classes to `src/contracts/folder-tree.ts` and
+// `src/contracts/folder-edges.ts`. Browser code now imports those
+// symbols from `src/contracts/**` directly — the contracts modules
+// have no Node-only imports (no `path`, no `core/ids`).
+//
+// The list lands EMPTY. It is reserved for future transitional rows.
+// Each future row MUST carry:
+//   - `phase: 'NN'`  — the loop id that retires the row, OR
+//   - `phase: 'permanent'`  — for a row that is kept by design.
+// And a `reason` string explaining the rationale (the existing
+// stale-row test fires when a row is unobserved; the new
+// phase-and-reason discipline is enforced by code review).
+const KNOWN_VIOLATIONS: readonly BrowserViolation[] = [];
 
 function toRepoRel(absPath: string): string {
   return path.relative(REPO_ROOT, absPath).replace(/\\/g, '/');
