@@ -97,6 +97,47 @@ function waitForWsMessage(ws: WebSocket, timeout = 5000): Promise<any> {
 }
 
 /**
+ * Wait for the next WebSocket message whose `type` field matches `expected`.
+ * Drains/discards earlier messages so a chokidar `add` event queued during the
+ * setup window does not get returned in place of the actual `unlink` event we
+ * are waiting for. Linux chokidar tends to emit `add` then `unlink` as two
+ * separate messages; Windows often collapses them, which is why the looser
+ * `waitForWsMessage` is fine for the create/update tests but the delete test
+ * needs to skip past any pre-existing `arch:created`.
+ */
+function waitForWsMessageOfType(
+    ws: WebSocket,
+    expected: string,
+    timeout = 5000,
+): Promise<any> {
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            ws.off('message', onMessage);
+            reject(new Error(`WebSocket message timeout waiting for type=${expected}`));
+        }, timeout);
+
+        function onMessage(data: Buffer | ArrayBuffer | Buffer[]) {
+            const text = Array.isArray(data)
+                ? Buffer.concat(data).toString()
+                : Buffer.from(data as Buffer).toString();
+            let parsed: any;
+            try {
+                parsed = JSON.parse(text);
+            } catch {
+                return;
+            }
+            if (parsed && parsed.type === expected) {
+                clearTimeout(timer);
+                ws.off('message', onMessage);
+                resolve(parsed);
+            }
+        }
+
+        ws.on('message', onMessage);
+    });
+}
+
+/**
  * Setup test workspace
  */
 function setupTestWorkspace(): void {
@@ -424,8 +465,7 @@ describe('WebSocket Incremental Updates', { skip: SERVER_SKIP_REASON }, () => {
         // Delete it
         fs.unlinkSync(filePath);
 
-        const message = await waitForWsMessage(ws, 3000);
-        assert.equal(message.type, 'arch:deleted');
+        const message = await waitForWsMessageOfType(ws, 'arch:deleted', 3000);
         assert.ok(message.data.path.includes('ws-test-delete'));
 
         ws.close();

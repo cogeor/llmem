@@ -29,9 +29,16 @@ function walk(dir, out) {
     return out;
 }
 
-const inputs = process.argv.slice(2);
+// Pull off any leading --flag args (currently only --concurrency=N) before the
+// positional dirs/files. Flags pass straight through to `node --test`.
+const inputs = [];
+const flags = [];
+for (const arg of process.argv.slice(2)) {
+    if (arg.startsWith('--')) flags.push(arg);
+    else inputs.push(arg);
+}
 if (inputs.length === 0) {
-    process.stderr.write('usage: run-tests.cjs <dir-or-file> [...]\n');
+    process.stderr.write('usage: run-tests.cjs [--flag=value ...] <dir-or-file> [...]\n');
     process.exit(2);
 }
 
@@ -53,7 +60,7 @@ if (files.length === 0) {
     process.exit(1);
 }
 
-const args = ['--require', 'ts-node/register', '--test', ...files];
+const args = ['--require', 'ts-node/register', ...flags, '--test', ...files];
 const result = spawnSync(process.execPath, args, { stdio: 'inherit' });
 if (result.error) {
     process.stderr.write(`run-tests.cjs: ${result.error.message}\n`);

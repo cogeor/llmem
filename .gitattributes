@@ -1,3 +1,27 @@
+# Normalize all text content to LF in the repo.
+# Windows checkouts can still render CRLF in the working tree if
+# core.autocrlf is on, but committed content stays LF — eliminates the
+# "CRLF will be replaced by LF" warning class and keeps snapshots /
+# contract files byte-stable between Windows local and Linux CI.
+* text=auto eol=lf
+
+# Keep platform-native script wrappers in their native endings.
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.ps1   text eol=crlf
+*.sh    text eol=lf
+
+# Treat known binary content as binary (skip LF normalization).
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.woff  binary
+*.woff2 binary
+*.vsix  binary
+*.zip   binary
+
 # Prevent 3-way merge on package-lock.json — merging this file produces
 # corrupted lock files that break npm ci. On conflict, accept ours and
 # regenerate with `npm install`.
