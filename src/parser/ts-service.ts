@@ -145,44 +145,6 @@ export class TypeScriptService {
         }
     }
 
-    private parseTarget(target: string | undefined): ts.ScriptTarget | undefined {
-        if (!target) return undefined;
-        const key = target.toUpperCase();
-        const map: Record<string, ts.ScriptTarget> = {
-            'ES5': ts.ScriptTarget.ES5,
-            'ES6': ts.ScriptTarget.ES2015,
-            'ES2015': ts.ScriptTarget.ES2015,
-            'ES2016': ts.ScriptTarget.ES2016,
-            'ES2017': ts.ScriptTarget.ES2017,
-            'ES2018': ts.ScriptTarget.ES2018,
-            'ES2019': ts.ScriptTarget.ES2019,
-            'ES2020': ts.ScriptTarget.ES2020,
-            'ES2021': ts.ScriptTarget.ES2021,
-            'ES2022': ts.ScriptTarget.ES2022,
-            'ESNEXT': ts.ScriptTarget.ESNext,
-        };
-        return map[key];
-    }
-
-    private parseModule(module: string | undefined): ts.ModuleKind | undefined {
-        if (!module) return undefined;
-        const key = module.toUpperCase();
-        const map: Record<string, ts.ModuleKind> = {
-            'COMMONJS': ts.ModuleKind.CommonJS,
-            'AMD': ts.ModuleKind.AMD,
-            'UMD': ts.ModuleKind.UMD,
-            'SYSTEM': ts.ModuleKind.System,
-            'ES6': ts.ModuleKind.ES2015,
-            'ES2015': ts.ModuleKind.ES2015,
-            'ES2020': ts.ModuleKind.ES2020,
-            'ES2022': ts.ModuleKind.ES2022,
-            'ESNEXT': ts.ModuleKind.ESNext,
-            'NODE16': ts.ModuleKind.Node16,
-            'NODENEXT': ts.ModuleKind.NodeNext,
-        };
-        return map[key];
-    }
-
     public getProgram(): ts.Program | undefined {
         return this.program;
     }

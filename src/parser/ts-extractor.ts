@@ -15,26 +15,36 @@ export class TypeScriptExtractor implements ArtifactExtractor {
     }
 
     public async extract(filePath: string, content?: string): Promise<FileArtifact | null> {
-        let program = this.programProvider();
         let sourceFile: ts.SourceFile | undefined;
         let checker: ts.TypeChecker | undefined;
 
-        if (program) {
-            sourceFile = program.getSourceFile(filePath);
-            checker = program.getTypeChecker();
-        }
+        if (content !== undefined) {
+            // Honor the content contract (see ArtifactExtractor JSDoc):
+            // build a one-file program rooted at filePath but backed by
+            // `content`, without reading filePath from disk.
+            const result = this.createInMemoryProgram(filePath, content);
+            sourceFile = result.sourceFile;
+            checker = result.checker;
+        } else {
+            const program = this.programProvider();
 
-        if (!sourceFile) {
-            // File not in main program (e.g. new file, or file outside root).
-            // Create a temporary program for single-file analysis.
-            // This is slower but ensures we get results.
-            const tempProgram = ts.createProgram([filePath], {
-                target: ts.ScriptTarget.ES2020,
-                module: ts.ModuleKind.CommonJS,
-                allowJs: true
-            });
-            sourceFile = tempProgram.getSourceFile(filePath);
-            checker = tempProgram.getTypeChecker();
+            if (program) {
+                sourceFile = program.getSourceFile(filePath);
+                checker = program.getTypeChecker();
+            }
+
+            if (!sourceFile) {
+                // File not in main program (e.g. new file, or file outside root).
+                // Create a temporary program for single-file analysis.
+                // This is slower but ensures we get results.
+                const tempProgram = ts.createProgram([filePath], {
+                    target: ts.ScriptTarget.ES2020,
+                    module: ts.ModuleKind.CommonJS,
+                    allowJs: true
+                });
+                sourceFile = tempProgram.getSourceFile(filePath);
+                checker = tempProgram.getTypeChecker();
+            }
         }
 
         if (!sourceFile || !checker) {
@@ -42,6 +52,78 @@ export class TypeScriptExtractor implements ArtifactExtractor {
         }
 
         return this.extractFromSource(sourceFile, checker);
+    }
+
+    /**
+     * Build a one-file `ts.Program` rooted at `filePath` but backed by the
+     * provided `content`. The CompilerHost is overridden so that
+     * `getSourceFile`/`readFile`/`fileExists` for `filePath` return the
+     * in-memory bytes; all OTHER files still go through the base host
+     * (i.e. real disk reads), so imports of sibling files / lib.d.ts /
+     * tsconfig still work.
+     *
+     * Compiler options match the existing `tempProgram` branch above —
+     * Loop 12 owns the resolver upgrade (paths, baseUrl, exports, etc.).
+     */
+    private createInMemoryProgram(
+        filePath: string,
+        content: string
+    ): { sourceFile: ts.SourceFile | undefined; checker: ts.TypeChecker | undefined } {
+        const options: ts.CompilerOptions = {
+            target: ts.ScriptTarget.ES2020,
+            module: ts.ModuleKind.CommonJS,
+            allowJs: true,
+        };
+
+        const baseHost = ts.createCompilerHost(options);
+
+        // TS normalizes paths to forward slashes internally before passing them
+        // to host hooks, while `baseHost.getCanonicalFileName` only adjusts
+        // case (lowercases on Windows). To match either form we compare on a
+        // normalized canonical: lowercase via baseHost, then forward-slashes.
+        const normalize = (p: string) =>
+            baseHost.getCanonicalFileName(p).replace(/\\/g, '/');
+        const canonicalTarget = normalize(filePath);
+        const matchesTarget = (name: string) =>
+            name === filePath || normalize(name) === canonicalTarget;
+
+        const host: ts.CompilerHost = {
+            ...baseHost,
+            getSourceFile: (name, lang, onErr, shouldCreate) => {
+                if (matchesTarget(name)) {
+                    return ts.createSourceFile(
+                        filePath,
+                        content,
+                        options.target ?? ts.ScriptTarget.ES2020,
+                        /* setParentNodes */ true
+                    );
+                }
+                return baseHost.getSourceFile(name, lang, onErr, shouldCreate);
+            },
+            readFile: (name) => {
+                if (matchesTarget(name)) {
+                    return content;
+                }
+                return baseHost.readFile(name);
+            },
+            fileExists: (name) => {
+                if (matchesTarget(name)) {
+                    return true;
+                }
+                return baseHost.fileExists(name);
+            },
+        };
+
+        const program = ts.createProgram({
+            rootNames: [filePath],
+            options,
+            host,
+        });
+
+        return {
+            sourceFile: program.getSourceFile(filePath),
+            checker: program.getTypeChecker(),
+        };
     }
 
     private extractFromSource(sourceFile: ts.SourceFile, checker: ts.TypeChecker): FileArtifact {
@@ -103,10 +185,8 @@ export class TypeScriptExtractor implements ArtifactExtractor {
                         }
                     }
 
-                    if (!resolvedPath) {
-                        // Fallback: try basic module resolution if checker didn't give it
-                        // (Checker usually works if program is correct)
-                    }
+                    // resolvedPath stays null when the checker didn't resolve (e.g. node_modules
+                    // not in program). Loop 12 replaces this branch with ts.resolveModuleName.
 
                     // Determine import kind based on specifiers
                     const hasNamespaceImport = specifiers.some(s => s.name === '*');
