@@ -130,7 +130,8 @@ test('buildDocumentFolderPrompt reads from ctx.artifactRoot, not literal .artifa
         const customAbs = path.join(tmpRoot, customRel);
         fs.mkdirSync(customAbs, { recursive: true });
         const emptyEdges = JSON.stringify({
-            schemaVersion: 1,
+            schemaVersion: 2,
+            resolverVersion: 'ts-resolveModuleName-v1',
             timestamp: new Date().toISOString(),
             nodes: [],
             edges: [],

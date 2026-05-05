@@ -11,7 +11,7 @@
  */
 
 import * as path from 'path';
-import { ImportEdgeListStore, CallEdgeListStore } from '../graph/edgelist';
+import { ImportEdgeListStore, CallEdgeListStore, SchemaMismatchError } from '../graph/edgelist';
 import { IGNORED_FOLDERS, ALL_SUPPORTED_EXTENSIONS } from '../parser/config';
 import { GraphStatus } from './worktree';
 import { WorkspaceIO } from '../workspace/workspace-io';
@@ -55,11 +55,30 @@ export async function computeAllFolderStatuses(
     const importRel = toWorkspaceRel(projectRoot, importPath);
     const callRel = toWorkspaceRel(projectRoot, callPath);
 
-    const hasImportStore = await io.exists(importRel);
-    const hasCallStore = await io.exists(callRel);
+    let hasImportStore = await io.exists(importRel);
+    let hasCallStore = await io.exists(callRel);
 
-    if (hasImportStore) await importStore.load();
-    if (hasCallStore) await callStore.load();
+    // Loop 13 (codebase-quality-v2): if the on-disk envelope predates
+    // the resolver swap, treat the mismatched store as "not present"
+    // so status computation falls into the empty-folder branch. The
+    // panel's own load handlers (`_loadFolderNodes`) are responsible
+    // for triggering the rescan; this status path only paints UI.
+    if (hasImportStore) {
+        try {
+            await importStore.load();
+        } catch (e) {
+            if (!(e instanceof SchemaMismatchError)) throw e;
+            hasImportStore = false;
+        }
+    }
+    if (hasCallStore) {
+        try {
+            await callStore.load();
+        } catch (e) {
+            if (!(e instanceof SchemaMismatchError)) throw e;
+            hasCallStore = false;
+        }
+    }
 
     // Get edge list timestamps
     const importTimestamp = hasImportStore ? await getFileTimestamp(io, importRel) : 0;

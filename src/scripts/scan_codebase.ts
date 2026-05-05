@@ -5,7 +5,7 @@
  */
 
 import * as path from 'path';
-import { ImportEdgeListStore, CallEdgeListStore } from '../graph/edgelist';
+import { ImportEdgeListStore, CallEdgeListStore, SchemaMismatchError } from '../graph/edgelist';
 import { TypeScriptExtractor } from '../parser/ts-extractor';
 import { TypeScriptService } from '../parser/ts-service';
 import { artifactToEdgeList } from '../graph/artifact-converter';
@@ -65,8 +65,24 @@ async function scan() {
     // Create split edge list stores
     const importStore = new ImportEdgeListStore(artifactDir, ctx.io);
     const callStore = new CallEdgeListStore(artifactDir, ctx.io);
-    await importStore.load();
-    await callStore.load();
+    // Loop 13 (codebase-quality-v2): the load is followed by clear()
+    // anyway, so a SchemaMismatchError on a stale envelope is
+    // structurally a no-op — the clear discards what the load
+    // produced. But load() throws BEFORE clear() runs, so swallow that
+    // specific error here. Any other load failure (parse / schema
+    // shape) is still a real bug worth surfacing.
+    for (const store of [importStore, callStore]) {
+        try {
+            await store.load();
+        } catch (e) {
+            if (e instanceof SchemaMismatchError) {
+                console.warn(`  WARN: ${e.message}`);
+                console.warn('  (about to clear() and write a fresh v_next envelope)');
+            } else {
+                throw e;
+            }
+        }
+    }
     importStore.clear(); // Start fresh
     callStore.clear();
 

@@ -21,13 +21,14 @@
  * is gone. The artifact directory comes from `ctx.artifactRoot`.
  */
 
-import { ImportEdgeListStore, CallEdgeListStore } from '../graph/edgelist';
+import { ImportEdgeListStore, CallEdgeListStore, SchemaMismatchError } from '../graph/edgelist';
 import { buildFolderTree } from '../graph/folder-tree';
 import { buildFolderEdges } from '../graph/folder-edges';
 import { FolderTreeStore } from '../graph/folder-tree-store';
 import { FolderEdgelistStore } from '../graph/folder-edges-store';
 import { scanArchFolders } from '../docs/arch-store';
 import { parseGraphId } from '../core/ids';
+import { rescanAfterSchemaMismatch } from './scan';
 import type { WorkspaceContext } from './workspace-context';
 
 /**
@@ -56,10 +57,25 @@ export async function buildAndSaveFolderArtifacts(
     // Load existing edge lists. Loop 07: `io` is now the second
     // (mandatory) constructor argument; `BaseEdgeListStore` falls back to
     // its internal `createLogger` when no logger is supplied.
+    //
+    // Loop 13 (codebase-quality-v2): the load may throw
+    // `SchemaMismatchError` for envelopes written before the resolver
+    // swap. In that case, run a full rescan (which writes v_next
+    // envelopes) and re-issue the loads. After the rescan a second
+    // throw is a real failure and we let it propagate.
     const importStore = new ImportEdgeListStore(artifactDir, io);
     const callStore = new CallEdgeListStore(artifactDir, io);
-    await importStore.load();
-    await callStore.load();
+    try {
+        await importStore.load();
+        await callStore.load();
+    } catch (e) {
+        if (!(e instanceof SchemaMismatchError)) {
+            throw e;
+        }
+        await rescanAfterSchemaMismatch(ctx);
+        await importStore.load();
+        await callStore.load();
+    }
 
     // Walk `.arch/` for documented folders.
     const documentedFolders = await scanArchFolders(io);

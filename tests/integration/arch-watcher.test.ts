@@ -105,11 +105,13 @@ function setupTestWorkspace(): void {
     fs.mkdirSync(TEST_ARTIFACTS_DIR, { recursive: true });
 
     // Create minimal edge lists so server can start. Loop 16 introduced the
-    // schemaVersion: 1 wire format; the migrator still accepts the legacy
-    // `version: '1.0.0'` shape but we write the current shape so this test
-    // exercises what production now writes.
+    // schemaVersion: 1 wire format; Loop 13 (codebase-quality-v2) bumped
+    // it to v2 + added the resolverVersion stamp. We write the current
+    // shape so this test exercises what production now writes; the
+    // migrator now REJECTS pre-v2 shapes outright.
     const emptyEdgeList = {
-        schemaVersion: 1,
+        schemaVersion: 2,
+        resolverVersion: 'ts-resolveModuleName-v1',
         timestamp: new Date().toISOString(),
         nodes: [],
         edges: [],

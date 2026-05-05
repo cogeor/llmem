@@ -20,11 +20,12 @@
  */
 
 import * as path from 'path';
-import { CallEdgeListStore, ImportEdgeListStore } from '../graph/edgelist';
+import { CallEdgeListStore, ImportEdgeListStore, SchemaMismatchError } from '../graph/edgelist';
 import { artifactToEdgeList } from '../graph/artifact-converter';
 import { countFolderLines } from '../parser/line-counter';
 import { IGNORED_FOLDERS } from '../parser/config';
 import { ParserRegistry } from '../parser/registry';
+import type { Logger } from '../core/logger';
 import type { WorkspaceContext } from './workspace-context';
 
 /**
@@ -95,8 +96,13 @@ export async function scanFile(
     // ScanFolderOptions, so we omit it).
     const callStore = new CallEdgeListStore(artifactDir, io);
     const importStore = new ImportEdgeListStore(artifactDir, io);
-    await callStore.load();
-    await importStore.load();
+    // Loop 13 (codebase-quality-v2): a stale edge-list envelope (e.g.
+    // pre-resolver-swap `schemaVersion: 1`) raises SchemaMismatchError.
+    // The fix is in-place clear() — the in-progress scan then proceeds
+    // against a fresh store and `save()` writes a v_next envelope. We
+    // do NOT recurse into rescanAfterSchemaMismatch here because the
+    // caller is already inside a scan flow.
+    await loadOrClearOnMismatch(callStore, importStore, logger);
     const existingCallEdgeCount = callStore.getStats().edges;
     const existingImportEdgeCount = importStore.getStats().edges;
 
@@ -188,8 +194,8 @@ export async function scanFolder(
     // fall back to their internal `createLogger`.
     const callStore = new CallEdgeListStore(artifactDir, io);
     const importStore = new ImportEdgeListStore(artifactDir, io);
-    await callStore.load();
-    await importStore.load();
+    // Loop 13 (codebase-quality-v2): see scanFile comment — same posture.
+    await loadOrClearOnMismatch(callStore, importStore, logger);
     const existingCallEdgeCount = callStore.getStats().edges;
     const existingImportEdgeCount = importStore.getStats().edges;
 
@@ -299,6 +305,72 @@ export async function scanFolder(
         newEdges: actualNewCallEdges + actualNewImportEdges,
         totalEdges: finalCallEdgeCount + finalImportEdgeCount,
     };
+}
+
+/**
+ * Load both stores; on `SchemaMismatchError` from either, log a warn,
+ * clear both stores in place, and continue. The in-progress scan then
+ * proceeds against an empty store and `save()` writes a v_next envelope.
+ *
+ * Used by `scanFile` and `scanFolder` so the CLI/scan path self-heals
+ * stale envelopes mid-scan without recursing into a fresh
+ * `scanFolderRecursive` (the caller is already inside a scan flow).
+ */
+async function loadOrClearOnMismatch(
+    callStore: CallEdgeListStore,
+    importStore: ImportEdgeListStore,
+    logger: Logger,
+): Promise<void> {
+    let mismatch = false;
+    try {
+        await callStore.load();
+    } catch (e) {
+        if (e instanceof SchemaMismatchError) {
+            mismatch = true;
+        } else {
+            throw e;
+        }
+    }
+    try {
+        await importStore.load();
+    } catch (e) {
+        if (e instanceof SchemaMismatchError) {
+            mismatch = true;
+        } else {
+            throw e;
+        }
+    }
+    if (mismatch) {
+        logger.warn('[GenerateEdges] Edge-list schema mismatch — rescanning into a fresh envelope');
+        callStore.clear();
+        importStore.clear();
+    }
+}
+
+/**
+ * Clear and repopulate both edge-list stores from scratch. Used by
+ * callsites that catch `SchemaMismatchError` from a stale on-disk
+ * envelope and need a complete refresh (not just an in-place clear).
+ *
+ * Does NOT touch folder-tree / folder-edgelist files (those are derived;
+ * rerun `buildAndSaveFolderArtifacts` after).
+ *
+ * The empty `save()` is required because `clear()` only mutates
+ * in-memory state on a fresh store; we want the on-disk file replaced
+ * even if the recursive scan that follows finds no parser matches
+ * (corner case, but the difference between a stale file sitting on disk
+ * vs. a clean v_next envelope).
+ */
+export async function rescanAfterSchemaMismatch(
+    ctx: WorkspaceContext,
+): Promise<ScanResult> {
+    const importStore = new ImportEdgeListStore(ctx.artifactRoot, ctx.io);
+    const callStore = new CallEdgeListStore(ctx.artifactRoot, ctx.io);
+    importStore.clear();
+    callStore.clear();
+    await importStore.save();
+    await callStore.save();
+    return scanFolderRecursive(ctx, { folderPath: '.' });
 }
 
 /** Scan a folder and all its non-IGNORED subfolders recursively. */

@@ -209,10 +209,26 @@ export class LLMemPanel {
             // context directly.
             await scanFolderRecursive(ctx, { folderPath });
 
-            // Load the updated edge lists to get the new nodes and edges
-            const { CallEdgeListStore } = await import('../graph/edgelist');
+            // Load the updated edge lists to get the new nodes and edges.
+            //
+            // Loop 13 (codebase-quality-v2): the load may throw
+            // SchemaMismatchError when the on-disk envelope predates the
+            // resolver swap. Surface a status to the webview and trigger
+            // a fresh recursive rescan, then retry the load.
+            const { CallEdgeListStore, SchemaMismatchError } = await import('../graph/edgelist');
             const callStore = new CallEdgeListStore(ctx.artifactRoot, ctx.io);
-            await callStore.load();
+            try {
+                await callStore.load();
+            } catch (e) {
+                if (!(e instanceof SchemaMismatchError)) throw e;
+                this._panel.webview.postMessage({
+                    type: 'data:folderNodes',
+                    folderPath,
+                    error: 'schema-mismatch: rescanning',
+                });
+                await scanFolderRecursive(ctx, { folderPath });
+                await callStore.load();
+            }
 
             // Get nodes and edges for this folder. Use the graph-ID contract:
             // reduce each endpoint to its underlying file, then check folder

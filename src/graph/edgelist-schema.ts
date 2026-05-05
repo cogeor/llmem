@@ -1,5 +1,6 @@
 /**
- * Edge-list schema (Loop 16).
+ * Edge-list schema (Loop 16; bumped to v2 by Loop 13 of the
+ * codebase-quality-v2 cycle).
  *
  * Owns the single source of truth for the persisted edge-list shape. The
  * Zod schemas double as TypeScript types via `z.infer`, replacing the
@@ -7,14 +8,27 @@
  *
  * Versioning
  * ----------
- * The on-disk integer `schemaVersion` (currently `1`) is monotonic and
- * decoupled from the legacy semver-style `version: '1.0.0'` field that
- * pre-Loop-16 production files carry. The migrator accepts:
- *   - `schemaVersion: 1` (current shape).
- *   - `version: '1.0.0'` (legacy string).
- *   - versionless documents (very old test fixtures).
- * Anything else (unknown `schemaVersion`, missing `nodes` array, etc.)
- * raises `EdgeListLoadError` with an actionable diagnostic.
+ * The persisted envelope carries TWO version fields:
+ *   - `schemaVersion: 2` — monotonic integer for the on-disk shape.
+ *   - `resolverVersion: 'ts-resolveModuleName-v1'` — names the import
+ *     resolver implementation that produced the file. Loop 12 swapped
+ *     the heuristic resolver for `ts.resolveModuleName`, which changes
+ *     the `resolvedPath` semantics for path-alias / baseUrl /
+ *     index-file / re-export specifiers. Mixing pre-Loop-12 entries
+ *     with new ones produces a split-brain graph; the resolver stamp
+ *     lets the migrator detect the mismatch and force a rescan.
+ *
+ * Acceptance rule
+ * ---------------
+ * The migrator accepts ONLY documents whose
+ * `(schemaVersion, resolverVersion)` pair exactly matches the current
+ * code (`EDGELIST_SCHEMA_VERSION` / `EDGELIST_RESOLVER_VERSION`). Any
+ * other combination — including the legacy `schemaVersion: 1`,
+ * `version: '1.0.0'`, and versionless test fixtures that the previous
+ * release tolerated — throws `SchemaMismatchError` (a typed subclass
+ * of `EdgeListLoadError` whose `reason` is `'unknown-version'`). Each
+ * loader callsite catches that error and triggers a fresh scan
+ * (`scanFolderRecursive`) instead of mixing shapes.
  *
  * No silent reset: the previous `BaseEdgeListStore.load` swallowed schema
  * failures and reset the store to empty, which produced silent data loss
@@ -23,7 +37,8 @@
 
 import { z } from 'zod';
 
-export const EDGELIST_SCHEMA_VERSION = 1;
+export const EDGELIST_SCHEMA_VERSION = 2;
+export const EDGELIST_RESOLVER_VERSION = 'ts-resolveModuleName-v1';
 
 // ---------------------------------------------------------------------------
 // Schemas
@@ -53,8 +68,9 @@ export const EdgeEntrySchema = z.object({
     kind: EdgeKindSchema,
 });
 
-export const EdgeListV1Schema = z.object({
+export const EdgeListV2Schema = z.object({
     schemaVersion: z.literal(EDGELIST_SCHEMA_VERSION),
+    resolverVersion: z.literal(EDGELIST_RESOLVER_VERSION),
     timestamp: z.string(),
     nodes: z.array(NodeEntrySchema),
     edges: z.array(EdgeEntrySchema),
@@ -66,10 +82,10 @@ export const EdgeListV1Schema = z.object({
 
 export type NodeEntry = z.infer<typeof NodeEntrySchema>;
 export type EdgeEntry = z.infer<typeof EdgeEntrySchema>;
-export type EdgeListData = z.infer<typeof EdgeListV1Schema>;
+export type EdgeListData = z.infer<typeof EdgeListV2Schema>;
 
 // ---------------------------------------------------------------------------
-// Error type
+// Error types
 // ---------------------------------------------------------------------------
 
 export type EdgeListLoadErrorReason =
@@ -92,6 +108,33 @@ export class EdgeListLoadError extends Error {
     }
 }
 
+/**
+ * Subclass of `EdgeListLoadError` raised when the on-disk envelope's
+ * `(schemaVersion, resolverVersion)` pair does not match the values
+ * encoded in this build. Callers are expected to catch this specific
+ * subclass and respond by clearing the store and triggering a fresh
+ * `scanFolderRecursive` (or the host-appropriate equivalent).
+ *
+ * `reason` is reused as `'unknown-version'` so existing
+ * `reason`-discriminated tests / log filters keep working; the
+ * subclass identity is the discriminator new code uses.
+ */
+export class SchemaMismatchError extends EdgeListLoadError {
+    constructor(
+        filePath: string,
+        public readonly oldSchemaVersion: number | null,
+        public readonly oldResolverVersion: string | null,
+    ) {
+        const detail =
+            `expected schemaVersion=${EDGELIST_SCHEMA_VERSION} ` +
+            `resolverVersion='${EDGELIST_RESOLVER_VERSION}'; ` +
+            `found schemaVersion=${oldSchemaVersion ?? '<missing>'} ` +
+            `resolverVersion='${oldResolverVersion ?? '<missing>'}'`;
+        super(filePath, 'unknown-version', detail);
+        this.name = 'SchemaMismatchError';
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Empty-state factory
 // ---------------------------------------------------------------------------
@@ -99,6 +142,7 @@ export class EdgeListLoadError extends Error {
 export function createEmptyEdgeList(): EdgeListData {
     return {
         schemaVersion: EDGELIST_SCHEMA_VERSION,
+        resolverVersion: EDGELIST_RESOLVER_VERSION,
         timestamp: new Date().toISOString(),
         nodes: [],
         edges: [],
@@ -110,9 +154,16 @@ export function createEmptyEdgeList(): EdgeListData {
 // ---------------------------------------------------------------------------
 
 /**
- * Best-effort upgrade of any prior shape to v1. Throws `EdgeListLoadError`
- * on shapes that cannot be salvaged. The migrator is a strict gate — it
- * does NOT try to repair malformed payloads.
+ * Strict version-pair gate. Throws `SchemaMismatchError` on any
+ * envelope whose `(schemaVersion, resolverVersion)` does not exactly
+ * match the current build. Throws plain `EdgeListLoadError` (with
+ * `reason: 'schema-error'`) on documents that match the version pair
+ * but have a malformed `nodes` / `edges` array.
+ *
+ * Pre-Loop-13 acceptance paths (`version: '1.0.0'`, versionless,
+ * `schemaVersion: 1`) all flow through the mismatch branch — those
+ * shapes carry pre-resolver-swap `resolvedPath` semantics and must
+ * not be merged with the new resolver's output.
  */
 export function migrate(raw: unknown, filePath: string): EdgeListData {
     if (raw === null || raw === undefined || typeof raw !== 'object' || Array.isArray(raw)) {
@@ -125,48 +176,32 @@ export function migrate(raw: unknown, filePath: string): EdgeListData {
 
     const obj = raw as Record<string, unknown>;
 
-    // Determine candidate version. Prefer explicit `schemaVersion` (number),
-    // fall back to legacy `version` (string), then versionless.
-    let candidateVersion: number;
-    if (typeof obj['schemaVersion'] === 'number') {
-        candidateVersion = obj['schemaVersion'];
-    } else if (typeof obj['version'] === 'string' && obj['version'] === '1.0.0') {
-        candidateVersion = 1;
-    } else if (obj['version'] === undefined && obj['schemaVersion'] === undefined) {
-        // Versionless fixtures — treat as v1.
-        candidateVersion = 1;
-    } else if (typeof obj['version'] === 'string') {
-        // Legacy semver string we don't recognize.
-        throw new EdgeListLoadError(
-            filePath,
-            'unknown-version',
-            String(obj['version']),
-        );
-    } else {
-        throw new EdgeListLoadError(
-            filePath,
-            'unknown-version',
-            String(obj['schemaVersion']),
-        );
-    }
+    // Extract whatever the on-disk envelope claims, normalizing the
+    // missing/wrong-type cases into typed nulls for the diagnostic.
+    const oldSchemaVersion =
+        typeof obj['schemaVersion'] === 'number'
+            ? (obj['schemaVersion'] as number)
+            : null;
+    const oldResolverVersion =
+        typeof obj['resolverVersion'] === 'string'
+            ? (obj['resolverVersion'] as string)
+            : null;
 
-    if (candidateVersion !== 1) {
-        throw new EdgeListLoadError(
+    // Strict identity check: anything other than the exact current pair
+    // throws SchemaMismatchError. Callers catch this, clear, and rescan.
+    if (
+        oldSchemaVersion !== EDGELIST_SCHEMA_VERSION ||
+        oldResolverVersion !== EDGELIST_RESOLVER_VERSION
+    ) {
+        throw new SchemaMismatchError(
             filePath,
-            'unknown-version',
-            String(candidateVersion),
+            oldSchemaVersion,
+            oldResolverVersion,
         );
     }
 
-    // Build the candidate v1 doc: drop legacy `version`, force `schemaVersion: 1`.
-    const candidate: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(obj)) {
-        if (key === 'version' || key === 'schemaVersion') continue;
-        candidate[key] = value;
-    }
-    candidate.schemaVersion = 1;
-
-    const result = EdgeListV1Schema.safeParse(candidate);
+    // Version pair matches; validate the rest of the shape strictly.
+    const result = EdgeListV2Schema.safeParse(obj);
     if (!result.success) {
         const detail = result.error.issues
             .map((i) => `${i.path.join('.')}: ${i.message}`)

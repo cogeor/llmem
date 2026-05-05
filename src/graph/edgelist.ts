@@ -17,10 +17,13 @@ import * as path from 'path';
 import {
     EdgeListData,
     EdgeListLoadError,
+    SchemaMismatchError,
     NodeEntry,
     EdgeEntry,
     createEmptyEdgeList,
     loadEdgeListData,
+    EDGELIST_SCHEMA_VERSION,
+    EDGELIST_RESOLVER_VERSION,
 } from './edgelist-schema';
 import { createLogger, type Logger } from '../common/logger';
 import { WorkspaceIO } from '../workspace/workspace-io';
@@ -29,10 +32,13 @@ import { WorkspaceIO } from '../workspace/workspace-io';
 // Re-exports — the schema module is the single source of truth for these
 // types. Loop 16 keeps the public surface byte-compatible with the old
 // hand-typed interfaces by re-exporting from here.
+// Loop 13 (codebase-quality-v2) adds the SchemaMismatchError re-export so
+// callsites that import from `../graph/edgelist` can `instanceof`-check
+// without a second import path.
 // ============================================================================
 
 export type { EdgeListData, NodeEntry, EdgeEntry } from './edgelist-schema';
-export { EdgeListLoadError } from './edgelist-schema';
+export { EdgeListLoadError, SchemaMismatchError } from './edgelist-schema';
 
 // ============================================================================
 // Constants
@@ -106,7 +112,30 @@ abstract class BaseEdgeListStore {
         // loadEdgeListData throws EdgeListLoadError on schema failure — the
         // throw is the louder, more actionable signal that replaces the
         // pre-Loop-16 silent reset.
-        this.data = loadEdgeListData(raw, this.filePath);
+        //
+        // Loop 13 (codebase-quality-v2): SchemaMismatchError is a typed
+        // subclass that callsites use to trigger `scanFolderRecursive`.
+        // Emit a warn-level breadcrumb naming the file BEFORE re-throwing
+        // so production logs carry the (old, new) version pair even when
+        // the catching layer logs only a generic message.
+        try {
+            this.data = loadEdgeListData(raw, this.filePath);
+        } catch (e) {
+            if (e instanceof SchemaMismatchError) {
+                this.log.warn('Edge-list schema mismatch — caller must rescan', {
+                    file: this.filePath,
+                    old: {
+                        schemaVersion: e.oldSchemaVersion,
+                        resolverVersion: e.oldResolverVersion,
+                    },
+                    new: {
+                        schemaVersion: EDGELIST_SCHEMA_VERSION,
+                        resolverVersion: EDGELIST_RESOLVER_VERSION,
+                    },
+                });
+            }
+            throw e;
+        }
         this.dirty = false;
     }
 

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "timestamp": "2026-01-01T00:00:00.000Z",
+  "nodes": [
+    { "id": "src/a.ts", "name": "a.ts", "kind": "file", "fileId": "src/a.ts" },
+    { "id": "src/b.ts", "name": "b.ts", "kind": "file", "fileId": "src/b.ts" }
+  ],
+  "edges": [
+    { "source": "src/a.ts", "target": "src/b.ts", "kind": "import" }
+  ]
+}

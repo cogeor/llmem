@@ -13,12 +13,13 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
-import { ImportEdgeListStore, CallEdgeListStore } from '../graph/edgelist';
+import { ImportEdgeListStore, CallEdgeListStore, SchemaMismatchError } from '../graph/edgelist';
 import { prepareWebviewDataFromSplitEdgeLists } from '../graph/webview-data';
 import { generateStaticWebview } from '../webview/generator';
 import { WatchService } from '../graph/worktree-state';
 import { createLogger } from '../common/logger';
 import { buildAndSaveFolderArtifacts } from '../application/folder-artifacts';
+import { rescanAfterSchemaMismatch } from '../application/scan';
 import { createWorkspaceContext, type WorkspaceContext } from '../application/workspace-context';
 
 const log = createLogger('web-launcher');
@@ -311,8 +312,19 @@ export async function generateGraph(
     const importStore = new ImportEdgeListStore(artifactDir, ctx.io);
     const callStore = new CallEdgeListStore(artifactDir, ctx.io);
 
-    await importStore.load();
-    await callStore.load();
+    // Loop 13 (codebase-quality-v2): the persisted envelope may be
+    // pre-resolver-swap. Catch SchemaMismatchError, rescan into v_next
+    // envelopes, then retry the loads.
+    try {
+        await importStore.load();
+        await callStore.load();
+    } catch (e) {
+        if (!(e instanceof SchemaMismatchError)) throw e;
+        log.warn('Edge-list schema mismatch in generateGraph — rescanning', { artifactDir });
+        await rescanAfterSchemaMismatch(ctx);
+        await importStore.load();
+        await callStore.load();
+    }
 
     const importData = importStore.getData();
     const callData = callStore.getData();
@@ -424,8 +436,20 @@ export async function getGraphStats(
     const importStore = new ImportEdgeListStore(artifactDir, ctx.io);
     const callStore = new CallEdgeListStore(artifactDir, ctx.io);
 
-    await importStore.load();
-    await callStore.load();
+    // Loop 13 (codebase-quality-v2): a stats query over a stale envelope
+    // is a worse failure than a slow first call — surface the same
+    // rescan helper here so the returned numbers always reflect the
+    // current resolver semantics.
+    try {
+        await importStore.load();
+        await callStore.load();
+    } catch (e) {
+        if (!(e instanceof SchemaMismatchError)) throw e;
+        log.warn('Edge-list schema mismatch in getGraphStats — rescanning', { artifactDir });
+        await rescanAfterSchemaMismatch(ctx);
+        await importStore.load();
+        await callStore.load();
+    }
 
     const importData = importStore.getData();
     const callData = callStore.getData();

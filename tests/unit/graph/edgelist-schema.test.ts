@@ -4,13 +4,20 @@
 // The migrator is the gate between disk and memory: every malformed
 // payload must produce an actionable EdgeListLoadError instead of the
 // pre-Loop-16 silent reset.
+//
+// Loop 13 (codebase-quality-v2) — bumped envelope to v2 + resolver stamp.
+// The legacy `v1.0.0` and versionless acceptance paths are gone; mismatch
+// throws `SchemaMismatchError` (a typed subclass) so callsites trigger
+// rescans instead of mixing pre- and post-resolver-swap shapes.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
     EDGELIST_SCHEMA_VERSION,
+    EDGELIST_RESOLVER_VERSION,
     EdgeListLoadError,
+    SchemaMismatchError,
     createEmptyEdgeList,
     loadEdgeListData,
 } from '../../../src/graph/edgelist-schema';
@@ -20,38 +27,18 @@ const FILE = '/test/path/edgelist.json';
 test('edgelist-schema: createEmptyEdgeList round-trips through loadEdgeListData', () => {
     const empty = createEmptyEdgeList();
     const round = loadEdgeListData(JSON.parse(JSON.stringify(empty)), FILE);
-    assert.equal(round.schemaVersion, 1);
-    assert.equal(EDGELIST_SCHEMA_VERSION, 1);
+    assert.equal(round.schemaVersion, 2);
+    assert.equal(EDGELIST_SCHEMA_VERSION, 2);
+    assert.equal(round.resolverVersion, 'ts-resolveModuleName-v1');
+    assert.equal(EDGELIST_RESOLVER_VERSION, 'ts-resolveModuleName-v1');
     assert.deepEqual(round.nodes, []);
     assert.deepEqual(round.edges, []);
 });
 
-test('edgelist-schema: legacy v1.0.0 documents are accepted and rewritten to schemaVersion 1', () => {
-    const legacy = {
-        version: '1.0.0',
-        timestamp: '2026-01-01T00:00:00.000Z',
-        nodes: [],
-        edges: [],
-    };
-    const result = loadEdgeListData(legacy, FILE);
-    assert.equal(result.schemaVersion, 1);
-    // legacy `version` field must NOT survive the migration
-    assert.equal((result as Record<string, unknown>).version, undefined);
-});
-
-test('edgelist-schema: versionless documents are accepted as v1', () => {
-    const versionless = {
-        timestamp: '2026-01-01T00:00:00.000Z',
-        nodes: [],
-        edges: [],
-    };
-    const result = loadEdgeListData(versionless, FILE);
-    assert.equal(result.schemaVersion, 1);
-});
-
-test('edgelist-schema: unknown schemaVersion is rejected with reason "unknown-version"', () => {
+test('edgelist-schema: unknown schemaVersion is rejected with SchemaMismatchError', () => {
     const bad = {
         schemaVersion: 99,
+        resolverVersion: EDGELIST_RESOLVER_VERSION,
         timestamp: '2026-01-01T00:00:00.000Z',
         nodes: [],
         edges: [],
@@ -63,6 +50,7 @@ test('edgelist-schema: unknown schemaVersion is rejected with reason "unknown-ve
         caught = e as EdgeListLoadError;
     }
     assert.ok(caught, 'expected EdgeListLoadError');
+    assert.ok(caught instanceof SchemaMismatchError, 'expected SchemaMismatchError subclass');
     assert.equal(caught!.reason, 'unknown-version');
     assert.equal(caught!.filePath, FILE);
     assert.match(caught!.message, /99/);
@@ -70,7 +58,8 @@ test('edgelist-schema: unknown schemaVersion is rejected with reason "unknown-ve
 
 test('edgelist-schema: nodes-as-string is rejected with reason "schema-error" and field path', () => {
     const bad = {
-        schemaVersion: 1,
+        schemaVersion: EDGELIST_SCHEMA_VERSION,
+        resolverVersion: EDGELIST_RESOLVER_VERSION,
         timestamp: '2026-01-01T00:00:00.000Z',
         nodes: 'banana',
         edges: [],
@@ -88,7 +77,8 @@ test('edgelist-schema: nodes-as-string is rejected with reason "schema-error" an
 
 test('edgelist-schema: edge with empty source is rejected with field path edges.0.source', () => {
     const bad = {
-        schemaVersion: 1,
+        schemaVersion: EDGELIST_SCHEMA_VERSION,
+        resolverVersion: EDGELIST_RESOLVER_VERSION,
         timestamp: '2026-01-01T00:00:00.000Z',
         nodes: [],
         edges: [{ source: '', target: 'a', kind: 'import' }],
@@ -143,7 +133,8 @@ test('edgelist-schema: EdgeListLoadError carries the file path it was constructe
 
 test('edgelist-schema: kind enum rejects unknown node kinds', () => {
     const bad = {
-        schemaVersion: 1,
+        schemaVersion: EDGELIST_SCHEMA_VERSION,
+        resolverVersion: EDGELIST_RESOLVER_VERSION,
         timestamp: '',
         nodes: [{ id: 'src/a.ts', name: 'a', kind: 'external', fileId: 'src/a.ts' }],
         edges: [],
