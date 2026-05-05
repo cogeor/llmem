@@ -43,17 +43,25 @@ export function generateSingleFileInfo(
 
 /**
  * Get the output path for a file's info markdown
- * 
- * @param rootDir The workspace root directory
+ *
+ * Loop 10: previously took `(rootDir, fileId)` and joined a hardcoded
+ * artifact-root literal under the workspace root — a Loop 09 leftover
+ * that the artifact-root-allowlist test surfaces. The function has no
+ * runtime callers (the legacy generators are disabled — see the NOTE
+ * below), so the signature was tightened to take the configured
+ * artifact root directly. Callers that get here in the future should
+ * pass `ctx.artifactRoot` from the application layer.
+ *
+ * @param artifactRoot The configured artifact root directory (e.g. `ctx.artifactRoot`)
  * @param fileId The file identifier (relative path, e.g., "src/parser/types.ts")
  * @returns Absolute path to the output markdown file
  */
-export function getInfoOutputPath(rootDir: string, fileId: string): string {
+export function getInfoOutputPath(artifactRoot: string, fileId: string): string {
     // Input: src/parser/types.ts
-    // Output: .artifacts/src/parser/types.ts/types.ts.md
+    // Output: <artifactRoot>/src/parser/types.ts/types.ts.md
     const normalizedPath = fileId.replace(/\\/g, '/');
     const fileName = path.basename(normalizedPath);
-    return path.join(rootDir, '.artifacts', normalizedPath, fileName + '.md');
+    return path.join(artifactRoot, normalizedPath, fileName + '.md');
 }
 
 // NOTE: generateAllFileInfo and generateAndSaveAllFileInfo have been disabled
