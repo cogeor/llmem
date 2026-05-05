@@ -51,29 +51,12 @@ interface OverBudgetEntry {
  * intervening loops cannot push the file higher than this number even
  * while it waits for its decomposition phase.
  *
- * Loop 15 lands with two entries: `HierarchicalLayout.ts` and
- * `Worktree.ts`. Both are explicitly out of scope for loop 15 per the
- * orchestrator's plan ("DO NOT touch HierarchicalLayout / Worktree
- * internals" — owned by loop 16).
+ * Loop 16 lands with the allowlist empty: both pre-loop-16 entries
+ * (`HierarchicalLayout.ts`, `Worktree.ts`) are now ≤ 400 lines after
+ * the layout type-out + worktree split. Reserved for future loops
+ * that need a transitional path-and-ceiling entry.
  */
-const KNOWN_OVER_BUDGET: readonly OverBudgetEntry[] = [
-    {
-        rel: 'src/webview/ui/graph/HierarchicalLayout.ts',
-        maxLines: 760,
-        phase: 'loop-16',
-        reason:
-            'Layout type-out + extraction owned by loop 16 per LOOPS.yaml ' +
-            '("DO NOT touch HierarchicalLayout internals" in loop-15 scope).',
-    },
-    {
-        rel: 'src/webview/ui/components/Worktree.ts',
-        maxLines: 490,
-        phase: 'loop-16',
-        reason:
-            'Worktree helper extraction owned by loop 16 per LOOPS.yaml ' +
-            '("DO NOT touch Worktree internals" in loop-15 scope).',
-    },
-];
+const KNOWN_OVER_BUDGET: readonly OverBudgetEntry[] = [];
 
 function toRepoRel(absPath: string): string {
     return path.relative(REPO_ROOT, absPath).replace(/\\/g, '/');

@@ -363,6 +363,8 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
       reason: 'Skip directory in walkSrc.' },
     { file: 'tests/arch/graph-ids.test.ts',
       reason: 'Skip directory in walkSrc.' },
+    { file: 'tests/arch/no-layout-scratch-any.test.ts',
+      reason: 'Skip directory in walkSrc.' },
     { file: 'tests/arch/webview-shell-parity.test.ts',
       reason: 'Banner comment + cache-invalidation test for `.artifacts/webview/`.' },
     { file: 'tests/arch/workspace-context-singleton.test.ts',

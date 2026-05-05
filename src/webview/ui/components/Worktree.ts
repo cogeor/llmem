@@ -1,10 +1,14 @@
 
 import { DataProvider } from '../services/dataProvider';
 import { State } from '../state';
-import { WorkTreeNode, FileNode, DirectoryNode, AppState, GraphStatus } from '../types';
-import { folder, file, chevronRight } from '../icons';
-import { escape } from '../utils/escape';
+import { WorkTreeNode, DirectoryNode, AppState } from '../types';
 import { WebviewLogger, createWebviewLogger } from '../services/webview-logger';
+import { TreeHtmlRenderer } from './worktree/tree-html-renderer';
+import {
+    WatchStateCalculator,
+    createWatchStateCalculator,
+} from './worktree/watch-state';
+import { ExpansionStatePersister } from './worktree/expansion-state';
 
 interface Props {
     el: HTMLElement;
@@ -14,30 +18,12 @@ interface Props {
 }
 
 /**
- * Get status color for a graph status.
- */
-function getStatusColor(status: GraphStatus | undefined): string {
-    switch (status) {
-        case 'current': return '#22c55e';   // Green
-        case 'outdated': return '#f97316';  // Orange
-        case 'never': return '#ef4444';     // Red
-        default: return '#6b7280';          // Gray (unknown)
-    }
-}
-
-/**
- * Get combined status (worst of import/call).
- */
-function getCombinedStatus(importStatus?: GraphStatus, callStatus?: GraphStatus): GraphStatus {
-    if (importStatus === 'never' || callStatus === 'never') return 'never';
-    if (importStatus === 'outdated' || callStatus === 'outdated') return 'outdated';
-    if (importStatus === 'current' && callStatus === 'current') return 'current';
-    return 'never'; // Default if unknown
-}
-
-/**
  * Worktree Component
- * Displays the file system tree and handles selection.
+ *
+ * Loop 16 — orchestration only. Tree HTML rendering, watch-state
+ * derivation, and expansion-state persistence each live in their own
+ * unit under `components/worktree/`. This file owns: mount, click
+ * dispatch, selection-highlight, and the data-load lifecycle.
  */
 export class Worktree {
     private el: HTMLElement;
@@ -47,11 +33,21 @@ export class Worktree {
     private unsubscribe?: () => void;
     private logger: WebviewLogger;
 
+    private readonly htmlRenderer: TreeHtmlRenderer;
+    private readonly watchState: WatchStateCalculator;
+    private readonly expansion: ExpansionStatePersister;
+
     constructor({ el, state, dataProvider, logger }: Props) {
         this.el = el;
         this.state = state;
         this.dataProvider = dataProvider;
         this.logger = logger ?? createWebviewLogger({ enabled: false });
+        this.htmlRenderer = new TreeHtmlRenderer();
+        this.watchState = createWatchStateCalculator();
+        this.expansion = new ExpansionStatePersister({
+            hostKind: dataProvider.hostKind,
+            logger: this.logger,
+        });
     }
 
     private clickHandlerBound: boolean = false;
@@ -61,7 +57,7 @@ export class Worktree {
         this.render(this.tree);
 
         // Restore expansion state from previous session
-        this.restoreExpansionState();
+        this.expansion.restore(this.el);
 
         // Listen for clicks (only add once)
         if (!this.clickHandlerBound) {
@@ -69,113 +65,24 @@ export class Worktree {
             this.clickHandlerBound = true;
         }
 
-        // Subscribe to state to update selection highlight and watched buttons
+        // Subscribe to state to update selection highlight + watched buttons
         this.unsubscribe = this.state.subscribe((s: AppState) => {
             this.updateSelection(s);
-            this.updateWatchedButtons(s.watchedPaths);
+            this.watchState.updateButtons(this.el, s.watchedPaths);
         });
     }
 
     render(rootNode: WorkTreeNode) {
-        // safe: renderNode escapes every filesystem-derived interpolation
-        // (path, name) via utils/escape; structural tags and CSS class names
-        // are static.
-        this.el.innerHTML = `<ul class="tree-list">${this.renderNode(rootNode, 0)}</ul>`;
-    }
-
-    /**
-     * Check if a file node is parsable.
-     *
-     * Loop 12: reads the precomputed `isSupported` flag attached server-side
-     * by `src/webview/worktree.ts::generateWorkTree`. Falls back to `false`
-     * if the field is missing (e.g. older cached worktree blobs) — such
-     * files are still rendered, just not toggleable.
-     */
-    isParsableFile(node: FileNode): boolean {
-        return (node as FileNode & { isSupported?: boolean }).isSupported === true;
-    }
-
-    /**
-     * Check if a directory contains any parsable files (recursively).
-     */
-    hasAnyParsableFiles(dirNode: WorkTreeNode): boolean {
-        if (dirNode.type === 'file') {
-            return this.isParsableFile(dirNode as FileNode);
-        }
-
-        if (dirNode.type === 'directory' && (dirNode as DirectoryNode).children) {
-            for (const child of (dirNode as DirectoryNode).children) {
-                if (this.hasAnyParsableFiles(child)) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    renderNode(node: WorkTreeNode, depth: number): string {
-        const isDir = node.type === 'directory';
-
-        // Check if we should show toggle button:
-        // - For files: only if parsable
-        // - For dirs: only if contains parsable files (recursively)
-        const showToggle = isDir
-            ? this.hasAnyParsableFiles(node)
-            : this.isParsableFile(node as FileNode);
-        const statusTitle = showToggle
-            ? `Click to toggle file watching for this ${isDir ? 'folder' : 'file'}.`
-            : '';
-
-        // Loop 13: escape every filesystem-derived string before interpolation.
-        // node.path and node.name come from the worktree data and could contain
-        // any character a filesystem allows, including `<`, `"`, `'`. The
-        // `data-path` attribute is also read back via CSS selectors using
-        // `CSS.escape` at lookup time, so the escaped form round-trips fine.
-        // node.type is a controlled string union ('file' | 'directory') and
-        // does not need escaping; the same applies to icon SVG strings imported
-        // from icons.ts (author-controlled).
-        const safePath = escape(node.path);
-        const safeName = escape(node.name);
-
-        let html = `
-            <li class="tree-node" data-path="${safePath}" data-type="${node.type}">
-                <div class="tree-item" style="padding-left: ${depth * 12 + 12}px">
-                    ${isDir ? `<span class="tree-arrow">${chevronRight}</span>` : ''}
-                    <span class="icon">${isDir ? folder : file}</span>
-                    <span class="label">${safeName}</span>
-                    ${showToggle ? `<button class="status-btn" data-path="${safePath}" title="${statusTitle}" style="
-                        width: 12px;
-                        height: 12px;
-                        min-width: 12px;
-                        min-height: 12px;
-                        box-sizing: border-box;
-                        border-radius: 50%;
-                        border: none;
-                        background-color: #ccc;
-                        margin-left: auto;
-                        cursor: pointer;
-                        flex-shrink: 0;
-                    "></button>` : ''}
-                </div>
-        `;
-
-        if (isDir && (node as DirectoryNode).children) {
-            html += `<ul class="tree-children" data-path="${safePath}">`;
-            (node as DirectoryNode).children.forEach(child => {
-                html += this.renderNode(child, depth + 1);
-            });
-            html += `</ul>`;
-        }
-
-        html += `</li>`;
-        return html;
+        // safe: TreeHtmlRenderer escapes every filesystem-derived
+        // interpolation (path, name) via utils/escape; structural
+        // tags and CSS class names are static.
+        this.el.innerHTML = `<ul class="tree-list">${this.htmlRenderer.render(rootNode)}</ul>`;
     }
 
     handleClick(e: Event) {
         const target = e.target as HTMLElement;
 
-        // Check if status button was clicked - prevent any other action
+        // Status button click — short-circuit any other action.
         if (target.classList.contains('status-btn')) {
             e.stopPropagation();
             e.preventDefault();
@@ -190,105 +97,47 @@ export class Worktree {
         const nodeEl = item.parentElement as HTMLElement;
         const path = nodeEl.dataset.path;
         const rawType = nodeEl.dataset.type;
-        // Loop 14: tighten — `data-type` is rendered by `renderNode` from
-        // a controlled union, but `dataset.*` is `string | undefined` at
-        // the type system. Narrow by check.
+        // Loop 14: tighten — `data-type` is rendered from a controlled
+        // union, but `dataset.*` is `string | undefined` at the type
+        // system. Narrow by check.
         const type: 'file' | 'directory' | null =
             rawType === 'file' || rawType === 'directory' ? rawType : null;
 
         if (type === 'directory') {
-            // Toggle expansion
             const childrenUl = nodeEl.querySelector('.tree-children');
             if (childrenUl) {
                 const isExpanded = childrenUl.classList.contains('is-expanded');
                 childrenUl.classList.toggle('is-expanded');
                 item.setAttribute('aria-expanded', String(!isExpanded));
-
-                // Save expansion state
-                this.saveExpansionState();
+                this.expansion.save(this.el);
             }
         }
-
 
         // Update selection state
         this.state.set({
             selectedPath: path ?? null,
             selectedType: type,
-            selectionSource: 'explorer'
+            selectionSource: 'explorer',
         });
     }
 
     /**
-     * Save current tree expansion state to localStorage (HTTP mode only).
-     */
-    private saveExpansionState(): void {
-        // Only save in HTTP (browser) mode — VS Code persists panel state
-        // separately, and the static review forbids components from
-        // reaching into the host API directly (Loop 14).
-        if (this.dataProvider.hostKind === 'vscode') return;
-
-        const expandedPaths: string[] = [];
-        const expandedElements = this.el.querySelectorAll('.tree-children.is-expanded');
-        expandedElements.forEach(el => {
-            const path = (el as HTMLElement).dataset.path;
-            if (path) expandedPaths.push(path);
-        });
-
-        try {
-            localStorage.setItem('llmem:expandedPaths', JSON.stringify(expandedPaths));
-        } catch (e) {
-            this.logger.warn('[Worktree] Failed to save expansion state:', e);
-        }
-    }
-
-    /**
-     * Restore tree expansion state from localStorage (HTTP mode only).
-     */
-    private restoreExpansionState(): void {
-        // Mirror of `saveExpansionState`: only the browser host stores
-        // expansion state in localStorage.
-        if (this.dataProvider.hostKind === 'vscode') return;
-
-        try {
-            const saved = localStorage.getItem('llmem:expandedPaths');
-            if (!saved) return;
-
-            const expandedPaths = JSON.parse(saved) as string[];
-            for (const path of expandedPaths) {
-                const childrenEl = this.el.querySelector(`.tree-children[data-path="${CSS.escape(path)}"]`);
-                if (childrenEl) {
-                    childrenEl.classList.add('is-expanded');
-                    const parentNodeLi = childrenEl.parentElement;
-                    const parentItem = parentNodeLi?.querySelector('.tree-item');
-                    if (parentItem) {
-                        parentItem.setAttribute('aria-expanded', 'true');
-                    }
-                }
-            }
-        } catch (e) {
-            this.logger.warn('[Worktree] Failed to restore expansion state:', e);
-        }
-    }
-
-    /**
-     * Handle status button click - toggle watch state for the path.
+     * Handle status button click — toggle watch state for the path.
      * Uses DataProvider abstraction for mode-agnostic toggle.
      */
     async handleStatusButtonClick(clickedPath: string) {
         const currentState = this.state.get();
-        const nodeEl = this.el.querySelector(`.tree-node[data-path="${CSS.escape(clickedPath)}"]`) as HTMLElement;
+        const nodeEl = this.el.querySelector(
+            `.tree-node[data-path="${CSS.escape(clickedPath)}"]`,
+        ) as HTMLElement;
         const isDir = nodeEl?.dataset.type === 'directory';
 
         // Determine if currently watched:
         // - For files: exact match in watchedPaths
         // - For folders: any descendant file is watched
-        let isCurrentlyWatched: boolean;
-        if (isDir) {
-            isCurrentlyWatched = this.hasWatchedDescendant(clickedPath, currentState.watchedPaths);
-        } else {
-            isCurrentlyWatched = currentState.watchedPaths.has(clickedPath);
-        }
-
+        const isCurrentlyWatched = isDir
+            ? this.watchState.hasWatchedDescendant(this.el, clickedPath, currentState.watchedPaths)
+            : currentState.watchedPaths.has(clickedPath);
         const newWatchedState = !isCurrentlyWatched;
         this.logger.log(`[Worktree] Toggle ${isDir ? 'folder' : 'file'}: ${clickedPath} -> ${newWatchedState}`);
 
@@ -300,32 +149,22 @@ export class Worktree {
         }
 
         try {
-            // Use abstracted toggleWatch - works in both VS Code and standalone mode
             const response = await this.dataProvider.toggleWatch(clickedPath, newWatchedState);
-
             this.logger.log(`[Worktree] Toggle response:`, response);
 
-            // Update local state with the affected files
             const updatedPaths = new Set(currentState.watchedPaths);
             const affectedFiles = newWatchedState ? response.addedFiles : response.removedFiles;
-
             if (affectedFiles) {
                 for (const file of affectedFiles) {
-                    if (newWatchedState) {
-                        updatedPaths.add(file);
-                    } else {
-                        updatedPaths.delete(file);
-                    }
+                    if (newWatchedState) updatedPaths.add(file);
+                    else updatedPaths.delete(file);
                 }
             }
-
-            // Update state (this will trigger button color updates)
             this.state.set({ watchedPaths: updatedPaths });
         } catch (error) {
             this.logger.error(`[Worktree] Failed to toggle watch:`, error);
             alert(`Failed to toggle watch: ${error instanceof Error ? error.message : String(error)}`);
         } finally {
-            // Reset button appearance
             if (btn) {
                 btn.style.opacity = '1';
                 btn.style.cursor = 'pointer';
@@ -333,119 +172,36 @@ export class Worktree {
         }
     }
 
-    /**
-     * Collect all file paths under a given path (for local operations).
-     */
-    collectAllFilePaths(folderPath: string): string[] {
-        const filePaths: string[] = [];
-        const buttons = this.el.querySelectorAll('.status-btn');
-        buttons.forEach(btn => {
-            const btnPath = (btn as HTMLElement).dataset.path;
-            const nodeEl = btn.closest('.tree-node') as HTMLElement;
-            const isFile = nodeEl?.dataset.type === 'file';
-            if (btnPath && isFile && btnPath.startsWith(folderPath + '/')) {
-                filePaths.push(btnPath);
-            }
-        });
-        return filePaths;
-    }
-
-    /**
-     * Update toggle button colors based on watched state.
-     * With file-only tracking:
-     * - Files: exact match in watchedPaths (which are now file paths)
-     * - Folders: watched only if ALL parsable files under it are watched
-     */
-    updateWatchedButtons(watchedFiles: Set<string>) {
-        const buttons = this.el.querySelectorAll('.status-btn');
-        buttons.forEach(btn => {
-            const btnPath = (btn as HTMLElement).dataset.path;
-            const nodeEl = btn.closest('.tree-node') as HTMLElement;
-            const isDir = nodeEl?.dataset.type === 'directory';
-
-            if (btnPath) {
-                let isWatched: boolean;
-                if (isDir) {
-                    // Folder: check if ALL files under it are watched
-                    isWatched = this.areAllDescendantsWatched(btnPath, watchedFiles);
-                } else {
-                    // File: exact match
-                    isWatched = watchedFiles.has(btnPath);
-                }
-                (btn as HTMLElement).style.backgroundColor = isWatched ? '#4ade80' : '#ccc';
-            }
-        });
-    }
-
-    /**
-     * Check if ALL parsable files under a folder path are watched.
-     * Returns false if there are no files, or if any file is not watched.
-     */
-    private areAllDescendantsWatched(folderPath: string, watchedFiles: Set<string>): boolean {
-        // Get all file buttons under this folder
-        const descendantFiles = this.collectAllFilePaths(folderPath);
-
-        // If no files, folder is not "watched"
-        if (descendantFiles.length === 0) {
-            return false;
-        }
-
-        // Check if ALL files are watched
-        for (const filePath of descendantFiles) {
-            if (!watchedFiles.has(filePath)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /**
-     * Check if ANY file under a folder path is watched.
-     * Used for toggle detection (to know if there's something to untoggle).
-     */
-    private hasWatchedDescendant(folderPath: string, watchedFiles: Set<string>): boolean {
-        const descendantFiles = this.collectAllFilePaths(folderPath);
-        for (const filePath of descendantFiles) {
-            if (watchedFiles.has(filePath)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     updateSelection({ selectedPath, selectionSource }: AppState) {
-        // Remove old selection
         const prev = this.el.querySelector('.tree-item.is-selected');
         if (prev) prev.classList.remove('is-selected');
+        if (!selectedPath) return;
 
-        if (selectedPath) {
-            const nodeEl = this.el.querySelector(`.tree-node[data-path="${CSS.escape(selectedPath)}"]`);
-            if (nodeEl) {
-                const item = nodeEl.querySelector('.tree-item');
-                item?.classList.add('is-selected');
+        const nodeEl = this.el.querySelector(
+            `.tree-node[data-path="${CSS.escape(selectedPath)}"]`,
+        );
+        if (!nodeEl) return;
 
-                // Expand parent folders
-                let parent = nodeEl.parentElement?.closest('.tree-children');
-                while (parent) {
-                    parent.classList.add('is-expanded');
-                    const parentNodeLi = parent.parentElement;
-                    const parentItem = parentNodeLi?.querySelector('.tree-item');
-                    if (parentItem) parentItem.setAttribute('aria-expanded', 'true');
+        const item = nodeEl.querySelector('.tree-item');
+        item?.classList.add('is-selected');
 
-                    parent = parent.parentElement?.closest('.tree-children');
-                }
+        // Expand parent folders
+        let parent = nodeEl.parentElement?.closest('.tree-children');
+        while (parent) {
+            parent.classList.add('is-expanded');
+            const parentNodeLi = parent.parentElement;
+            const parentItem = parentNodeLi?.querySelector('.tree-item');
+            if (parentItem) parentItem.setAttribute('aria-expanded', 'true');
+            parent = parent.parentElement?.closest('.tree-children');
+        }
 
-                // Scroll into view when selection comes from graph
-                if (selectionSource === 'graph' && item) {
-                    item.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }
-            }
+        // Scroll into view when selection comes from graph
+        if (selectionSource === 'graph' && item) {
+            item.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
     }
 
-    /**
-     * Get a node by path from the loaded tree
-     */
+    /** Get a node by path from the loaded tree. */
     getNode(path: string): WorkTreeNode | undefined {
         if (!this.tree) return undefined;
         return this.findNode(this.tree, path);
@@ -462,16 +218,14 @@ export class Worktree {
         return undefined;
     }
 
-    /**
-     * Collect all file paths in a subtree
-     */
+    /** Collect all file paths in a subtree. */
     collectSubtreeFiles(dirNode: WorkTreeNode): Set<string> {
         const files = new Set<string>();
         const walk = (node: WorkTreeNode) => {
             if (!node) return;
-            if (node.type === "file") {
+            if (node.type === 'file') {
                 files.add(node.path);
-            } else if (node.type === "directory" && (node as DirectoryNode).children) {
+            } else if (node.type === 'directory' && (node as DirectoryNode).children) {
                 (node as DirectoryNode).children.forEach(walk);
             }
         };
