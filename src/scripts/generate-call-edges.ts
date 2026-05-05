@@ -12,10 +12,9 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import { scanFolder, scanFolderRecursive } from '../application/scan';
-import { asWorkspaceRoot } from '../core/paths';
+import { createWorkspaceContext } from '../application/workspace-context';
 import type { Logger } from '../core/logger';
 import { createLogger } from '../common/logger';
-import { WorkspaceIO } from '../workspace/workspace-io';
 
 // Loop 20: route the application-layer adapter through the structured
 // logger. The script's own `console.log` progress prints stay (they
@@ -65,17 +64,18 @@ async function main(): Promise<void> {
     }
 
     try {
-        const io = await WorkspaceIO.create(asWorkspaceRoot(root));
-        const opts = {
-            workspaceRoot: asWorkspaceRoot(root),
-            folderPath,
-            artifactDir,
-            io,
+        // Loop 04: build a single context for the script. The CLI logger
+        // bridges into the application logger so scan progress flows to
+        // the structured logger.
+        const ctx = await createWorkspaceContext({
+            workspaceRoot: root,
             logger: consoleLogger,
-        };
+        });
+        void artifactDir; // resolved below via ctx.artifactRoot
+        const req = { folderPath };
         const result = recursive
-            ? await scanFolderRecursive(opts)
-            : await scanFolder(opts);
+            ? await scanFolderRecursive(ctx, req)
+            : await scanFolder(ctx, req);
 
         // Render per-file failures the same way the legacy script did.
         for (const err of result.errors) {

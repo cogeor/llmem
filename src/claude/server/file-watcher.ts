@@ -3,23 +3,18 @@
  *
  * Watches source files (for edge regeneration) and edge lists (for graph updates).
  * Design docs (.arch) are now handled by ArchWatcherService for incremental updates.
+ *
+ * Loop 04: takes a `WorkspaceContext` instead of the
+ * `(workspaceRoot, artifactRoot, io, verbose)` bag.
  */
 
 import * as path from 'path';
 import * as chokidar from 'chokidar';
 import { WatchService } from '../../graph/worktree-state';
 import { createLogger } from '../../common/logger';
-import type { WorkspaceIO } from '../../workspace/workspace-io';
+import type { WorkspaceContext } from '../../application/workspace-context';
 
 const log = createLogger('file-watcher');
-
-export interface FileWatcherConfig {
-    workspaceRoot: string;
-    artifactRoot: string;
-    /** Required (L24): realpath-strong I/O surface anchored on the workspace root. */
-    io: WorkspaceIO;
-    verbose?: boolean;
-}
 
 export interface FileChangeEvent {
     type: 'source' | 'edgelist';
@@ -33,7 +28,8 @@ export interface FileChangeEvent {
  */
 export class FileWatcherService {
     private watcher: chokidar.FSWatcher | null = null;
-    private config: Required<FileWatcherConfig>;
+    private readonly ctx: WorkspaceContext;
+    private readonly verbose: boolean;
     private watchedSourcePaths: Set<string> = new Set();
     private edgeListFiles: string[] = [];
 
@@ -45,13 +41,9 @@ export class FileWatcherService {
     private edgeListTimeout: NodeJS.Timeout | null = null;
     private changedSourceFiles: Set<string> = new Set();
 
-    constructor(config: FileWatcherConfig) {
-        this.config = {
-            workspaceRoot: config.workspaceRoot,
-            artifactRoot: config.artifactRoot,
-            io: config.io,
-            verbose: config.verbose || false,
-        };
+    constructor(ctx: WorkspaceContext, verbose = false) {
+        this.ctx = ctx;
+        this.verbose = verbose;
     }
 
     /**
@@ -65,10 +57,10 @@ export class FileWatcherService {
         this.onSourceChange = handlers.onSourceChange;
         this.onEdgeListChange = handlers.onEdgeListChange;
 
-        const artifactDir = path.join(this.config.workspaceRoot, this.config.artifactRoot);
+        const artifactDir = this.ctx.artifactRoot;
 
         // Load watched files from WatchService
-        const watchService = new WatchService(artifactDir, this.config.workspaceRoot, this.config.io);
+        const watchService = new WatchService(artifactDir, this.ctx.workspaceRoot, this.ctx.io);
         await watchService.load();
         const watchedFiles = watchService.getWatchedFiles();
 
@@ -79,7 +71,7 @@ export class FileWatcherService {
         ];
 
         const watchedSourcePaths = watchedFiles.map(f =>
-            path.join(this.config.workspaceRoot, f)
+            path.join(this.ctx.workspaceRoot, f)
         );
         this.watchedSourcePaths = new Set(watchedSourcePaths);
 
@@ -96,9 +88,9 @@ export class FileWatcherService {
         // were built from inside-workspace sources).
         const existingPaths: string[] = [];
         for (const p of watchPaths) {
-            const rel = path.relative(this.config.io.getRealRoot(), p);
+            const rel = path.relative(this.ctx.io.getRealRoot(), p);
             try {
-                if (await this.config.io.exists(rel)) existingPaths.push(p);
+                if (await this.ctx.io.exists(rel)) existingPaths.push(p);
             } catch (err) {
                 log.warn('Watch path escapes workspace; skipping', {
                     path: p,
@@ -108,7 +100,7 @@ export class FileWatcherService {
         }
 
         if (existingPaths.length === 0) {
-            if (this.config.verbose) {
+            if (this.verbose) {
                 log.debug('No paths to watch');
             }
             return;
@@ -130,7 +122,7 @@ export class FileWatcherService {
         this.watcher.on('change', (filePath) => this.handleFileEvent('changed', filePath));
         this.watcher.on('unlink', (filePath) => this.handleFileEvent('removed', filePath));
 
-        if (this.config.verbose) {
+        if (this.verbose) {
             log.info('Watching files', {
                 sourceFiles: watchedFiles.length,
                 edgeLists: this.edgeListFiles.length,
@@ -155,9 +147,9 @@ export class FileWatcherService {
      * Handle source file change
      */
     private handleSourceEvent(action: string, filePath: string): void {
-        const relativePath = path.relative(this.config.workspaceRoot, filePath).replace(/\\/g, '/');
+        const relativePath = path.relative(this.ctx.workspaceRoot, filePath).replace(/\\/g, '/');
 
-        if (this.config.verbose) {
+        if (this.verbose) {
             log.debug('Source change', { action, relativePath });
         }
 
@@ -189,7 +181,7 @@ export class FileWatcherService {
      * Handle edge list change
      */
     private handleEdgeListEvent(action: string, filePath: string): void {
-        if (this.config.verbose) {
+        if (this.verbose) {
             log.debug('Edge list change', { action, filename: path.basename(filePath) });
         }
 

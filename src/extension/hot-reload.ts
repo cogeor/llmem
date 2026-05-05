@@ -4,10 +4,8 @@ import * as path from 'path';
 import { collectViewerData } from '../application/viewer-data';
 import { ParserRegistry } from '../parser/registry';
 import { scanFile } from '../application/scan';
-import type { Logger as BoundaryLogger } from '../core/logger';
+import type { WorkspaceContext } from '../application/workspace-context';
 import { createLogger } from '../common/logger';
-import { asWorkspaceRoot, asAbsPath } from '../core/paths';
-import { WorkspaceIO } from '../workspace/workspace-io';
 import type { DesignDoc } from '../webview/design-docs';
 import { renderMarkdown } from '../webview/markdown-renderer';
 import type { WebviewGraphData } from '../graph/webview-data';
@@ -28,11 +26,16 @@ export interface WebviewData {
 
 /**
  * Service to handle hot reloading of the webview data.
- * 
+ *
  * Three watch paths:
  * - Source files change (.ts, .js, etc.) -> Refresh graphs from edge list
  * - .arch files change (.md) -> Re-convert markdown to HTML
  * - Any file in project create/delete -> Refresh worktree
+ *
+ * Loop 04: takes a `WorkspaceContext` from the panel instead of building
+ * its own `WorkspaceIO`. The context's `workspaceRoot`, `artifactRoot`,
+ * `archRoot`, `io`, and `logger` replace the lazily-constructed `_io`
+ * field and the per-string-arg constructor.
  */
 export class HotReloadService {
     private sourceWatcher: vscode.FileSystemWatcher | undefined;
@@ -45,36 +48,16 @@ export class HotReloadService {
     private pendingChangedFiles: Set<string> = new Set();
     private watchedPaths: Set<string> = new Set();  // Paths with active file watching
 
-    private artifactRoot: string;
-    private projectRoot: string;
-    private archRoot: string;
-
-    /**
-     * L24: realpath-strong I/O surface, lazily constructed on first scan.
-     * `WorkspaceIO.create` is async (it realpaths the root once), so we
-     * cannot build it eagerly in the synchronous constructor / `start()`.
-     */
-    private _io: WorkspaceIO | null = null;
+    /** Loop 04: per-workspace runtime context, supplied by the panel. */
+    private readonly ctx: WorkspaceContext;
 
     private onUpdate: (data: WebviewData) => void;
 
-    // Loop 20: bridge the application-layer boundary `Logger` interface
-    // through the structured logger. Same shape as before; the targets
-    // are now leveled scope='hot-reload' calls instead of raw console.
-    private readonly _scanLogger: BoundaryLogger = {
-        info: (m) => log.info(m),
-        warn: (m) => log.warn(m),
-        error: (m) => log.error(m),
-    };
-
     constructor(
-        artifactRoot: string,
-        projectRoot: string,
+        ctx: WorkspaceContext,
         onUpdate: (data: WebviewData) => void
     ) {
-        this.artifactRoot = artifactRoot;
-        this.projectRoot = projectRoot;
-        this.archRoot = path.join(projectRoot, '.arch');
+        this.ctx = ctx;
         this.onUpdate = onUpdate;
     }
 
@@ -82,9 +65,9 @@ export class HotReloadService {
         if (this.sourceWatcher) return;
 
         log.info('Starting watchers...');
-        log.info('Project root', { projectRoot: this.projectRoot });
-        log.info('Artifact root', { artifactRoot: this.artifactRoot });
-        log.info('Arch root', { archRoot: this.archRoot });
+        log.info('Project root', { projectRoot: this.ctx.workspaceRoot });
+        log.info('Artifact root', { artifactRoot: this.ctx.artifactRoot });
+        log.info('Arch root', { archRoot: this.ctx.archRoot });
 
         // Watch source files -> refresh graphs
         const extensions = ParserRegistry.getInstance().getSupportedExtensions();
@@ -93,7 +76,7 @@ export class HotReloadService {
         log.info('Watching extensions', { extensions: extPattern });
 
         const srcPattern = new vscode.RelativePattern(
-            vscode.Uri.file(this.projectRoot),
+            vscode.Uri.file(this.ctx.workspaceRoot),
             `src/**/*.{${extPattern}}`
         );
         this.sourceWatcher = vscode.workspace.createFileSystemWatcher(srcPattern);
@@ -105,7 +88,7 @@ export class HotReloadService {
 
         // Watch .arch/src/**/*.md -> re-convert markdown
         const archPattern = new vscode.RelativePattern(
-            vscode.Uri.file(this.archRoot),
+            vscode.Uri.file(this.ctx.archRoot),
             'src/**/*.md'
         );
         this.archWatcher = vscode.workspace.createFileSystemWatcher(archPattern);
@@ -118,11 +101,11 @@ export class HotReloadService {
         // Watch for any file/folder creation/deletion in the project -> refresh worktree
         // We use two patterns to reliably catch both root files/folders and nested ones
         const rootPattern = new vscode.RelativePattern(
-            vscode.Uri.file(this.projectRoot),
+            vscode.Uri.file(this.ctx.workspaceRoot),
             '*'
         );
         const nestedPattern = new vscode.RelativePattern(
-            vscode.Uri.file(this.projectRoot),
+            vscode.Uri.file(this.ctx.workspaceRoot),
             '**/*'
         );
 
@@ -140,14 +123,15 @@ export class HotReloadService {
         this.treeWatcher = vscode.workspace.createFileSystemWatcher(nestedPattern);
         this.treeWatcher.onDidCreate((uri) => {
             // Avoid double trigger if root watcher caught it (though debounce handles this)
+            void uri;
             this.queueTreeRefresh();
         });
-        this.treeWatcher.onDidDelete((uri) => this.queueTreeRefresh());
+        this.treeWatcher.onDidDelete((uri) => { void uri; this.queueTreeRefresh(); });
         this.disposables.push(this.treeWatcher);
 
         // Watch edgelist files -> refresh graphs when edges are added/updated
         const edgelistPattern = new vscode.RelativePattern(
-            vscode.Uri.file(this.artifactRoot),
+            vscode.Uri.file(this.ctx.artifactRoot),
             '*-edgelist.json'
         );
         this.edgelistWatcher = vscode.workspace.createFileSystemWatcher(edgelistPattern);
@@ -166,17 +150,6 @@ export class HotReloadService {
         this.treeWatcher = undefined;
         this.edgelistWatcher = undefined;
         log.info('Watchers stopped');
-    }
-
-    /**
-     * Lazily construct (and cache) the workspace-scoped I/O surface.
-     * L24: `WorkspaceIO.create` realpaths the workspace root once.
-     */
-    private async getIO(): Promise<WorkspaceIO> {
-        if (!this._io) {
-            this._io = await WorkspaceIO.create(asWorkspaceRoot(this.projectRoot));
-        }
-        return this._io;
     }
 
     /**
@@ -204,7 +177,7 @@ export class HotReloadService {
 
     private queueSourceRebuild(uri: vscode.Uri) {
         // Track the changed file
-        const relativePath = path.relative(this.projectRoot, uri.fsPath).replace(/\\/g, '/');
+        const relativePath = path.relative(this.ctx.workspaceRoot, uri.fsPath).replace(/\\/g, '/');
         this.pendingChangedFiles.add(relativePath);
 
         if (this.debounceTimers.source) clearTimeout(this.debounceTimers.source);
@@ -223,15 +196,8 @@ export class HotReloadService {
 
             log.info('Watched files changed, regenerating edges', { watchedChangedFiles });
             try {
-                const io = await this.getIO();
                 for (const file of watchedChangedFiles) {
-                    await scanFile({
-                        workspaceRoot: asWorkspaceRoot(this.projectRoot),
-                        filePath: file,
-                        artifactDir: this.artifactRoot,
-                        io,
-                        logger: this._scanLogger,
-                    });
+                    await scanFile(this.ctx, { filePath: file });
                 }
 
                 // Refresh the webview data
@@ -291,13 +257,7 @@ export class HotReloadService {
 
     public async sendUpdate() {
         try {
-            const io = await this.getIO();
-            const raw = await collectViewerData({
-                workspaceRoot: asWorkspaceRoot(this.projectRoot),
-                artifactRoot: asAbsPath(this.artifactRoot),
-                io,
-                logger: this._scanLogger,
-            });
+            const raw = await collectViewerData(this.ctx);
             const designDocs = await renderRawDesignDocs(raw.designDocs);
             const data: WebviewData = {
                 graphData: raw.graphData,

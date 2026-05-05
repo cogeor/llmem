@@ -9,7 +9,6 @@
  */
 
 import type * as http from 'http';
-import * as path from 'path';
 import { FolderTreeStore } from '../../../graph/folder-tree-store';
 import { FolderTreeLoadError } from '../../../graph/folder-tree';
 import type { ServerContext } from './types';
@@ -27,10 +26,10 @@ export async function handleFolderTreeRoute(
         return;
     }
 
-    const artifactDir = path.join(ctx.config.workspaceRoot, ctx.config.artifactRoot);
-
     try {
-        const data = await new FolderTreeStore(artifactDir).load();
+        // Loop 04: artifactRoot lives on the server's WorkspaceContext;
+        // we no longer recompute path.join(workspaceRoot, artifactRoot).
+        const data = await new FolderTreeStore(ctx.ctx.artifactRoot).load();
         ctx.httpHandler.sendJson(res, 200, data);
     } catch (err) {
         if (err instanceof FolderTreeLoadError) {

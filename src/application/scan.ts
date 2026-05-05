@@ -6,33 +6,26 @@
  * This is the application-layer service that VS Code, the HTTP server,
  * and the CLI shim (src/scripts/generate-call-edges.ts) consume.
  *
- * Logger discipline: this module MUST NOT call console.*. Pass a
- * Logger; NoopLogger is used when none is provided. (Loop 05 introduced
- * an inline `ScanLogger` interface here; Loop 06 promoted it to
- * `core/logger.ts` so the new `application/viewer-data.ts` module can
- * share the shape.)
+ * Logger discipline: this module MUST NOT call console.*. The `ctx.logger`
+ * is used; hosts construct the context with a NoopLogger by default (see
+ * `application/workspace-context.ts`).
  *
  * Error discipline: per-file failures are surfaced through
  * ScanResult.errors. The scan does not throw on individual file errors —
  * it only throws when the input folder/file does not exist.
  *
- * Loop 24: every read-side `fs.*` site is replaced with `WorkspaceIO`
- * calls. The `io: WorkspaceIO` field is REQUIRED on the option types so
- * realpath-strong containment is enforced uniformly (and the cheap
- * textual containment check from `WorkspaceIO.resolve` rejects
- * `../escape` / absolute paths outside the workspace at the boundary).
+ * Loop 04: signatures are now `(ctx, request)` — the parallel
+ * `(workspaceRoot, artifactDir, io, logger)` bag is gone. Host code
+ * builds a single `WorkspaceContext` per workspace and threads it.
  */
 
 import * as path from 'path';
-import type { WorkspaceRoot } from '../core/paths';
-import type { Logger } from '../core/logger';
-import { NoopLogger } from '../core/logger';
 import { CallEdgeListStore, ImportEdgeListStore } from '../graph/edgelist';
 import { artifactToEdgeList } from '../graph/artifact-converter';
 import { countFolderLines } from '../parser/line-counter';
 import { IGNORED_FOLDERS } from '../parser/config';
 import { ParserRegistry } from '../parser/registry';
-import { WorkspaceIO } from '../workspace/workspace-io';
+import type { WorkspaceContext } from './workspace-context';
 
 /**
  * A per-file failure surfaced to the caller. The scan continues past these
@@ -47,28 +40,16 @@ export interface ScanError {
     cause: unknown;
 }
 
-export interface ScanFolderOptions {
-    workspaceRoot: WorkspaceRoot;
+/** Per-call request fields for `scanFolder` / `scanFolderRecursive`. */
+export interface ScanFolderRequest {
     /** Workspace-relative folder path (forward slashes). */
     folderPath: string;
-    /** Absolute path to the artifact directory (.artifacts). */
-    artifactDir: string;
-    /** Required (L24): realpath-strong I/O surface anchored on the workspace root. */
-    io: WorkspaceIO;
-    /** Optional logger. Defaults to a no-op. */
-    logger?: Logger;
 }
 
-export interface ScanFileOptions {
-    workspaceRoot: WorkspaceRoot;
+/** Per-call request fields for `scanFile`. */
+export interface ScanFileRequest {
     /** Workspace-relative file path (forward slashes). */
     filePath: string;
-    /** Absolute path to the artifact directory (.artifacts). */
-    artifactDir: string;
-    /** Required (L24): realpath-strong I/O surface anchored on the workspace root. */
-    io: WorkspaceIO;
-    /** Optional logger. Defaults to a no-op. */
-    logger?: Logger;
 }
 
 /**
@@ -89,9 +70,12 @@ export interface ScanResult {
 }
 
 /** Scan a single file and append edges. */
-export async function scanFile(opts: ScanFileOptions): Promise<ScanResult> {
-    const { workspaceRoot, filePath, artifactDir, io } = opts;
-    const logger = opts.logger ?? NoopLogger;
+export async function scanFile(
+    ctx: WorkspaceContext,
+    req: ScanFileRequest,
+): Promise<ScanResult> {
+    const { workspaceRoot, artifactRoot: artifactDir, io, logger } = ctx;
+    const { filePath } = req;
 
     // L24: io.exists performs textual + realpath containment checks.
     // PathEscapeError surfaces to the caller for `../escape`-style inputs.
@@ -184,9 +168,12 @@ export async function scanFile(opts: ScanFileOptions): Promise<ScanResult> {
 }
 
 /** Scan one folder (immediate children only) and append edges. */
-export async function scanFolder(opts: ScanFolderOptions): Promise<ScanResult> {
-    const { workspaceRoot, folderPath, artifactDir, io } = opts;
-    const logger = opts.logger ?? NoopLogger;
+export async function scanFolder(
+    ctx: WorkspaceContext,
+    req: ScanFolderRequest,
+): Promise<ScanResult> {
+    const { workspaceRoot, artifactRoot: artifactDir, io, logger } = ctx;
+    const { folderPath } = req;
 
     if (!(await io.exists(folderPath))) {
         throw new Error(`Folder not found: ${folderPath}`);
@@ -313,15 +300,19 @@ export async function scanFolder(opts: ScanFolderOptions): Promise<ScanResult> {
 }
 
 /** Scan a folder and all its non-IGNORED subfolders recursively. */
-export async function scanFolderRecursive(opts: ScanFolderOptions): Promise<ScanResult> {
-    const { folderPath, io } = opts;
+export async function scanFolderRecursive(
+    ctx: WorkspaceContext,
+    req: ScanFolderRequest,
+): Promise<ScanResult> {
+    const { folderPath } = req;
+    const { io } = ctx;
 
     if (!(await io.exists(folderPath))) {
         throw new Error(`Folder not found: ${folderPath}`);
     }
 
     // Process current folder
-    const folderResult = await scanFolder(opts);
+    const folderResult = await scanFolder(ctx, req);
     let acc: ScanResult = folderResult;
 
     // Find subfolders. L24: io.readDir + io.stat replace fs.readdirSync +
@@ -333,8 +324,7 @@ export async function scanFolderRecursive(opts: ScanFolderOptions): Promise<Scan
         const subRel = path.join(folderPath, entry).replace(/\\/g, '/');
         const st = await io.stat(subRel);
         if (st.isDirectory()) {
-            const subResult = await scanFolderRecursive({
-                ...opts,
+            const subResult = await scanFolderRecursive(ctx, {
                 folderPath: subRel,
             });
             acc = {

@@ -24,17 +24,10 @@ import * as path from 'path';
 import * as chokidar from 'chokidar';
 import { renderMarkdown } from '../../webview/markdown-renderer';
 import { createLogger } from '../../common/logger';
-import type { WorkspaceIO } from '../../workspace/workspace-io';
+import type { WorkspaceContext } from '../../application/workspace-context';
 import { PathEscapeError } from '../../core/errors';
 
 const log = createLogger('arch-watcher');
-
-export interface ArchWatcherConfig {
-    workspaceRoot: string;
-    /** Required (L24): realpath-strong I/O surface anchored on the workspace root. */
-    io: WorkspaceIO;
-    verbose?: boolean;
-}
 
 export interface ArchFileEvent {
     type: 'created' | 'updated' | 'deleted';
@@ -51,10 +44,13 @@ export interface ArchFileEvent {
 /**
  * Watcher service for .arch directory
  * Emits events when design documents are created, updated, or deleted.
+ *
+ * Loop 04: takes a `WorkspaceContext` instead of `(workspaceRoot, io, verbose)`.
  */
 export class ArchWatcherService {
     private watcher: chokidar.FSWatcher | null = null;
-    private config: Required<ArchWatcherConfig>;
+    private readonly ctx: WorkspaceContext;
+    private readonly verbose: boolean;
     private archDir: string;
     /** `.arch` path expressed as a workspace-relative string. */
     private archRel: string;
@@ -64,14 +60,11 @@ export class ArchWatcherService {
     private pendingEvents: Map<string, NodeJS.Timeout> = new Map();
     private debounceDelay = 300; // ms
 
-    constructor(config: ArchWatcherConfig) {
-        this.config = {
-            workspaceRoot: config.workspaceRoot,
-            io: config.io,
-            verbose: config.verbose || false,
-        };
-        this.archDir = path.join(this.config.workspaceRoot, '.arch');
-        this.archRel = path.relative(this.config.io.getRealRoot(), this.archDir).replace(/\\/g, '/');
+    constructor(ctx: WorkspaceContext, verbose = false) {
+        this.ctx = ctx;
+        this.verbose = verbose;
+        this.archDir = this.ctx.archRoot;
+        this.archRel = this.ctx.archRootRel;
     }
 
     /**
@@ -83,10 +76,10 @@ export class ArchWatcherService {
 
         // Ensure .arch directory exists. L24: io.mkdirRecursive realpath-
         // validates the parent containment.
-        if (!(await this.config.io.exists(this.archRel))) {
+        if (!(await this.ctx.io.exists(this.archRel))) {
             try {
-                await this.config.io.mkdirRecursive(this.archRel);
-                if (this.config.verbose) {
+                await this.ctx.io.mkdirRecursive(this.archRel);
+                if (this.verbose) {
                     log.info('Created .arch directory');
                 }
             } catch (e) {
@@ -187,10 +180,10 @@ export class ArchWatcherService {
         // chokidar absolute path to workspace-relative and route through
         // WorkspaceIO so the read flows through realpath containment.
         if (type !== 'deleted') {
-            const wsRel = path.relative(this.config.io.getRealRoot(), absolutePath).replace(/\\/g, '/');
+            const wsRel = path.relative(this.ctx.io.getRealRoot(), absolutePath).replace(/\\/g, '/');
             try {
-                if (await this.config.io.exists(wsRel)) {
-                    event.markdown = await this.config.io.readFile(wsRel, 'utf-8');
+                if (await this.ctx.io.exists(wsRel)) {
+                    event.markdown = await this.ctx.io.readFile(wsRel, 'utf-8');
                     event.html = await renderMarkdown(event.markdown);
                 }
             } catch (e) {
@@ -239,10 +232,10 @@ export class ArchWatcherService {
         }
 
         try {
-            if (!(await this.config.io.exists(wsRel))) {
+            if (!(await this.ctx.io.exists(wsRel))) {
                 return null;
             }
-            const markdown = await this.config.io.readFile(wsRel, 'utf-8');
+            const markdown = await this.ctx.io.readFile(wsRel, 'utf-8');
             const html = await renderMarkdown(markdown);
             return { markdown, html };
         } catch (e) {
@@ -269,10 +262,10 @@ export class ArchWatcherService {
             // Ensure directory exists. L24: io.mkdirRecursive does the
             // realpath check on the parent.
             const dirRel = path.dirname(wsRel);
-            await this.config.io.mkdirRecursive(dirRel);
-            await this.config.io.writeFile(wsRel, markdown);
+            await this.ctx.io.mkdirRecursive(dirRel);
+            await this.ctx.io.writeFile(wsRel, markdown);
 
-            if (this.config.verbose) {
+            if (this.verbose) {
                 log.debug('Wrote doc', { wsRel });
             }
 
@@ -295,7 +288,7 @@ export class ArchWatcherService {
      * realpath-strong existence checking requires async fs.realpath.
      */
     async hasArchDir(): Promise<boolean> {
-        return this.config.io.exists(this.archRel);
+        return this.ctx.io.exists(this.archRel);
     }
 
     /**
@@ -321,7 +314,7 @@ export class ArchWatcherService {
             this.watcher = null;
         }
 
-        if (this.config.verbose) {
+        if (this.verbose) {
             log.debug('Closed');
         }
     }

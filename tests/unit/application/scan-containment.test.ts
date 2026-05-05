@@ -1,9 +1,10 @@
 /**
  * Loop 24 — pin scan's path-containment contract.
  *
- * `scanFile` (and by extension `scanFolder` / `scanFolderRecursive`) now
- * takes a required `WorkspaceIO`. Every read-side `fs.*` site is replaced
- * with `WorkspaceIO` calls. Two attacks must surface as `PathEscapeError`:
+ * Loop 04: `scanFile` (and by extension `scanFolder` / `scanFolderRecursive`)
+ * now takes `(ctx, request)`. Path containment is enforced by `ctx.io`,
+ * which is built once via `createWorkspaceContext`. Two attacks must
+ * surface as `PathEscapeError`:
  *
  *   1. textual escape — caller passes a path like `'../escape.ts'`.
  *   2. realpath escape — caller passes a path that is textually inside the
@@ -17,23 +18,17 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { WorkspaceIO } from '../../../src/workspace/workspace-io';
-import { asWorkspaceRoot } from '../../../src/core/paths';
 import { scanFile } from '../../../src/application/scan';
+import { createWorkspaceContext } from '../../../src/application/workspace-context';
 
 test('scanFile: rejects PathEscape via .. arg', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-scan-'));
     const artifactDir = path.join(root, '.artifacts');
     fs.mkdirSync(artifactDir, { recursive: true });
     try {
-        const io = await WorkspaceIO.create(asWorkspaceRoot(root));
+        const ctx = await createWorkspaceContext({ workspaceRoot: root });
         await assert.rejects(
-            scanFile({
-                workspaceRoot: asWorkspaceRoot(root),
-                filePath: '../escape.ts',
-                artifactDir,
-                io,
-            }),
+            scanFile(ctx, { filePath: '../escape.ts' }),
             (err: Error & { code?: string }) =>
                 err.name === 'PathEscapeError' && err.code === 'PATH_ESCAPE',
         );
@@ -65,14 +60,9 @@ test('scanFile: rejects symlink-target-outside-workspace (POSIX only)', async (t
             }
             throw err;
         }
-        const io = await WorkspaceIO.create(asWorkspaceRoot(root));
+        const ctx = await createWorkspaceContext({ workspaceRoot: root });
         await assert.rejects(
-            scanFile({
-                workspaceRoot: asWorkspaceRoot(root),
-                filePath: 'leak/secret.ts',
-                artifactDir: path.join(root, '.artifacts'),
-                io,
-            }),
+            scanFile(ctx, { filePath: 'leak/secret.ts' }),
             (err: Error & { code?: string }) =>
                 err.name === 'PathEscapeError' && err.code === 'PATH_ESCAPE',
         );

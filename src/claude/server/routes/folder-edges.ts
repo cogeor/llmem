@@ -9,7 +9,6 @@
  */
 
 import type * as http from 'http';
-import * as path from 'path';
 import { FolderEdgelistStore } from '../../../graph/folder-edges-store';
 import { FolderEdgelistLoadError } from '../../../graph/folder-edges';
 import type { ServerContext } from './types';
@@ -27,10 +26,9 @@ export async function handleFolderEdgesRoute(
         return;
     }
 
-    const artifactDir = path.join(ctx.config.workspaceRoot, ctx.config.artifactRoot);
-
     try {
-        const data = await new FolderEdgelistStore(artifactDir).load();
+        // Loop 04: artifactRoot lives on the server's WorkspaceContext.
+        const data = await new FolderEdgelistStore(ctx.ctx.artifactRoot).load();
         ctx.httpHandler.sendJson(res, 200, data);
     } catch (err) {
         if (err instanceof FolderEdgelistLoadError) {

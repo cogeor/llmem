@@ -20,6 +20,11 @@
  * (edge-list `removeByFolder`). The asymmetry doesn't pay for a
  * discriminated union.
  *
+ * Loop 04: signatures are now `(ctx, request)` — the parallel
+ * `(workspaceRoot, artifactRoot, logger)` bag is gone. The internal
+ * `WorkspaceIO.create` calls are removed; `ctx.io` was built once by
+ * the host.
+ *
  * Out of scope:
  *   - Hot-reload integration (`HotReloadService.addWatchedPath`) stays in
  *     the panel. The application function returns `addedFiles` /
@@ -28,27 +33,21 @@
  *     Loop 16 (graph schema) decides whether to move it.
  */
 
-import type { WorkspaceRoot, AbsPath, RelPath } from '../core/paths';
+import type { RelPath } from '../core/paths';
 import { asRelPath } from '../core/paths';
-import type { Logger } from '../core/logger';
-import { NoopLogger } from '../core/logger';
-import { WorkspaceIO } from '../workspace/workspace-io';
 import { WatchService } from '../graph/worktree-state';
 import { CallEdgeListStore, ImportEdgeListStore } from '../graph/edgelist';
 import { scanFile, scanFolderRecursive } from './scan';
+import type { WorkspaceContext } from './workspace-context';
 
 // ============================================================================
 // Public types
 // ============================================================================
 
+/** Per-call request fields for `addWatchedPath`. */
 export interface AddWatchedPathRequest {
-    workspaceRoot: WorkspaceRoot;
-    /** Absolute path to the artifact directory (.artifacts). */
-    artifactRoot: AbsPath;
     /** Workspace-relative target path (file or folder, forward slashes). */
     targetPath: RelPath;
-    /** Optional logger. Defaults to a no-op. */
-    logger?: Logger;
 }
 
 export interface AddWatchedPathResult {
@@ -61,11 +60,9 @@ export interface AddWatchedPathResult {
     watchedFiles: RelPath[];
 }
 
+/** Per-call request fields for `removeWatchedPath`. */
 export interface RemoveWatchedPathRequest {
-    workspaceRoot: WorkspaceRoot;
-    artifactRoot: AbsPath;
     targetPath: RelPath;
-    logger?: Logger;
 }
 
 export interface RemoveWatchedPathResult {
@@ -90,16 +87,12 @@ export interface RemoveWatchedPathResult {
  * which scan helper to invoke.
  */
 export async function addWatchedPath(
+    ctx: WorkspaceContext,
     req: AddWatchedPathRequest,
 ): Promise<AddWatchedPathResult> {
-    const { workspaceRoot, artifactRoot, targetPath } = req;
-    const logger = req.logger ?? NoopLogger;
-
-    // L24: realpath-strong I/O surface anchored on the workspace root.
-    // io.exists / io.stat throw PathEscapeError on attempts to escape, so
-    // the previous resolveInsideWorkspace + fs.existsSync pair collapses
-    // to a single io.exists call.
-    const io = await WorkspaceIO.create(workspaceRoot);
+    const { workspaceRoot, artifactRoot, io, logger } = ctx;
+    const { targetPath } = req;
+    void logger; // tracked for parity; no host-visible log lines today
 
     if (!(await io.exists(targetPath))) {
         return {
@@ -130,21 +123,9 @@ export async function addWatchedPath(
     // their own load/save against ImportEdgeListStore + CallEdgeListStore.
     try {
         if (isDirectory) {
-            await scanFolderRecursive({
-                workspaceRoot,
-                folderPath: targetPath,
-                artifactDir: artifactRoot,
-                io,
-                logger,
-            });
+            await scanFolderRecursive(ctx, { folderPath: targetPath });
         } else {
-            await scanFile({
-                workspaceRoot,
-                filePath: targetPath,
-                artifactDir: artifactRoot,
-                io,
-                logger,
-            });
+            await scanFile(ctx, { filePath: targetPath });
         }
     } catch (e: any) {
         // Persist the watch-state update even if scan fails so the user
@@ -182,16 +163,11 @@ export async function addWatchedPath(
  * once.
  */
 export async function removeWatchedPath(
+    ctx: WorkspaceContext,
     req: RemoveWatchedPathRequest,
 ): Promise<RemoveWatchedPathResult> {
-    const { workspaceRoot, artifactRoot, targetPath } = req;
-    const logger = req.logger ?? NoopLogger;
-
-    // L24: path containment via WorkspaceIO. Unlike the add path we
-    // tolerate a missing on-disk target (the user may be removing a stale
-    // watch entry); we still refuse path-escape attempts (io.exists /
-    // io.stat throw PathEscapeError up to the host).
-    const io = await WorkspaceIO.create(workspaceRoot);
+    const { workspaceRoot, artifactRoot, io, logger } = ctx;
+    const { targetPath } = req;
 
     const isDirectory =
         (await io.exists(targetPath)) && (await io.stat(targetPath)).isDirectory();

@@ -30,8 +30,7 @@ import {
 import { FolderEdgelistSchema } from '../../../src/graph/folder-edges';
 import { scanFolderRecursive } from '../../../src/application/scan';
 import { buildAndSaveFolderArtifacts } from '../../../src/application/folder-artifacts';
-import { WorkspaceIO } from '../../../src/workspace/workspace-io';
-import { asWorkspaceRoot } from '../../../src/core/paths';
+import { createWorkspaceContext } from '../../../src/application/workspace-context';
 
 /**
  * Build a fixture workspace with two files in different folders so the
@@ -58,15 +57,9 @@ function buildFixture(tmp: string): void {
  * leaving `folder-tree.json` and `folder-edgelist.json` on disk.
  */
 async function populateArtifacts(tmp: string): Promise<void> {
-    const io = await WorkspaceIO.create(asWorkspaceRoot(tmp));
-    const artifactDir = path.join(io.getRealRoot(), '.artifacts');
-    await scanFolderRecursive({
-        workspaceRoot: asWorkspaceRoot(io.getRealRoot()),
-        folderPath: '.',
-        artifactDir,
-        io,
-    });
-    await buildAndSaveFolderArtifacts({ artifactDir, io });
+    const ctx = await createWorkspaceContext({ workspaceRoot: tmp });
+    await scanFolderRecursive(ctx, { folderPath: '.' });
+    await buildAndSaveFolderArtifacts(ctx);
 }
 
 test('GET /api/folder-tree + /api/folder-edges: happy path returns 200 + Zod-valid bodies', async () => {

@@ -21,7 +21,8 @@ import {
 } from '../../src/mcp/tools';
 
 import { validateRequest, formatSuccess, formatError, formatPromptResponse } from '../../src/mcp/handlers';
-import { setStoredWorkspaceRoot } from '../../src/mcp/server';
+import { setStoredWorkspaceRoot, setStoredConfig } from '../../src/mcp/server';
+import { DEFAULT_CONFIG } from '../../src/config-defaults';
 
 // ============================================================================
 // Test Fixtures
@@ -222,9 +223,17 @@ describe('MCP Tools Integration', () => {
 
     before(() => {
         workspace = createTestWorkspace();
+        // Loop 04: MCP tools now read the server-side WorkspaceContext via
+        // `getStoredContext()`, which requires both `storedWorkspaceRoot`
+        // and `storedConfig` to be populated. Tests that call the handlers
+        // directly (without booting a real MCP server) must set both.
+        setStoredWorkspaceRoot(workspace.root);
+        setStoredConfig({ ...DEFAULT_CONFIG });
     });
 
     after(() => {
+        setStoredWorkspaceRoot(null);
+        setStoredConfig(null);
         workspace.cleanup();
     });
 
@@ -281,9 +290,11 @@ describe('MCP Tools Integration', () => {
         const fakeAppData = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-fake-appdata-'));
         const originalCwd = process.cwd();
 
-        // Pin the server's stored root so assertWorkspaceRootMatch passes
-        // (the existing describe-level fixture doesn't set this).
+        // Pin the server's stored root + config so assertWorkspaceRootMatch
+        // passes AND `getStoredContext` rebuilds against the new root.
+        // setStoredWorkspaceRoot/Config also reset the memoized context.
         setStoredWorkspaceRoot(ws.root);
+        setStoredConfig({ ...DEFAULT_CONFIG });
         process.chdir(fakeAppData);
 
         try {
@@ -327,9 +338,10 @@ describe('MCP Tools Integration', () => {
             );
         } finally {
             process.chdir(originalCwd);
-            // Other tests in this describe block don't depend on the stored
-            // root being set; clear it back to null.
-            setStoredWorkspaceRoot(null);
+            // Restore the describe-level workspace + config so subsequent
+            // tests don't get a "workspace root not set" error.
+            setStoredWorkspaceRoot(workspace.root);
+            setStoredConfig({ ...DEFAULT_CONFIG });
             ws.cleanup();
             fs.rmSync(fakeAppData, { recursive: true, force: true });
         }
@@ -345,6 +357,7 @@ describe('MCP Tools Integration', () => {
         const originalCwd = process.cwd();
 
         setStoredWorkspaceRoot(ws.root);
+        setStoredConfig({ ...DEFAULT_CONFIG });
         process.chdir(fakeAppData);
 
         try {
@@ -388,7 +401,10 @@ describe('MCP Tools Integration', () => {
             );
         } finally {
             process.chdir(originalCwd);
-            setStoredWorkspaceRoot(null);
+            // Restore the describe-level workspace + config so subsequent
+            // tests don't get a "workspace root not set" error.
+            setStoredWorkspaceRoot(workspace.root);
+            setStoredConfig({ ...DEFAULT_CONFIG });
             ws.cleanup();
             fs.rmSync(fakeAppData, { recursive: true, force: true });
         }
@@ -485,9 +501,15 @@ describe('MCP End-to-End Workflow', () => {
 
     before(() => {
         workspace = createTestWorkspace();
+        // Loop 04: tools route through getStoredContext, which needs both
+        // stored root and stored config to be set.
+        setStoredWorkspaceRoot(workspace.root);
+        setStoredConfig({ ...DEFAULT_CONFIG });
     });
 
     after(() => {
+        setStoredWorkspaceRoot(null);
+        setStoredConfig(null);
         workspace.cleanup();
     });
 

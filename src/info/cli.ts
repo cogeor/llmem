@@ -77,13 +77,11 @@ async function main() {
     // Semantic mode: output LLM prompt to stdout
     if (SEMANTIC_MODE) {
         const { buildDocumentFilePrompt } = await import('../application/document-file');
-        const { asWorkspaceRoot, asRelPath } = await import('../core/paths');
-        const { WorkspaceIO } = await import('../workspace/workspace-io');
-        const io = await WorkspaceIO.create(asWorkspaceRoot(root));
-        const data = await buildDocumentFilePrompt({
-            workspaceRoot: asWorkspaceRoot(root),
+        const { asRelPath } = await import('../core/paths');
+        const { createWorkspaceContext } = await import('../application/workspace-context');
+        const ctx = await createWorkspaceContext({ workspaceRoot: root });
+        const data = await buildDocumentFilePrompt(ctx, {
             filePath: asRelPath(relativePath),
-            io,
         });
         console.log(data.prompt);
         return;

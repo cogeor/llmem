@@ -5,12 +5,15 @@
  * mutating verbs are now gated by `requireApiToken`. The actual edge-list
  * mutation lives in `application/toggle-watch`; this handler is a thin
  * HTTP wrapper around it.
+ *
+ * Loop 04: `addWatchedPath` / `removeWatchedPath` take the server's
+ * `WorkspaceContext` plus a `{ targetPath }` request, so the inline
+ * `path.join(workspaceRoot, artifactRoot)` derivation is gone.
  */
 
 import * as http from 'http';
-import * as path from 'path';
 import { addWatchedPath, removeWatchedPath } from '../../../application/toggle-watch';
-import { asWorkspaceRoot, asAbsPath, asRelPath } from '../../../core/paths';
+import { asRelPath } from '../../../core/paths';
 import {
     BodyTooLargeError,
     readRequestBody,
@@ -67,16 +70,12 @@ export async function handleWatchRoute(
         return;
     }
 
-    const artifactDir = path.join(ctx.config.workspaceRoot, ctx.config.artifactRoot);
     const toggleReq = {
-        workspaceRoot: asWorkspaceRoot(ctx.config.workspaceRoot),
-        artifactRoot: asAbsPath(artifactDir),
         targetPath: asRelPath(relativePath),
-        logger: ctx.logger,
     };
 
     if (req.method === 'POST') {
-        const result = await addWatchedPath(toggleReq);
+        const result = await addWatchedPath(ctx.ctx, toggleReq);
         if (result.success) {
             await ctx.watchManager.refresh();
             await ctx.regenerateWebview();
@@ -84,7 +83,7 @@ export async function handleWatchRoute(
         ctx.httpHandler.sendJson(res, result.success ? 200 : 400, result);
     } else {
         // DELETE
-        const result = await removeWatchedPath(toggleReq);
+        const result = await removeWatchedPath(ctx.ctx, toggleReq);
         if (result.success) {
             await ctx.watchManager.refresh();
             await ctx.regenerateWebview();

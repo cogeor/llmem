@@ -3,6 +3,9 @@
  *
  * Receives LLM-enriched documentation for a folder and saves the README
  * to .arch/<folder>/README.md.
+ *
+ * Loop 04: shares the server-side `WorkspaceContext` via
+ * `getStoredContext()`.
  */
 
 import { z } from 'zod';
@@ -19,8 +22,8 @@ import {
     validateWorkspacePath,
 } from '../path-utils';
 import { processFolderInfoReport } from '../../application/document-folder';
-import { asWorkspaceRoot, asRelPath } from '../../core/paths';
-import { WorkspaceIO } from '../../workspace/workspace-io';
+import { asRelPath } from '../../core/paths';
+import { getStoredContext } from '../server';
 import { assertWorkspaceRootMatch } from './shared';
 
 export const ReportFolderInfoSchema = z.object({
@@ -52,16 +55,14 @@ async function handleReportFolderInfoImpl(
     assertWorkspaceRootMatch(workspaceRoot);
     validateWorkspacePath(workspaceRoot, folderPath);
 
-    const io = await WorkspaceIO.create(asWorkspaceRoot(workspaceRoot));
-    const result = await processFolderInfoReport({
-        workspaceRoot: asWorkspaceRoot(workspaceRoot),
+    const ctx = await getStoredContext();
+    const result = await processFolderInfoReport(ctx, {
         folderPath: asRelPath(folderPath),
         overview,
         inputs,
         outputs,
         keyFiles: key_files,
         architecture,
-        io,
     });
 
     return formatSuccess({

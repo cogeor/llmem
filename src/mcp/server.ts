@@ -20,6 +20,10 @@ import { DEFAULT_CONFIG } from '../config-defaults';
 import { toolDefinitions as TOOLS } from './tools';
 import { generateCorrelationId } from './handlers';
 import { createLogger } from '../common/logger';
+import {
+    createWorkspaceContext,
+    type WorkspaceContext,
+} from '../application/workspace-context';
 
 const log = createLogger('mcp-server');
 
@@ -71,6 +75,14 @@ let storedWorkspaceRoot: string | null = null;
 let storedConfig: Config | null = null;
 
 /**
+ * Loop 04: memoized `WorkspaceContext` for tools. The MCP server processes
+ * one workspace per `startServer` call; the context is built lazily on
+ * the first tool that calls `getStoredContext()` and reset on
+ * `stopServer()` / `setStoredWorkspaceRoot(null)`.
+ */
+let storedContext: WorkspaceContext | null = null;
+
+/**
  * Get the stored workspace root for lazy initialization
  */
 export function getStoredWorkspaceRoot(): string {
@@ -78,6 +90,26 @@ export function getStoredWorkspaceRoot(): string {
         throw new Error('Workspace root not set. Call startServer first.');
     }
     return storedWorkspaceRoot;
+}
+
+/**
+ * Loop 04: build (and memoize) a `WorkspaceContext` for the stored
+ * workspace root. Tools that take per-call `workspaceRoot` arguments
+ * call `assertWorkspaceRootMatch(workspaceRoot)` first, then call this
+ * to share the server-side context.
+ *
+ * The cache is invalidated on `setStoredWorkspaceRoot(null)` and
+ * `stopServer()` so test runs that swap workspaces do not reuse a stale
+ * context.
+ */
+export async function getStoredContext(): Promise<WorkspaceContext> {
+    if (!storedContext) {
+        storedContext = await createWorkspaceContext({
+            workspaceRoot: getStoredWorkspaceRoot(),
+            configOverrides: { ...getStoredConfig() },
+        });
+    }
+    return storedContext;
 }
 
 /**
@@ -92,17 +124,23 @@ export function getStoredConfig(): Config {
 }
 
 /**
- * Set the stored workspace root directly (for testing only)
+ * Set the stored workspace root directly (for testing only). Loop 04:
+ * also resets the memoized `WorkspaceContext` so a follow-up
+ * `getStoredContext()` rebuilds against the new root.
  */
 export function setStoredWorkspaceRoot(root: string | null): void {
     storedWorkspaceRoot = root;
+    storedContext = null;
 }
 
 /**
- * Set the stored config directly (for testing only)
+ * Set the stored config directly (for testing only). Loop 04: also
+ * invalidates the memoized context so configuration overrides take
+ * effect on the next access.
  */
 export function setStoredConfig(config: Config | null): void {
     storedConfig = config;
+    storedContext = null;
 }
 
 // ============================================================================
@@ -244,6 +282,7 @@ export async function stopServer(): Promise<void> {
     serverConfig = null;
     storedConfig = null;
     storedWorkspaceRoot = null;
+    storedContext = null; // Loop 04: clear memoized context on shutdown
 
     log.info('MCP server stopped', { correlationId });
 }

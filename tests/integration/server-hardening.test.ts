@@ -33,6 +33,7 @@ import {
 } from '../../src/claude/server/http-handler';
 import { registerRoutes } from '../../src/claude/server/routes';
 import type { ServerContext } from '../../src/claude/server/routes';
+import { createWorkspaceContext } from '../../src/application/workspace-context';
 import type { ServerConfig } from '../../src/claude/server';
 import { NoopLogger } from '../../src/core/logger';
 
@@ -63,8 +64,17 @@ async function withServer(
         verbose: false,
     });
 
+    // Loop 04: ServerContext now carries a WorkspaceContext built from
+    // the same workspaceRoot as `config`. Routes that read
+    // `ctx.ctx.artifactRoot` see the test directory.
+    const wsCtx = ctxOverrides.ctx ?? (await createWorkspaceContext({
+        workspaceRoot: ctxOverrides.config.workspaceRoot,
+        configOverrides: { artifactRoot: ctxOverrides.config.artifactRoot },
+    }));
+
     const ctx: ServerContext = {
         config: ctxOverrides.config,
+        ctx: wsCtx,
         logger: ctxOverrides.logger ?? NoopLogger,
         watchManager: ctxOverrides.watchManager ?? ({
             getWatchState: () => ({
@@ -418,8 +428,17 @@ async function withServerExposingPort(
         verbose: false,
     });
 
+    // Loop 04: ServerContext now carries a WorkspaceContext built from
+    // the same workspaceRoot as `config`. Routes that read
+    // `ctx.ctx.artifactRoot` see the test directory.
+    const wsCtx = ctxOverrides.ctx ?? (await createWorkspaceContext({
+        workspaceRoot: ctxOverrides.config.workspaceRoot,
+        configOverrides: { artifactRoot: ctxOverrides.config.artifactRoot },
+    }));
+
     const ctx: ServerContext = {
         config: ctxOverrides.config,
+        ctx: wsCtx,
         logger: ctxOverrides.logger ?? NoopLogger,
         watchManager: ctxOverrides.watchManager ?? ({
             getWatchState: () => ({

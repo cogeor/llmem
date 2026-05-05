@@ -12,8 +12,9 @@
 // truth. Even when `process.cwd()` points elsewhere, the file lands in
 // `<workspaceRoot>/.arch/`.
 //
-// This test pins that contract. Removing the threading (e.g. ignoring
-// `req.workspaceRoot` and using `process.cwd()`) makes this test fail.
+// Loop 04: `processFileInfoReport` now takes `(ctx, request)`. The
+// `WorkspaceContext` carries the branded workspace root, and that is
+// still the only source of truth.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -24,8 +25,8 @@ import * as path from 'node:path';
 import {
     processFileInfoReport,
 } from '../../src/application/document-file';
-import { asWorkspaceRoot, asRelPath } from '../../src/core/paths';
-import { WorkspaceIO } from '../../src/workspace/workspace-io';
+import { asRelPath } from '../../src/core/paths';
+import { createWorkspaceContext } from '../../src/application/workspace-context';
 
 function makeTmp(prefix: string): string {
     return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -40,15 +41,13 @@ test('processFileInfoReport writes to workspaceRoot/.arch, never elsewhere', asy
     const originalCwd = process.cwd();
     process.chdir(fakeAppData);
     try {
-        const io = await WorkspaceIO.create(asWorkspaceRoot(tmpRoot));
-        const result = await processFileInfoReport({
-            workspaceRoot: asWorkspaceRoot(tmpRoot),
+        const ctx = await createWorkspaceContext({ workspaceRoot: tmpRoot });
+        const result = await processFileInfoReport(ctx, {
             filePath: asRelPath('src/foo.ts'),
             overview: 'Sample overview',
             functions: [
                 { name: 'foo', purpose: 'does foo', implementation: '- step 1\n- step 2' },
             ],
-            io,
         });
 
         // The archPath must be inside tmpRoot, not in process.cwd() (fakeAppData).
@@ -96,13 +95,11 @@ test('processFileInfoReport writes to workspaceRoot/.arch, never elsewhere', asy
 test('processFileInfoReport bytesWritten matches utf-8 byte length', async () => {
     const tmpRoot = makeTmp('llmem-doc-file-bytes-');
     try {
-        const io = await WorkspaceIO.create(asWorkspaceRoot(tmpRoot));
-        const result = await processFileInfoReport({
-            workspaceRoot: asWorkspaceRoot(tmpRoot),
+        const ctx = await createWorkspaceContext({ workspaceRoot: tmpRoot });
+        const result = await processFileInfoReport(ctx, {
             filePath: asRelPath('a/b/c.ts'),
             overview: 'overview',
             functions: [],
-            io,
         });
         const stat = fs.statSync(result.archPath);
         assert.equal(result.bytesWritten, stat.size);
@@ -114,16 +111,14 @@ test('processFileInfoReport bytesWritten matches utf-8 byte length', async () =>
 test('processFileInfoReport refuses path-escape (../../..) via PathEscapeError', async () => {
     const tmpRoot = makeTmp('llmem-doc-file-escape-');
     try {
-        const io = await WorkspaceIO.create(asWorkspaceRoot(tmpRoot));
+        const ctx = await createWorkspaceContext({ workspaceRoot: tmpRoot });
         // Use a deep ../ chain so even after concatenating ".arch/<filePath>.md"
         // the resolved path lands outside tmpRoot.
         await assert.rejects(
-            processFileInfoReport({
-                workspaceRoot: asWorkspaceRoot(tmpRoot),
+            processFileInfoReport(ctx, {
                 filePath: asRelPath('../../../escape.ts'),
                 overview: 'overview',
                 functions: [],
-                io,
             }),
             (err: Error) => err.name === 'PathEscapeError',
             'A path that escapes the workspace must throw PathEscapeError',

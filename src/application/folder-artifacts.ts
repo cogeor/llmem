@@ -1,7 +1,7 @@
 /**
  * Shared helper to build and persist folder artifacts (Loop 10).
  *
- * Reads `import-edgelist.json` + `call-edgelist.json` from `artifactDir`,
+ * Reads `import-edgelist.json` + `call-edgelist.json` from `ctx.artifactRoot`,
  * walks `.arch/` for documented folders, calls the loop-08 aggregators
  * (`buildFolderTree`, `buildFolderEdges`), and persists the results via
  * the loop-09 stores.
@@ -16,6 +16,9 @@
  * loads them. The pre-existing scan flow continues to own those writes.
  *
  * No console output. Callers (regenerator, CLI) own user-visible logging.
+ *
+ * Loop 04: signature is now `(ctx)` — the parallel `(artifactDir, io)` bag
+ * is gone. The artifact directory comes from `ctx.artifactRoot`.
  */
 
 import { ImportEdgeListStore, CallEdgeListStore } from '../graph/edgelist';
@@ -25,22 +28,15 @@ import { FolderTreeStore } from '../graph/folder-tree-store';
 import { FolderEdgelistStore } from '../graph/folder-edges-store';
 import { scanArchFolders } from '../docs/arch-store';
 import { parseGraphId } from '../core/ids';
-import type { WorkspaceIO } from '../workspace/workspace-io';
-
-export interface BuildAndSaveFolderArtifactsOptions {
-    /** Absolute path to `.artifacts` (already used by the edge-list stores). */
-    artifactDir: string;
-    /** Realpath-strong I/O surface anchored on the workspace root. */
-    io: WorkspaceIO;
-}
+import type { WorkspaceContext } from './workspace-context';
 
 /**
- * Read import + call edge lists from `artifactDir`, walk `.arch/` for
+ * Read import + call edge lists from `ctx.artifactRoot`, walk `.arch/` for
  * documented folders, build folder-tree + folder-edges, and persist both
- * artifacts to `artifactDir`.
+ * artifacts to `ctx.artifactRoot`.
  *
  * Pre-condition: `import-edgelist.json` and `call-edgelist.json` exist
- * in `artifactDir`. The caller (regenerator or CLI scan command) is
+ * in `ctx.artifactRoot`. The caller (regenerator or CLI scan command) is
  * responsible for running the scan first. Missing edge lists → the
  * stores' `load()` returns an empty in-memory state (the
  * `BaseEdgeListStore` convention), which still produces valid empty
@@ -53,9 +49,9 @@ export interface BuildAndSaveFolderArtifactsOptions {
  * future loader does cross-validation; today they are independent files.
  */
 export async function buildAndSaveFolderArtifacts(
-    opts: BuildAndSaveFolderArtifactsOptions,
+    ctx: WorkspaceContext,
 ): Promise<void> {
-    const { artifactDir, io } = opts;
+    const { artifactRoot: artifactDir, io } = ctx;
 
     // Load existing edge lists. Pass `io` for realpath-strong load. The
     // `undefined` slot is the optional Logger parameter — `BaseEdgeListStore`

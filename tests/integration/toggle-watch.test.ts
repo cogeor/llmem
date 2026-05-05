@@ -10,6 +10,11 @@
 // add-then-remove cycle on the same path leaves the on-disk artifact
 // state where it started.
 //
+// Loop 04: `addWatchedPath` / `removeWatchedPath` now take
+// `(ctx, request)`. Tests build a single `WorkspaceContext` per
+// invocation via `createWorkspaceContext` and reuse it across both
+// phases of the cycle.
+//
 // The test sets up a tiny temp workspace with a couple of .ts files,
 // drives `addWatchedPath` followed by `removeWatchedPath`, and asserts:
 //   1. `addedFiles` is non-empty after add and the edge-list JSON has
@@ -17,11 +22,6 @@
 //   2. `removedFiles` is non-empty after remove and the edge-list JSON
 //      no longer has any nodes/edges referencing that folder.
 //   3. The watch-state JSON (`worktree-state.json`) reflects the same.
-//
-// The point: state convergence regardless of host. Removing the
-// shared application function and reverting either host to its old
-// inline workflow would re-introduce the asymmetry — this test would
-// fail on the path the regression broke.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -33,7 +33,8 @@ import {
     addWatchedPath,
     removeWatchedPath,
 } from '../../src/application/toggle-watch';
-import { asWorkspaceRoot, asAbsPath, asRelPath } from '../../src/core/paths';
+import { asRelPath } from '../../src/core/paths';
+import { createWorkspaceContext } from '../../src/application/workspace-context';
 
 function makeTmp(prefix: string): string {
     return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -95,9 +96,8 @@ test('addWatchedPath populates edge lists and watch state for a folder', async (
     try {
         const folder = seedWorkspace(tmpRoot);
 
-        const result = await addWatchedPath({
-            workspaceRoot: asWorkspaceRoot(tmpRoot),
-            artifactRoot: asAbsPath(artifactDir),
+        const ctx = await createWorkspaceContext({ workspaceRoot: tmpRoot });
+        const result = await addWatchedPath(ctx, {
             targetPath: asRelPath(folder),
         });
 
@@ -138,19 +138,16 @@ test('removeWatchedPath clears edge lists and watch state for the same folder', 
     const artifactDir = path.join(tmpRoot, '.artifacts');
     try {
         const folder = seedWorkspace(tmpRoot);
+        const ctx = await createWorkspaceContext({ workspaceRoot: tmpRoot });
 
         // Phase 1: add the folder.
-        const addResult = await addWatchedPath({
-            workspaceRoot: asWorkspaceRoot(tmpRoot),
-            artifactRoot: asAbsPath(artifactDir),
+        const addResult = await addWatchedPath(ctx, {
             targetPath: asRelPath(folder),
         });
         assert.equal(addResult.success, true, addResult.message);
 
         // Phase 2: remove the folder.
-        const removeResult = await removeWatchedPath({
-            workspaceRoot: asWorkspaceRoot(tmpRoot),
-            artifactRoot: asAbsPath(artifactDir),
+        const removeResult = await removeWatchedPath(ctx, {
             targetPath: asRelPath(folder),
         });
         assert.equal(removeResult.success, true, removeResult.message);
@@ -187,9 +184,8 @@ test('addWatchedPath on a single file watches just that file', async () => {
     try {
         seedWorkspace(tmpRoot);
 
-        const result = await addWatchedPath({
-            workspaceRoot: asWorkspaceRoot(tmpRoot),
-            artifactRoot: asAbsPath(artifactDir),
+        const ctx = await createWorkspaceContext({ workspaceRoot: tmpRoot });
+        const result = await addWatchedPath(ctx, {
             targetPath: asRelPath('src/a.ts'),
         });
 
@@ -208,10 +204,9 @@ test('addWatchedPath rejects path-escape via PathEscapeError', async () => {
     const artifactDir = path.join(tmpRoot, '.artifacts');
     try {
         fs.mkdirSync(artifactDir, { recursive: true });
+        const ctx = await createWorkspaceContext({ workspaceRoot: tmpRoot });
         await assert.rejects(
-            addWatchedPath({
-                workspaceRoot: asWorkspaceRoot(tmpRoot),
-                artifactRoot: asAbsPath(artifactDir),
+            addWatchedPath(ctx, {
                 targetPath: asRelPath('../../../etc/passwd'),
             }),
             (err: Error) => err.name === 'PathEscapeError',

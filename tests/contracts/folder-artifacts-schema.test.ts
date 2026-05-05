@@ -30,8 +30,7 @@ import {
 } from '../../src/graph/folder-edges';
 import { buildAndSaveFolderArtifacts } from '../../src/application/folder-artifacts';
 import { scanFolderRecursive } from '../../src/application/scan';
-import { WorkspaceIO } from '../../src/workspace/workspace-io';
-import { asWorkspaceRoot } from '../../src/core/paths';
+import { createWorkspaceContext } from '../../src/application/workspace-context';
 import {
     FOLDER_TREE_FILENAME,
 } from '../../src/graph/folder-tree-store';
@@ -55,16 +54,10 @@ function buildFixture(tmp: string): void {
 }
 
 async function populate(tmp: string): Promise<string> {
-    const io = await WorkspaceIO.create(asWorkspaceRoot(tmp));
-    const artifactDir = path.join(io.getRealRoot(), '.artifacts');
-    await scanFolderRecursive({
-        workspaceRoot: asWorkspaceRoot(io.getRealRoot()),
-        folderPath: '.',
-        artifactDir,
-        io,
-    });
-    await buildAndSaveFolderArtifacts({ artifactDir, io });
-    return artifactDir;
+    const ctx = await createWorkspaceContext({ workspaceRoot: tmp });
+    await scanFolderRecursive(ctx, { folderPath: '.' });
+    await buildAndSaveFolderArtifacts(ctx);
+    return ctx.artifactRoot;
 }
 
 test('folder-tree.json on-disk envelope structure', async () => {

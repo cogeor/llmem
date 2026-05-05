@@ -1,9 +1,10 @@
 /**
  * Loop 26 — pin viewer-data's path-containment contract.
  *
- * `collectViewerData` now takes a required `WorkspaceIO` instance. Every
- * read-side `fs.*` site (existsSync × 3, readdirSync × 1) is replaced
- * with `WorkspaceIO` calls, and the recursive `.arch` walker is async.
+ * Loop 04: `collectViewerData` now takes a `WorkspaceContext` (built via
+ * `createWorkspaceContext`). Every read-side `fs.*` site is replaced with
+ * `WorkspaceIO` calls (carried inside the context), and the recursive
+ * `.arch` walker is async.
  *
  * Two things must hold:
  *
@@ -23,10 +24,8 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { WorkspaceIO } from '../../../src/workspace/workspace-io';
-import { asWorkspaceRoot, asAbsPath } from '../../../src/core/paths';
 import { collectViewerData } from '../../../src/application/viewer-data';
-import { NoopLogger } from '../../../src/core/logger';
+import { createWorkspaceContext } from '../../../src/application/workspace-context';
 
 test('collectViewerData: returns the seeded TS file and design doc', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-viewer-data-'));
@@ -44,13 +43,8 @@ test('collectViewerData: returns the seeded TS file and design doc', async () =>
         const artifactDir = path.join(root, '.artifacts');
         fs.mkdirSync(artifactDir, { recursive: true });
 
-        const io = await WorkspaceIO.create(asWorkspaceRoot(root));
-        const result = await collectViewerData({
-            workspaceRoot: asWorkspaceRoot(root),
-            artifactRoot: asAbsPath(artifactDir),
-            io,
-            logger: NoopLogger,
-        });
+        const ctx = await createWorkspaceContext({ workspaceRoot: root });
+        const result = await collectViewerData(ctx);
 
         // Design doc: key is 'sample.html' (.md → .html for non-README).
         const designKeys = Object.keys(result.designDocs);
@@ -113,11 +107,11 @@ test('collectViewerData: refuses to traverse outside the workspace via symlink (
         fs.writeFileSync(path.join(root, 'main.ts'), 'export const y = 2;\n');
         fs.mkdirSync(path.join(root, '.artifacts'), { recursive: true });
 
-        const io = await WorkspaceIO.create(asWorkspaceRoot(root));
+        const ctx = await createWorkspaceContext({ workspaceRoot: root });
 
         // Direct read through the leak symlink must throw PathEscapeError.
         await assert.rejects(
-            io.readFile('leak/secret.txt'),
+            ctx.io.readFile('leak/secret.txt'),
             (err: Error & { code?: string }) =>
                 err.name === 'PathEscapeError' && err.code === 'PATH_ESCAPE',
             'WorkspaceIO must reject reads that traverse a symlink pointing outside the workspace.',
@@ -128,12 +122,7 @@ test('collectViewerData: refuses to traverse outside the workspace via symlink (
         // does not propagate PathEscapeError as a fatal failure for a
         // single bad subdir, mirroring the legacy walker's swallow-then-
         // continue behavior on stat failures).
-        const result = await collectViewerData({
-            workspaceRoot: asWorkspaceRoot(root),
-            artifactRoot: asAbsPath(path.join(root, '.artifacts')),
-            io,
-            logger: NoopLogger,
-        });
+        const result = await collectViewerData(ctx);
         assert.ok(result.designDocs['good.html'], 'legitimate design doc must round-trip');
     } finally {
         fs.rmSync(parent, { recursive: true, force: true });

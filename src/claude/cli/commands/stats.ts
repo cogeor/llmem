@@ -54,7 +54,7 @@ export const statsCommand: CommandSpec<typeof statsArgs> = {
         { scenario: 'Print graph statistics for the auto-detected workspace', command: 'llmem stats' },
     ],
     args: statsArgs,
-    async run(args) {
+    async run(args, cli) {
         const workspace = detectWorkspace(args.workspace);
 
         console.log(`Workspace: ${workspace}`);
@@ -64,7 +64,9 @@ export const statsCommand: CommandSpec<typeof statsArgs> = {
             process.exit(1);
         }
 
-        const stats = await getGraphStats(workspace);
+        // Loop 04: getGraphStats now takes a WorkspaceContext.
+        const ctx = await cli.createWorkspace(workspace);
+        const stats = await getGraphStats(ctx);
 
         console.log('');
         console.log('Graph Statistics:');

@@ -24,6 +24,10 @@
  *
  * File-vs-folder dispatch is by `io.stat` on the resolved path (realpath
  * containment, ENOENT propagates to `main.ts`'s top-level catch).
+ *
+ * Loop 04: builds a single `WorkspaceContext` via `cli.createWorkspace`
+ * and threads it through every application call (build / process for both
+ * file and folder).
  */
 
 import * as fs from 'fs';
@@ -39,8 +43,7 @@ import {
     processFolderInfoReport,
     type EnrichedFolderKeyFile,
 } from '../../../application/document-folder';
-import { WorkspaceIO } from '../../../workspace/workspace-io';
-import { asWorkspaceRoot, asRelPath } from '../../../core/paths';
+import { asRelPath } from '../../../core/paths';
 import { detectWorkspace } from '../workspace';
 import type { CommandSpec } from '../registry';
 
@@ -120,7 +123,7 @@ export const documentCommand: CommandSpec<typeof documentArgs> = {
         },
     ],
     args: documentArgs,
-    async run(args) {
+    async run(args, cli) {
         // ----- Step 6.1: resolve target path -----
         const targetPath = args.path ?? (args._ && args._[0]);
         if (!targetPath) {
@@ -128,29 +131,24 @@ export const documentCommand: CommandSpec<typeof documentArgs> = {
             process.exit(1);
         }
 
-        // ----- Step 6.2: detect workspace + build IO -----
+        // ----- Step 6.2: detect workspace + build context -----
         // Intentionally NO `console.log(\`Workspace: ${workspace}\`)` here.
         // The `--prompt-only` path must produce machine-parseable stdout
         // (the prompt body and nothing else).
         const workspace = detectWorkspace(args.workspace);
-        const root = asWorkspaceRoot(workspace);
-        const io = await WorkspaceIO.create(root);
+        const ctx = await cli.createWorkspace(workspace);
 
         // ----- Step 6.3: classify file vs folder via io.stat -----
         // ENOENT propagates to main.ts:236-241 which prints `Error: <message>` exit 1.
         const rel = asRelPath(targetPath.replace(/\\/g, '/'));
-        const stat = await io.stat(rel);
+        const stat = await ctx.io.stat(rel);
         const isDirectory = stat.isDirectory();
 
         // ----- Step 6.4: --prompt-only branch -----
         if (args.promptOnly) {
             const prompt = isDirectory
-                ? (await buildDocumentFolderPrompt({
-                    workspaceRoot: root, folderPath: rel, io,
-                })).prompt
-                : (await buildDocumentFilePrompt({
-                    workspaceRoot: root, filePath: rel, io,
-                })).prompt;
+                ? (await buildDocumentFolderPrompt(ctx, { folderPath: rel })).prompt
+                : (await buildDocumentFilePrompt(ctx, { filePath: rel })).prompt;
             process.stdout.write(prompt);
             if (!prompt.endsWith('\n')) process.stdout.write('\n');
             return;  // exit 0
@@ -201,28 +199,24 @@ export const documentCommand: CommandSpec<typeof documentArgs> = {
 
         if (isDirectory) {
             const r = folderReportSchema.parse(parsed);
-            const result = await processFolderInfoReport({
-                workspaceRoot: root,
+            const result = await processFolderInfoReport(ctx, {
                 folderPath: rel,
                 overview: r.overview,
                 inputs: r.inputs,
                 outputs: r.outputs,
                 keyFiles: r.key_files satisfies EnrichedFolderKeyFile[],
                 architecture: r.architecture,
-                io,
             });
             // Forward-slash normalization for cross-platform stdout.
             process.stdout.write(result.readmePath.replace(/\\/g, '/') + '\n');
         } else {
             const r = fileReportSchema.parse(parsed);
-            const result = await processFileInfoReport({
-                workspaceRoot: root,
+            const result = await processFileInfoReport(ctx, {
                 filePath: rel,
                 overview: r.overview,
                 inputs: r.inputs,
                 outputs: r.outputs,
                 functions: r.functions satisfies EnrichedFunction[],
-                io,
             });
             process.stdout.write(result.archPath.replace(/\\/g, '/') + '\n');
         }

@@ -33,9 +33,8 @@ import { ImportEdgeListStore, CallEdgeListStore, NodeEntry, EdgeEntry } from '..
 import { getImportEdges, getCallEdges, filterImportEdges, getEdgesForModule } from '../info/filter';
 import { parseGraphId } from '../core/ids';
 import type { WorkspaceRoot, AbsPath, RelPath } from '../core/paths';
-import type { Logger } from '../core/logger';
-import { WorkspaceIO } from '../workspace/workspace-io';
 import { getFolderArchPath } from '../docs/arch-store';
+import type { WorkspaceContext } from './workspace-context';
 
 // ============================================================================
 // Public types
@@ -61,12 +60,9 @@ export interface EnrichedFolderData {
     architecture: string;
 }
 
+/** Per-call request fields for `buildDocumentFolderPrompt`. */
 export interface DocumentFolderRequest {
-    workspaceRoot: WorkspaceRoot;
     folderPath: RelPath;
-    /** Required (L25): realpath-strong I/O surface anchored on workspaceRoot. */
-    io: WorkspaceIO;
-    logger?: Logger;
 }
 
 export interface DocumentFolderData {
@@ -91,17 +87,14 @@ export interface DocumentFolderData {
     };
 }
 
+/** Per-call request fields for `processFolderInfoReport`. */
 export interface ReportFolderInfoRequest {
-    workspaceRoot: WorkspaceRoot;
     folderPath: RelPath;
     overview: string;
     inputs?: string;
     outputs?: string;
     keyFiles: EnrichedFolderKeyFile[];
     architecture: string;
-    /** Required (L25): realpath-strong I/O surface anchored on workspaceRoot. */
-    io: WorkspaceIO;
-    logger?: Logger;
 }
 
 export interface ReportFolderInfoResult {
@@ -123,9 +116,11 @@ export interface ReportFolderInfoResult {
  * not call `process.cwd()` or any deprecated artifact helper.
  */
 export async function buildDocumentFolderPrompt(
+    ctx: WorkspaceContext,
     req: DocumentFolderRequest,
 ): Promise<DocumentFolderData> {
-    const { workspaceRoot, folderPath, io } = req;
+    const { workspaceRoot, io } = ctx;
+    const { folderPath } = req;
 
     // Confirm the folder exists. WorkspaceIO.exists returns false on
     // ENOENT/ENOTDIR but throws PathEscapeError on textual escape, so
@@ -150,8 +145,11 @@ export async function buildDocumentFolderPrompt(
     // currently lives at the conventional `.artifacts` location relative
     // to the workspace root; the configurable `artifactRoot` setting is
     // an extension-side concern and is plumbed through the MCP tool
-    // boundary (Loop 10 will refactor that). For Loop 08 we preserve the
-    // legacy default to minimize behavior drift.
+    // boundary. TODO(Loop 09): replace this hardcoded `.artifacts` with
+    // `ctx.artifactRoot` once `DocumentFolderRequest` is allowed to carry
+    // the artifactRoot through (see PLAN out-of-scope §
+    // DocumentFolderRequest). For Loop 04 we preserve the legacy default
+    // (computed from `ctx.workspaceRoot`) to minimize behavior drift.
     const artifactDir = path.join(workspaceRoot, '.artifacts');
     const artifactRel = path.relative(io.getRealRoot(), artifactDir).replace(/\\/g, '/');
     if (!(await io.exists(artifactRel))) {
@@ -236,9 +234,11 @@ export async function buildDocumentFolderPrompt(
  * legacy folder prompt told the agent to apply manually.
  */
 export async function processFolderInfoReport(
+    ctx: WorkspaceContext,
     req: ReportFolderInfoRequest,
 ): Promise<ReportFolderInfoResult> {
-    const { workspaceRoot, folderPath, overview, inputs, outputs, keyFiles, architecture, io } = req;
+    const { workspaceRoot, io } = ctx;
+    const { folderPath, overview, inputs, outputs, keyFiles, architecture } = req;
 
     const designDocument = renderFolderReadme({
         folderPath,

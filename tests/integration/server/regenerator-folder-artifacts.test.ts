@@ -23,8 +23,7 @@ import * as path from 'node:path';
 
 import { regenerateWebview } from '../../../src/claude/server/regenerator';
 import { scanFolderRecursive } from '../../../src/application/scan';
-import { WorkspaceIO } from '../../../src/workspace/workspace-io';
-import { asWorkspaceRoot } from '../../../src/core/paths';
+import { createWorkspaceContext } from '../../../src/application/workspace-context';
 import {
     FolderTreeStore,
     FOLDER_TREE_FILENAME,
@@ -102,25 +101,18 @@ test('regenerateWebview: emits folder-tree.json + folder-edgelist.json on happy 
     try {
         buildFixture(tmp);
 
-        const io = await WorkspaceIO.create(asWorkspaceRoot(tmp));
-        const artifactDir = path.join(io.getRealRoot(), '.artifacts');
+        const ctx = await createWorkspaceContext({ workspaceRoot: tmp });
+        const artifactDir = ctx.artifactRoot;
 
         // Populate edge lists first (simulates the per-file scan upstream).
-        await scanFolderRecursive({
-            workspaceRoot: asWorkspaceRoot(io.getRealRoot()),
-            folderPath: '.',
-            artifactDir,
-            io,
-        });
+        await scanFolderRecursive(ctx, { folderPath: '.' });
 
         const stubWs = makeStubWebSocket();
         await regenerateWebview({
-            workspaceRoot: io.getRealRoot(),
-            artifactRoot: '.artifacts',
+            ctx,
             verbose: false,
             webSocket: stubWs,
             logger: NoopLogger,
-            io,
         });
 
         // Both folder artifacts exist on disk.
@@ -130,12 +122,12 @@ test('regenerateWebview: emits folder-tree.json + folder-edgelist.json on happy 
         assert.ok(fs.existsSync(edgesPath), `expected ${edgesPath} to exist`);
 
         // Load via the stores → Zod validation.
-        const tree = await new FolderTreeStore(artifactDir, io).load();
+        const tree = await new FolderTreeStore(artifactDir, ctx.io).load();
         assert.equal(tree.schemaVersion, 1);
         // Two files total under the tree.
         assert.equal(tree.root.fileCount, 2);
 
-        const edges = await new FolderEdgelistStore(artifactDir, io).load();
+        const edges = await new FolderEdgelistStore(artifactDir, ctx.io).load();
         assert.equal(edges.schemaVersion, 1);
         // src/b imports from src/a → at least one import edge.
         const importEdges = edges.edges.filter((e) => e.kind === 'import');
@@ -162,24 +154,17 @@ test('regenerateWebview: idempotent across two calls (modulo timestamp)', async 
     try {
         buildFixture(tmp);
 
-        const io = await WorkspaceIO.create(asWorkspaceRoot(tmp));
-        const artifactDir = path.join(io.getRealRoot(), '.artifacts');
+        const ctx = await createWorkspaceContext({ workspaceRoot: tmp });
+        const artifactDir = ctx.artifactRoot;
 
-        await scanFolderRecursive({
-            workspaceRoot: asWorkspaceRoot(io.getRealRoot()),
-            folderPath: '.',
-            artifactDir,
-            io,
-        });
+        await scanFolderRecursive(ctx, { folderPath: '.' });
 
         const stubWs = makeStubWebSocket();
         const deps = {
-            workspaceRoot: io.getRealRoot(),
-            artifactRoot: '.artifacts',
+            ctx,
             verbose: false,
             webSocket: stubWs,
             logger: NoopLogger,
-            io,
         };
 
         await regenerateWebview(deps);
@@ -236,27 +221,20 @@ test('regenerateWebview: propagates documented folders from .arch/', async () =>
             'utf8',
         );
 
-        const io = await WorkspaceIO.create(asWorkspaceRoot(tmp));
-        const artifactDir = path.join(io.getRealRoot(), '.artifacts');
+        const ctx = await createWorkspaceContext({ workspaceRoot: tmp });
+        const artifactDir = ctx.artifactRoot;
 
-        await scanFolderRecursive({
-            workspaceRoot: asWorkspaceRoot(io.getRealRoot()),
-            folderPath: '.',
-            artifactDir,
-            io,
-        });
+        await scanFolderRecursive(ctx, { folderPath: '.' });
 
         const stubWs = makeStubWebSocket();
         await regenerateWebview({
-            workspaceRoot: io.getRealRoot(),
-            artifactRoot: '.artifacts',
+            ctx,
             verbose: false,
             webSocket: stubWs,
             logger: NoopLogger,
-            io,
         });
 
-        const tree = await new FolderTreeStore(artifactDir, io).load();
+        const tree = await new FolderTreeStore(artifactDir, ctx.io).load();
 
         // Walk to src/a and src/b.
         function findByPath(node: typeof tree.root, target: string): typeof tree.root | null {

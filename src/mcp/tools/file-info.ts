@@ -3,6 +3,12 @@
  *
  * Extracts structural information from a source file and returns a prompt
  * for the host LLM to enrich into a design document.
+ *
+ * Loop 04: shares the server-side `WorkspaceContext` via
+ * `getStoredContext()`. The per-call `workspaceRoot` argument still drives
+ * `assertWorkspaceRootMatch` — this guarantees the caller's view of the
+ * workspace agrees with the server's, which is the precondition for
+ * reusing the memoized context.
  */
 
 import { z } from 'zod';
@@ -19,8 +25,8 @@ import {
     validateWorkspacePath,
 } from '../path-utils';
 import { buildDocumentFilePrompt } from '../../application/document-file';
-import { asWorkspaceRoot, asRelPath } from '../../core/paths';
-import { WorkspaceIO } from '../../workspace/workspace-io';
+import { asRelPath } from '../../core/paths';
+import { getStoredContext } from '../server';
 import { assertWorkspaceRootMatch } from './shared';
 
 export const FileInfoSchema = z.object({
@@ -44,11 +50,9 @@ async function handleFileInfoImpl(
     assertWorkspaceRootMatch(workspaceRoot);
     validateWorkspacePath(workspaceRoot, relativePath);
 
-    const io = await WorkspaceIO.create(asWorkspaceRoot(workspaceRoot));
-    const data = await buildDocumentFilePrompt({
-        workspaceRoot: asWorkspaceRoot(workspaceRoot),
+    const ctx = await getStoredContext();
+    const data = await buildDocumentFilePrompt(ctx, {
         filePath: asRelPath(relativePath),
-        io,
     });
 
     return formatPromptResponse(

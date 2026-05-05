@@ -9,6 +9,9 @@
  *      the explicit `.arch/` prefix check.
  *   2. realpath escape (POSIX symlink under `.arch` to outside) surfaces
  *      as `PathEscapeError` from `WorkspaceIO`'s realpath layer.
+ *
+ * Loop 04: `ArchWatcherService` now takes a `WorkspaceContext` instead of
+ * `(workspaceRoot, io)`.
  */
 
 import test from 'node:test';
@@ -17,16 +20,15 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { WorkspaceIO } from '../../../src/workspace/workspace-io';
-import { asWorkspaceRoot } from '../../../src/core/paths';
 import { ArchWatcherService } from '../../../src/claude/server/arch-watcher';
+import { createWorkspaceContext } from '../../../src/application/workspace-context';
 
 test('arch-watcher: writeDoc rejects ../escape', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-arch-cont-'));
     fs.mkdirSync(path.join(root, '.arch'), { recursive: true });
     try {
-        const io = await WorkspaceIO.create(asWorkspaceRoot(root));
-        const watcher = new ArchWatcherService({ workspaceRoot: root, io });
+        const ctx = await createWorkspaceContext({ workspaceRoot: root });
+        const watcher = new ArchWatcherService(ctx);
         await assert.rejects(
             watcher.writeDoc('../escape', '# pwn'),
             (err: Error & { code?: string }) =>
@@ -41,8 +43,8 @@ test('arch-watcher: readDoc rejects ../escape', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-arch-cont-'));
     fs.mkdirSync(path.join(root, '.arch'), { recursive: true });
     try {
-        const io = await WorkspaceIO.create(asWorkspaceRoot(root));
-        const watcher = new ArchWatcherService({ workspaceRoot: root, io });
+        const ctx = await createWorkspaceContext({ workspaceRoot: root });
+        const watcher = new ArchWatcherService(ctx);
         await assert.rejects(
             watcher.readDoc('../escape'),
             (err: Error & { code?: string }) =>
@@ -75,8 +77,8 @@ test('arch-watcher: readDoc rejects symlink-target-outside-workspace (POSIX only
             }
             throw err;
         }
-        const io = await WorkspaceIO.create(asWorkspaceRoot(root));
-        const watcher = new ArchWatcherService({ workspaceRoot: root, io });
+        const ctx = await createWorkspaceContext({ workspaceRoot: root });
+        const watcher = new ArchWatcherService(ctx);
         await assert.rejects(
             watcher.readDoc('leak/secret'),
             (err: Error & { code?: string }) =>

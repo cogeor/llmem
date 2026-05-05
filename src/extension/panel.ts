@@ -1,17 +1,16 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { HotReloadService } from './hot-reload';
 import { getConfig } from './config';
 import { collectViewerData, type ViewerData } from '../application/viewer-data';
 import { scanFile, scanFolderRecursive } from '../application/scan';
 import { addWatchedPath, removeWatchedPath } from '../application/toggle-watch';
+import { createWorkspaceContext, type WorkspaceContext } from '../application/workspace-context';
 import type { Logger as BoundaryLogger } from '../core/logger';
 import { createLogger } from '../common/logger';
-import { asWorkspaceRoot, asAbsPath, asRelPath } from '../core/paths';
+import { asRelPath } from '../core/paths';
 import { parseGraphId } from '../core/ids';
 import type { DesignDoc } from '../webview/design-docs';
 import { renderMarkdown } from '../webview/markdown-renderer';
-import { WorkspaceIO } from '../workspace/workspace-io';
 import { renderShell, type ShellHostHooks } from '../webview/shell';
 import { FolderTreeStore } from '../graph/folder-tree-store';
 import { FolderEdgelistStore } from '../graph/folder-edges-store';
@@ -67,9 +66,13 @@ async function toRenderedViewerData(data: ViewerData): Promise<ViewerDataRendere
 
 /**
  * Manages the LLMem Webview Panel
- * 
+ *
  * Serves the bundled webview UI from dist/webview/ and integrates with
  * HotReloadService to push data updates when files change.
+ *
+ * Loop 04: replaces five per-handler `WorkspaceIO.create` calls with a
+ * single `_ctx: WorkspaceContext` built once on `webview:ready` and
+ * shared across every handler.
  */
 export class LLMemPanel {
     public static currentPanel: LLMemPanel | undefined;
@@ -77,6 +80,14 @@ export class LLMemPanel {
     private readonly _extensionUri: vscode.Uri;
     private _disposables: vscode.Disposable[] = [];
     private _hotReload: HotReloadService | undefined;
+
+    /**
+     * Loop 04: per-workspace runtime context, built once on
+     * `webview:ready` and reused by every handler. Null until the
+     * `webview:ready` message arrives — handlers guard for that to
+     * surface a graceful error instead of throwing on a missing field.
+     */
+    private _ctx: WorkspaceContext | null = null;
 
     private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
         this._panel = panel;
@@ -180,39 +191,27 @@ export class LLMemPanel {
      * Load nodes and edges for a folder on-demand (lazy loading).
      */
     private async _loadFolderNodes(folderPath: string) {
-        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        if (!workspaceRoot) {
+        if (!this._ctx) {
             this._panel.webview.postMessage({
                 type: 'data:folderNodes',
                 folderPath,
-                error: 'No workspace folder open'
+                error: 'Context not initialized',
             });
             return;
         }
-
-        const config = getConfig();
-        const artifactRoot = path.join(workspaceRoot, config.artifactRoot);
+        const ctx = this._ctx;
 
         log.debug('Loading nodes for folder', { folderPath });
 
         try {
-            // L24: WorkspaceIO threaded into every scan invocation. Constructed
-            // per-method here; L27's AppContext will hoist this to a single
-            // workspace-scoped instance.
-            const io = await WorkspaceIO.create(asWorkspaceRoot(workspaceRoot));
-
-            // Generate edges for the folder (this also creates nodes)
-            const result = await scanFolderRecursive({
-                workspaceRoot: asWorkspaceRoot(workspaceRoot),
-                folderPath,
-                artifactDir: artifactRoot,
-                io,
-                logger: this._panelLogger(),
-            });
+            // Loop 04: single per-panel context — `WorkspaceIO.create` no
+            // longer runs per-handler. `scanFolderRecursive` takes the
+            // context directly.
+            await scanFolderRecursive(ctx, { folderPath });
 
             // Load the updated edge lists to get the new nodes and edges
             const { CallEdgeListStore } = await import('../graph/edgelist');
-            const callStore = new CallEdgeListStore(artifactRoot);
+            const callStore = new CallEdgeListStore(ctx.artifactRoot);
             await callStore.load();
 
             // Get nodes and edges for this folder. Use the graph-ID contract:
@@ -275,31 +274,25 @@ export class LLMemPanel {
      * Load `.artifacts/folder-tree.json` and post `data:folderTree` back to
      * the webview, echoing the original `requestId`. Loop 02.
      *
-     * Constructs `WorkspaceIO` per-call to mirror the existing
-     * `_handleToggleWatch` posture (loop 04 hoists this to a
-     * workspace-scoped instance). `FolderTreeStore.load()` raises
+     * Loop 04: shares the panel's `_ctx` instead of constructing a fresh
+     * `WorkspaceIO` per call. `FolderTreeStore.load()` raises
      * `FolderTreeLoadError` for missing-file / parse-error / schema-error
      * / unknown-version cases — relay `error.message` back so the
      * webview-side `pendingFolderTreeRequests.reject(...)` path fires.
      */
     private async _loadFolderTree(requestId: string | undefined) {
-        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        if (!workspaceRoot) {
+        if (!this._ctx) {
             this._panel.webview.postMessage({
                 type: 'data:folderTree',
                 requestId,
-                error: 'No workspace folder open',
+                error: 'Context not initialized',
             });
             return;
         }
-
-        const config = getConfig();
-        const artifactRoot = path.join(workspaceRoot, config.artifactRoot);
+        const ctx = this._ctx;
 
         try {
-            // L26 parity with `_handleToggleWatch`: WorkspaceIO per-method.
-            const io = await WorkspaceIO.create(asWorkspaceRoot(workspaceRoot));
-            const store = new FolderTreeStore(artifactRoot, io);
+            const store = new FolderTreeStore(ctx.artifactRoot, ctx.io);
             const data = await store.load();
             this._panel.webview.postMessage({
                 type: 'data:folderTree',
@@ -323,22 +316,18 @@ export class LLMemPanel {
      * Same posture as `_loadFolderTree` — see the comment there.
      */
     private async _loadFolderEdges(requestId: string | undefined) {
-        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        if (!workspaceRoot) {
+        if (!this._ctx) {
             this._panel.webview.postMessage({
                 type: 'data:folderEdges',
                 requestId,
-                error: 'No workspace folder open',
+                error: 'Context not initialized',
             });
             return;
         }
-
-        const config = getConfig();
-        const artifactRoot = path.join(workspaceRoot, config.artifactRoot);
+        const ctx = this._ctx;
 
         try {
-            const io = await WorkspaceIO.create(asWorkspaceRoot(workspaceRoot));
-            const store = new FolderEdgelistStore(artifactRoot, io);
+            const store = new FolderEdgelistStore(ctx.artifactRoot, ctx.io);
             const data = await store.load();
             this._panel.webview.postMessage({
                 type: 'data:folderEdges',
@@ -366,25 +355,20 @@ export class LLMemPanel {
      * `state:watchedPaths` response. Older (pre-14) webviews omit the id;
      * we forward `undefined` and the browser side falls back to oldest-
      * pending resolution.
+     *
+     * Loop 04: shares the panel's `_ctx` for both the toggle workflow
+     * and the subsequent `collectViewerData` refresh.
      */
     private async _handleToggleWatch(targetPath: string, watched: boolean, requestId?: string) {
-        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        if (!workspaceRoot) return;
-        const artifactRoot = path.join(workspaceRoot, getConfig().artifactRoot);
-        // L26: WorkspaceIO threaded into collectViewerData. Constructed
-        // per-method here; L27's AppContext will hoist this to a single
-        // workspace-scoped instance.
-        const io = await WorkspaceIO.create(asWorkspaceRoot(workspaceRoot));
-        const req = {
-            workspaceRoot: asWorkspaceRoot(workspaceRoot),
-            artifactRoot: asAbsPath(artifactRoot),
-            targetPath: asRelPath(targetPath),
-            logger: this._panelLogger(),
-        };
+        if (!this._ctx) {
+            vscode.window.showErrorMessage('Toggle watch failed: panel context not initialized');
+            return;
+        }
+        const ctx = this._ctx;
         log.info('Toggle watch', { targetPath, watched });
         try {
             if (watched) {
-                const result = await addWatchedPath(req);
+                const result = await addWatchedPath(ctx, { targetPath: asRelPath(targetPath) });
                 for (const f of result.addedFiles) this._hotReload?.addWatchedPath(f);
                 this._panel.webview.postMessage({
                     type: 'state:watchedPaths',
@@ -394,7 +378,7 @@ export class LLMemPanel {
                 });
                 if (!result.success && result.message) vscode.window.showWarningMessage(result.message);
             } else {
-                const result = await removeWatchedPath(req);
+                const result = await removeWatchedPath(ctx, { targetPath: asRelPath(targetPath) });
                 for (const f of result.removedFiles) this._hotReload?.removeWatchedPath(f);
                 this._panel.webview.postMessage({
                     type: 'state:watchedPaths',
@@ -403,12 +387,7 @@ export class LLMemPanel {
                     removedFiles: result.removedFiles,
                 });
             }
-            const raw = await collectViewerData({
-                workspaceRoot: req.workspaceRoot,
-                artifactRoot: req.artifactRoot,
-                io,
-                logger: req.logger,
-            });
+            const raw = await collectViewerData(ctx);
             const rendered = await toRenderedViewerData(raw);
             this._panel.webview.postMessage({ type: 'data:refresh', data: rendered });
         } catch (e: any) {
@@ -423,24 +402,27 @@ export class LLMemPanel {
             return;
         }
 
-        const config = getConfig();
-        const artifactRoot = path.join(workspaceRoot, config.artifactRoot);
+        // Loop 04: build the per-workspace context once. Every other
+        // handler reads `this._ctx` instead of reconstructing
+        // `WorkspaceIO.create`. `getConfig().artifactRoot` is the user
+        // setting today; threading it through `configOverrides` keeps the
+        // existing override behavior intact.
+        this._ctx = await createWorkspaceContext({
+            workspaceRoot: workspaceRoot,
+            configOverrides: { artifactRoot: getConfig().artifactRoot },
+            logger: this._panelLogger(),
+        });
+        const ctx = this._ctx;
 
         log.debug('Using WatchService with file-only tracking');
 
         // Load watch state using WatchService
         const { WatchService } = await import('../graph/worktree-state');
-        const watchService = new WatchService(artifactRoot, workspaceRoot);
+        const watchService = new WatchService(ctx.artifactRoot, ctx.workspaceRoot);
         await watchService.load();
 
         const watchedFiles = watchService.getWatchedFiles();
         log.debug('Found watched files', { count: watchedFiles.length });
-
-        // L24/L26: WorkspaceIO realpath-strong I/O surface, threaded into
-        // every scanFile and collectViewerData invocation. Hoisted outside
-        // the `watchedFiles.length > 0` guard so the initial-data path
-        // also has access to it.
-        const io = await WorkspaceIO.create(asWorkspaceRoot(workspaceRoot));
 
         // Detect changed files and regenerate edges
         if (watchedFiles.length > 0) {
@@ -448,16 +430,9 @@ export class LLMemPanel {
             log.debug('Files have changed', { count: changedFiles.length });
 
             // Regenerate edges for changed files
-            const logger = this._panelLogger();
             for (const filePath of changedFiles) {
                 try {
-                    await scanFile({
-                        workspaceRoot: asWorkspaceRoot(workspaceRoot),
-                        filePath,
-                        artifactDir: artifactRoot,
-                        io,
-                        logger,
-                    });
+                    await scanFile(ctx, { filePath });
                 } catch (e) {
                     log.error('Failed to regenerate edges', {
                         filePath,
@@ -472,10 +447,10 @@ export class LLMemPanel {
             }
         }
 
-        // Start hot reload service
+        // Start hot reload service. Loop 04: share the panel's context so
+        // hot-reload reuses the same `WorkspaceIO` instance.
         this._hotReload = new HotReloadService(
-            artifactRoot,
-            workspaceRoot,
+            ctx,
             (data) => {
                 this._panel.webview.postMessage({
                     type: 'data:refresh',
@@ -495,12 +470,7 @@ export class LLMemPanel {
         // Send initial data
         try {
             log.info('Collecting initial data...');
-            const raw = await collectViewerData({
-                workspaceRoot: asWorkspaceRoot(workspaceRoot),
-                artifactRoot: asAbsPath(artifactRoot),
-                io,
-                logger: this._panelLogger(),
-            });
+            const raw = await collectViewerData(ctx);
             const rendered = await toRenderedViewerData(raw);
             this._panel.webview.postMessage({
                 type: 'data:init',
@@ -534,27 +504,6 @@ export class LLMemPanel {
                 }
             });
         }
-    }
-
-    /**
-     * Clear all edge lists (temporary behavior for clean slate on startup).
-     */
-    private async _clearAllEdgeLists(artifactRoot: string) {
-        const { ImportEdgeListStore, CallEdgeListStore } = await import('../graph/edgelist');
-
-        // Clear import edge list
-        const importStore = new ImportEdgeListStore(artifactRoot);
-        await importStore.load();
-        importStore.clear();
-        await importStore.save();
-
-        // Clear call edge list
-        const callStore = new CallEdgeListStore(artifactRoot);
-        await callStore.load();
-        callStore.clear();
-        await callStore.save();
-
-        log.info('Cleared all edge lists on startup');
     }
 
     private _getNonce(): string {

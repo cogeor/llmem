@@ -29,8 +29,7 @@ import { scanFolderRecursive } from '../../../src/application/scan';
 import { buildAndSaveFolderArtifacts } from '../../../src/application/folder-artifacts';
 import { ImportEdgeListStore, CallEdgeListStore } from '../../../src/graph/edgelist';
 import { prepareWebviewDataFromSplitEdgeLists } from '../../../src/graph/webview-data';
-import { WorkspaceIO } from '../../../src/workspace/workspace-io';
-import { asWorkspaceRoot } from '../../../src/core/paths';
+import { createWorkspaceContext } from '../../../src/application/workspace-context';
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..', '..');
 const DIST_WEBVIEW_INDEX = path.join(REPO_ROOT, 'dist', 'webview', 'index.html');
@@ -96,18 +95,13 @@ async function setup(prefix: string, options: { graphOnly?: boolean } = {}): Pro
     fs.mkdirSync(tmp);
     buildFixture(tmp);
 
-    const io = await WorkspaceIO.create(asWorkspaceRoot(tmp));
-    const realRoot = io.getRealRoot();
-    const artifactDir = path.join(realRoot, '.artifacts');
+    const ctx = await createWorkspaceContext({ workspaceRoot: tmp });
+    const realRoot = ctx.workspaceRoot;
+    const artifactDir = ctx.artifactRoot;
 
-    await scanFolderRecursive({
-        workspaceRoot: asWorkspaceRoot(realRoot),
-        folderPath: '.',
-        artifactDir,
-        io,
-    });
+    await scanFolderRecursive(ctx, { folderPath: '.' });
 
-    await buildAndSaveFolderArtifacts({ artifactDir, io });
+    await buildAndSaveFolderArtifacts(ctx);
 
     const importStore = new ImportEdgeListStore(artifactDir);
     const callStore = new CallEdgeListStore(artifactDir);
@@ -127,6 +121,7 @@ async function setup(prefix: string, options: { graphOnly?: boolean } = {}): Pro
         graphData,
         { graphOnly: options.graphOnly ?? false },
         [],
+        ctx,
     );
 
     return { tmp, parent, artifactDir, webviewDir, realRoot };

@@ -27,12 +27,11 @@ import { ParserRegistry } from '../parser/registry';
 import { getLanguageFromPath } from '../parser/config';
 import { parseGraphId } from '../core/ids';
 import type { WorkspaceRoot, AbsPath, RelPath } from '../core/paths';
-import type { Logger } from '../core/logger';
-import { WorkspaceIO } from '../workspace/workspace-io';
 import { getFileArchPath } from '../docs/arch-store';
 import { extractFileInfo } from '../info/extractor';
 import { getImportEdges, getCallEdges, filterImportEdges } from '../info/filter';
 import type { FileInfo } from '../info/types';
+import type { WorkspaceContext } from './workspace-context';
 
 // ============================================================================
 // Public types
@@ -58,12 +57,9 @@ export interface EnrichedFileData {
     functions: EnrichedFunction[];
 }
 
+/** Per-call request fields for `buildDocumentFilePrompt`. */
 export interface DocumentFileRequest {
-    workspaceRoot: WorkspaceRoot;
     filePath: RelPath;
-    /** Required (L25): realpath-strong I/O surface anchored on workspaceRoot. */
-    io: WorkspaceIO;
-    logger?: Logger;
 }
 
 export interface DocumentFileData {
@@ -83,16 +79,13 @@ export interface DocumentFileData {
     sourceCode: string;
 }
 
+/** Per-call request fields for `processFileInfoReport`. */
 export interface ReportFileInfoRequest {
-    workspaceRoot: WorkspaceRoot;
     filePath: RelPath;
     overview: string;
     inputs?: string;
     outputs?: string;
     functions: EnrichedFunction[];
-    /** Required (L25): realpath-strong I/O surface anchored on workspaceRoot. */
-    io: WorkspaceIO;
-    logger?: Logger;
 }
 
 export interface ReportFileInfoResult {
@@ -114,9 +107,11 @@ export interface ReportFileInfoResult {
  * not call `process.cwd()` or any deprecated artifact helper.
  */
 export async function buildDocumentFilePrompt(
+    ctx: WorkspaceContext,
     req: DocumentFileRequest,
 ): Promise<DocumentFileData> {
-    const { workspaceRoot, filePath, io } = req;
+    const { workspaceRoot, io } = ctx;
+    const { filePath } = req;
 
     // Read source via WorkspaceIO (realpath-strong containment).
     // WorkspaceIO.readFile does NOT swallow ENOENT — translate it
@@ -240,9 +235,11 @@ export async function buildDocumentFilePrompt(
  * legacy prompt told the agent to apply manually.
  */
 export async function processFileInfoReport(
+    ctx: WorkspaceContext,
     req: ReportFileInfoRequest,
 ): Promise<ReportFileInfoResult> {
-    const { workspaceRoot, filePath, overview, inputs, outputs, functions, io } = req;
+    const { workspaceRoot, io } = ctx;
+    const { filePath, overview, inputs, outputs, functions } = req;
 
     const designDocument = renderDesignDocument({
         filePath,

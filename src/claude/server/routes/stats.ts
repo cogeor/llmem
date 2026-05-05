@@ -3,6 +3,8 @@
  *
  * Loop 11 extracted this from `GraphServer.setupApiEndpoints`. The route is
  * read-only and not gated by `requireApiToken`.
+ *
+ * Loop 04: `getGraphStats` takes the server's `WorkspaceContext` directly.
  */
 
 import type * as http from 'http';
@@ -14,9 +16,6 @@ export async function handleStatsRoute(
     res: http.ServerResponse,
     ctx: ServerContext,
 ): Promise<void> {
-    const stats = await getGraphStats(
-        ctx.config.workspaceRoot,
-        ctx.config.artifactRoot,
-    );
+    const stats = await getGraphStats(ctx.ctx);
     ctx.httpHandler.sendJson(res, 200, stats);
 }

@@ -4,6 +4,11 @@
  * Generates static HTML graph and provides URLs for browser viewing.
  * This is a helper module that wraps the existing webview generation
  * with Claude-specific path handling.
+ *
+ * Loop 04: callers may now pass `ctx: WorkspaceContext` instead of the
+ * loose `{ workspaceRoot, artifactRoot }` triple. When `ctx` is supplied,
+ * the launcher reuses it everywhere; otherwise it constructs one inline
+ * for backward-compat with CLI-style call sites.
  */
 
 import * as path from 'path';
@@ -14,18 +19,26 @@ import { generateStaticWebview } from '../webview/generator';
 import { WatchService } from '../graph/worktree-state';
 import { createLogger } from '../common/logger';
 import { buildAndSaveFolderArtifacts } from '../application/folder-artifacts';
-import { WorkspaceIO } from '../workspace/workspace-io';
-import { asWorkspaceRoot } from '../core/paths';
+import { createWorkspaceContext, type WorkspaceContext } from '../application/workspace-context';
 
 const log = createLogger('web-launcher');
 
 /**
  * Options for graph generation
+ *
+ * Two call shapes:
+ *   1. Loose — `{ workspaceRoot, artifactRoot? }`. The launcher builds
+ *      its own `WorkspaceContext` inline. CLI commands use this.
+ *   2. With `ctx` — the caller has already built a `WorkspaceContext`
+ *      and the launcher reuses it. The HTTP server's regenerator uses
+ *      this so the long-lived `WorkspaceIO` is shared.
+ *
+ * Both shapes accept the optional `assetRoot` and `graphOnly`.
  */
 export interface GraphGenerationOptions {
-    /** Workspace root directory */
-    workspaceRoot: string;
-    /** Artifact root directory (default: '.artifacts') */
+    /** Workspace root directory. Required for the loose call shape; ignored when `ctx` is supplied. */
+    workspaceRoot?: string;
+    /** Artifact root directory (default: '.artifacts'). Ignored when `ctx` is supplied. */
     artifactRoot?: string;
     /** Only generate graph assets (skip worktree, arch, design docs) */
     graphOnly?: boolean;
@@ -43,18 +56,16 @@ export interface GraphGenerationOptions {
      */
     assetRoot?: string;
     /**
-     * Optional realpath-strong I/O surface anchored on the workspace root.
-     * Threaded into `buildAndSaveFolderArtifacts` so the folder-artifact
-     * step shares the caller's `WorkspaceIO` (which already paid the
-     * one-shot realpath canonicalization). When omitted, `generateGraph`
-     * constructs a fresh `WorkspaceIO` for the folder-artifact step.
+     * Optional `WorkspaceContext` (Loop 04). When supplied, the launcher
+     * reuses it for the folder-artifact step and any other workspace I/O,
+     * skipping the `createWorkspaceContext` call.
      *
      * The CLI commands (`serve`, `generate`) call `generateGraph` without
-     * an `io` and rely on this fallback. The server's regenerator passes
-     * its long-lived `io` through to avoid duplicate canonicalization on
-     * every file-watcher event.
+     * a context and rely on the inline construction. The server's
+     * regenerator passes its long-lived context through to avoid duplicate
+     * canonicalization on every file-watcher event.
      */
-    io?: WorkspaceIO;
+    ctx?: WorkspaceContext;
 }
 
 /**
@@ -150,21 +161,21 @@ function findLlmemPackageRoot(from: string): string | null {
  * resolved. The error deliberately omits any compile-time directory
  * reference — that carries no diagnostic value under the new model.
  */
-export function resolveAssetRoot(options: GraphGenerationOptions): string {
+export function resolveAssetRoot(opts: { workspaceRoot?: string; assetRoot?: string }): string {
     const probed: string[] = [];
 
     // 1. Explicit assetRoot wins.
-    if (options.assetRoot) {
-        const indexPath = path.join(options.assetRoot, 'index.html');
+    if (opts.assetRoot) {
+        const indexPath = path.join(opts.assetRoot, 'index.html');
         probed.push(`assetRoot: ${indexPath}`);
         if (fs.existsSync(indexPath)) {
-            return options.assetRoot;
+            return opts.assetRoot;
         }
     }
 
     // 2. Workspace-root-relative dist/webview.
-    if (options.workspaceRoot) {
-        const wsAssets = path.join(options.workspaceRoot, 'dist', 'webview');
+    if (opts.workspaceRoot) {
+        const wsAssets = path.join(opts.workspaceRoot, 'dist', 'webview');
         const wsIndex = path.join(wsAssets, 'index.html');
         probed.push(`workspaceRoot: ${wsIndex}`);
         if (fs.existsSync(wsIndex)) {
@@ -257,14 +268,32 @@ export interface GraphGenerationResult {
 export async function generateGraph(
     options: GraphGenerationOptions
 ): Promise<GraphGenerationResult> {
-    const { workspaceRoot, artifactRoot = '.artifacts', graphOnly = false } = options;
+    const { graphOnly = false } = options;
+    void graphOnly;
 
-    // Validate workspace root
-    if (!fs.existsSync(workspaceRoot)) {
-        throw new Error(`Workspace root does not exist: ${workspaceRoot}`);
+    // Loop 04: build (or reuse) the WorkspaceContext.
+    let ctx: WorkspaceContext;
+    if (options.ctx) {
+        ctx = options.ctx;
+    } else {
+        if (!options.workspaceRoot) {
+            throw new Error('generateGraph: must supply either `ctx` or `workspaceRoot`');
+        }
+        // Validate workspace root early (the factory will too, but this
+        // preserves the prior message shape for tests asserting on the
+        // CLI failure mode).
+        if (!fs.existsSync(options.workspaceRoot)) {
+            throw new Error(`Workspace root does not exist: ${options.workspaceRoot}`);
+        }
+        ctx = await createWorkspaceContext({
+            workspaceRoot: options.workspaceRoot,
+            configOverrides: options.artifactRoot
+                ? { artifactRoot: options.artifactRoot }
+                : undefined,
+        });
     }
 
-    const artifactDir = path.join(workspaceRoot, artifactRoot);
+    const artifactDir = ctx.artifactRoot;
 
     // Check if edge lists exist (split format)
     const importEdgeListPath = path.join(artifactDir, 'import-edgelist.json');
@@ -304,12 +333,10 @@ export async function generateGraph(
     // separately; that call has been removed to avoid double-emit per
     // user action. Direct `bin/llmem scan` continues to call the helper
     // itself (it does not go through `generateGraph`).
-    const folderArtifactsIo =
-        options.io ?? (await WorkspaceIO.create(asWorkspaceRoot(workspaceRoot)));
-    await buildAndSaveFolderArtifacts({ artifactDir, io: folderArtifactsIo });
+    await buildAndSaveFolderArtifacts(ctx);
 
     // Load watched files state
-    const watchService = new WatchService(artifactDir, workspaceRoot);
+    const watchService = new WatchService(artifactDir, ctx.workspaceRoot);
     await watchService.load();
     const watchedFiles = new Set(watchService.getWatchedFiles());
 
@@ -318,7 +345,10 @@ export async function generateGraph(
 
     // Loop 21 — resolve webview asset root via injected option / cwd
     // walk-up. Replaces the previous compile-time directory arithmetic.
-    const webviewRoot = resolveAssetRoot(options);
+    const webviewRoot = resolveAssetRoot({
+        workspaceRoot: ctx.workspaceRoot,
+        assetRoot: options.assetRoot,
+    });
 
     // `generateStaticWebview` accepts an `extensionRoot` and re-probes
     // `<extensionRoot>/dist/webview` vs `<extensionRoot>/src/webview`
@@ -333,10 +363,11 @@ export async function generateGraph(
     const indexPath = await generateStaticWebview(
         webviewDir,
         extensionRoot,
-        workspaceRoot,
+        ctx.workspaceRoot,
         graphData,
         { graphOnly: false },  // Always generate full 3-panel UI
-        watchService.getWatchedFiles()  // Pass watched files for UI initialization
+        watchService.getWatchedFiles(),  // Pass watched files for UI initialization
+        ctx,  // Loop 04: share the launcher's context with the static generator
     );
 
     // Convert to file:// URL (normalize slashes for cross-platform)
@@ -372,13 +403,14 @@ export function hasEdgeLists(
 /**
  * Get edge list statistics without generating graph
  *
- * @param workspaceRoot - Workspace root directory
- * @param artifactRoot - Artifact root (default: '.artifacts')
+ * Loop 04: takes a `WorkspaceContext` instead of
+ * `(workspaceRoot, artifactRoot?)`.
+ *
+ * @param ctx - WorkspaceContext for the target workspace
  * @returns Statistics about the edge lists
  */
 export async function getGraphStats(
-    workspaceRoot: string,
-    artifactRoot: string = '.artifacts'
+    ctx: WorkspaceContext,
 ): Promise<{
     importNodes: number;
     importEdges: number;
@@ -387,7 +419,7 @@ export async function getGraphStats(
     fileCount: number;
     lastUpdated: string;
 }> {
-    const artifactDir = path.join(workspaceRoot, artifactRoot);
+    const artifactDir = ctx.artifactRoot;
 
     const importStore = new ImportEdgeListStore(artifactDir);
     const callStore = new CallEdgeListStore(artifactDir);

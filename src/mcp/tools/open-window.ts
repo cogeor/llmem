@@ -4,6 +4,10 @@
  * Generates a static webview for browser viewing. The workspace root and
  * configuration come from server initialization; the caller only chooses
  * the optional view column.
+ *
+ * Loop 04: shares the server-side `WorkspaceContext` via
+ * `getStoredContext()`. The artifact directory is read from
+ * `ctx.artifactRoot`, replacing the inline `path.join(root, config.artifactRoot)`.
  */
 
 import { z } from 'zod';
@@ -16,7 +20,7 @@ import {
     generateCorrelationId,
 } from '../handlers';
 import { getDefaultObserver, withObservation } from '../observer';
-import { getStoredWorkspaceRoot, getStoredConfig } from '../server';
+import { getStoredContext } from '../server';
 import { generateStaticWebview } from '../../webview/generator';
 import { prepareWebviewDataFromSplitEdgeLists } from '../../graph/webview-data';
 import { ImportEdgeListStore, CallEdgeListStore } from '../../graph/edgelist';
@@ -35,10 +39,8 @@ async function handleOpenWindowImpl(
         return formatError(validation.error!);
     }
 
-    const root = getStoredWorkspaceRoot();
-    const config = getStoredConfig();
-
-    const artifactDir = path.join(root, config.artifactRoot);
+    const ctx = await getStoredContext();
+    const artifactDir = ctx.artifactRoot;
 
     // Load split edge lists and build graphs
     const importStore = new ImportEdgeListStore(artifactDir);
@@ -50,7 +52,15 @@ async function handleOpenWindowImpl(
     const webviewDir = path.join(artifactDir, 'webview');
     const extensionRoot = path.resolve(__dirname, '..', '..', '..');
 
-    const indexPath = await generateStaticWebview(webviewDir, extensionRoot, root, graphData);
+    const indexPath = await generateStaticWebview(
+        webviewDir,
+        extensionRoot,
+        ctx.workspaceRoot,
+        graphData,
+        {},
+        undefined,
+        ctx,
+    );
 
     return formatSuccess({
         message: 'Webview generated successfully.',

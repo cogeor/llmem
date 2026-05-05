@@ -6,8 +6,7 @@ import { generateWorkTree } from './worktree';
 import { convertAllMarkdown } from './utils/md-converter';
 import { loadDesignDocs } from './design-docs';
 import { createLogger } from '../common/logger';
-import { WorkspaceIO } from '../workspace/workspace-io';
-import { asWorkspaceRoot } from '../core/paths';
+import { createWorkspaceContext, type WorkspaceContext } from '../application/workspace-context';
 import { FolderTreeStore } from '../graph/folder-tree-store';
 import { FolderEdgelistStore } from '../graph/folder-edges-store';
 import { renderShell, type ShellHostHooks } from './shell';
@@ -57,17 +56,19 @@ export async function generateStaticWebview(
     workspaceRoot: string,
     graphData: any,
     options: GeneratorOptions = {},
-    watchedFiles?: string[]
+    watchedFiles?: string[],
+    ctx?: WorkspaceContext,
 ): Promise<string> {
 
     const { graphOnly = false } = options;
 
-    // L26: WorkspaceIO realpath-strong I/O surface, constructed once and
-    // forwarded into the read-side calls (`generateWorkTree`,
-    // `loadDesignDocs`). The static-generator's writes (`fs.cpSync`,
-    // `fs.writeFileSync`, etc.) stay on `WRITE_ALLOWLIST` until L28 moves
-    // the viewer projection out of `src/webview/` entirely.
-    const io = await WorkspaceIO.create(asWorkspaceRoot(workspaceRoot));
+    // Loop 04: prefer the caller-supplied context (the launcher / panel
+    // already paid the realpath cost); fall back to a fresh
+    // `createWorkspaceContext` call for static-only callers (one-off CLI
+    // tests). The `WorkspaceIO` is only used for read-side calls
+    // (`generateWorkTree`, `loadDesignDocs`); writes go through `fs-extra`.
+    const resolvedCtx = ctx ?? (await createWorkspaceContext({ workspaceRoot }));
+    const io = resolvedCtx.io;
 
     // Ensure destination exists
     if (!fs.existsSync(destinationDir)) {

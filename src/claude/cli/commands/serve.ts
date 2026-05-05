@@ -7,6 +7,12 @@
  *  - zero-config: when no edge lists exist, scans the workspace via
  *    `application/scan.ts:scanFolderRecursive` and continues. Never
  *    hard-fails on a missing index (loop 03).
+ *
+ * Loop 04: replaces the per-command `WorkspaceIO.create` with a single
+ * `cli.createWorkspace(workspace)` call. The same context is threaded
+ * through `scanFolderRecursive`. `GraphServer` keeps its current
+ * `ServerConfig` constructor — it constructs its own context internally,
+ * letting non-CLI hosts keep using the loose `ServerConfig` shape.
  */
 
 import * as path from 'path';
@@ -16,8 +22,6 @@ import { z } from 'zod';
 import { GraphServer } from '../../server';
 import { hasEdgeLists, generateGraph } from '../../web-launcher';
 import { scanFolderRecursive } from '../../../application/scan';
-import { WorkspaceIO } from '../../../workspace/workspace-io';
-import { asWorkspaceRoot } from '../../../core/paths';
 import { detectWorkspace } from '../workspace';
 import { DEFAULT_PORT } from '../../../config-defaults';
 import type { CommandSpec } from '../registry';
@@ -45,7 +49,7 @@ export const serveCommand: CommandSpec<typeof serveArgs> = {
         { scenario: 'Force re-scan and regenerate before serving', command: 'llmem serve --regenerate' },
     ],
     args: serveArgs,
-    async run(args) {
+    async run(args, cli) {
         const workspace = detectWorkspace(args.workspace);
 
         console.log(`Workspace: ${workspace}`);
@@ -55,14 +59,8 @@ export const serveCommand: CommandSpec<typeof serveArgs> = {
         // user's `serve` invocation for a missing index — they get one for free.
         if (!hasEdgeLists(workspace)) {
             console.log('Indexing workspace... (first run)');
-            const io = await WorkspaceIO.create(asWorkspaceRoot(workspace));
-            const artifactDir = path.join(workspace, '.artifacts');
-            const result = await scanFolderRecursive({
-                workspaceRoot: asWorkspaceRoot(workspace),
-                folderPath: '.',
-                artifactDir,
-                io,
-            });
+            const ctx = await cli.createWorkspace(workspace, { artifactRoot: '.artifacts' });
+            const result = await scanFolderRecursive(ctx, { folderPath: '.' });
             console.log(
                 `Indexed ${result.filesProcessed} files ` +
                 `(${result.filesSkipped} skipped, ${result.errors.length} errors).`,
@@ -84,7 +82,10 @@ export const serveCommand: CommandSpec<typeof serveArgs> = {
             console.log('');
         }
 
-        // Start server
+        // Start server. `GraphServer` constructs its own internal
+        // `WorkspaceContext` from `ServerConfig` so non-CLI hosts (HTTP-
+        // only embedders) can continue to drive it without the CLI
+        // factory.
         const server = new GraphServer({
             workspaceRoot: workspace,
             port: args.port,

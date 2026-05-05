@@ -22,8 +22,7 @@ import { createLogger } from '../../common/logger';
 import { registerRoutes } from './routes';
 import type { ServerContext } from './routes';
 import { openBrowser } from './open-browser';
-import { WorkspaceIO } from '../../workspace/workspace-io';
-import { asWorkspaceRoot } from '../../core/paths';
+import { createWorkspaceContext, type WorkspaceContext } from '../../application/workspace-context';
 import {
     broadcastArchEvent,
     regenerateWebview as regenerateWebviewImpl,
@@ -92,19 +91,19 @@ export class GraphServer {
     private httpServer: http.Server | null = null;
     private webSocket: WebSocketService;
     /**
-     * L24: watchers and the watch-manager require a `WorkspaceIO` in their
-     * config. `WorkspaceIO.create` is async (it realpath-canonicalizes the
-     * workspace root once); we cannot build it in the synchronous
-     * constructor. These four services are therefore constructed in
-     * `start()` after `io` is ready. Marked `!` so TypeScript trusts the
-     * lifecycle invariant that `start()` runs before any method that
-     * touches them.
+     * Loop 04: watchers and the watch-manager require a `WorkspaceContext`
+     * in their config. `createWorkspaceContext` is async (it realpath-
+     * canonicalizes the workspace root once); we cannot build it in the
+     * synchronous constructor. These four services are therefore
+     * constructed in `start()` after `_ctx` is ready. Marked `!` so
+     * TypeScript trusts the lifecycle invariant that `start()` runs
+     * before any method that touches them.
      */
     private fileWatcher!: FileWatcherService;
     private httpHandler: HttpRequestHandler;
     private watchManager!: WatchManager;
     private archWatcher!: ArchWatcherService;
-    private io!: WorkspaceIO;
+    private _ctx!: WorkspaceContext;
 
     private config: Required<ServerConfig>;
     private webviewDir: string;
@@ -145,16 +144,25 @@ export class GraphServer {
 
     /** Start the server. */
     async start(): Promise<void> {
-        const { workspaceRoot, artifactRoot, verbose } = this.config;
+        const { workspaceRoot, verbose } = this.config;
 
-        // L24: realpath-strong I/O surface, constructed once and threaded
+        // Loop 04: per-server runtime context, built once and threaded
         // to every downstream service (file watcher, arch watcher, watch
-        // manager, regenerator).
-        this.io = await WorkspaceIO.create(asWorkspaceRoot(workspaceRoot));
+        // manager, regenerator). Replaces the per-service
+        // `WorkspaceIO.create` call.
+        this._ctx = await createWorkspaceContext({
+            workspaceRoot,
+            configOverrides: {
+                artifactRoot: this.config.artifactRoot,
+                apiToken: this.config.apiToken || undefined,
+                port: this.config.port,
+            },
+            logger: this.serverLogger,
+        });
 
-        this.fileWatcher = new FileWatcherService({ workspaceRoot, artifactRoot, io: this.io, verbose });
-        this.watchManager = new WatchManager({ workspaceRoot, artifactRoot, io: this.io, verbose });
-        this.archWatcher = new ArchWatcherService({ workspaceRoot, io: this.io, verbose });
+        this.fileWatcher = new FileWatcherService(this._ctx, verbose);
+        this.watchManager = new WatchManager(this._ctx, verbose);
+        this.archWatcher = new ArchWatcherService(this._ctx, verbose);
 
         if (!fs.existsSync(this.webviewDir)) {
             log.info('Generating graph...');
@@ -254,6 +262,7 @@ export class GraphServer {
     private buildContext(): ServerContext {
         return {
             config: this.config,
+            ctx: this._ctx,
             logger: this.serverLogger,
             watchManager: this.watchManager,
             archWatcher: this.archWatcher,
@@ -264,12 +273,10 @@ export class GraphServer {
 
     private regenDeps(): RegenerateDeps {
         return {
-            workspaceRoot: this.config.workspaceRoot,
-            artifactRoot: this.config.artifactRoot,
+            ctx: this._ctx,
             verbose: this.config.verbose,
             webSocket: this.webSocket,
             logger: this.serverLogger,
-            io: this.io,
             // '' (no override) is normalized to undefined so the launcher
             // falls back to its discovery chain.
             assetRoot: this.config.assetRoot || undefined,

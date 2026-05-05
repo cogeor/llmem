@@ -5,32 +5,32 @@
  * holds the lifecycle wiring. The class still owns the `isRegenerating`
  * latch and websocket service references; this module exposes pure-ish
  * functions the class composes.
+ *
+ * Loop 04: `RegenerateDeps` carries a `WorkspaceContext` rather than a
+ * parallel `(workspaceRoot, artifactRoot, io)` triple. The launcher
+ * (`generateGraph`) takes the same context.
  */
 
-import * as path from 'path';
 import { generateGraph as generateGraphLauncher } from '../web-launcher';
 import { scanFile } from '../../application/scan';
-import { asWorkspaceRoot } from '../../core/paths';
 import type { Logger } from '../../core/logger';
 import type { WebSocketService } from './websocket';
 import type { ArchFileEvent } from './arch-watcher';
 import { createLogger } from '../../common/logger';
-import type { WorkspaceIO } from '../../workspace/workspace-io';
+import type { WorkspaceContext } from '../../application/workspace-context';
 
 const log = createLogger('regenerator');
 
 export interface RegenerateDeps {
-    workspaceRoot: string;
-    artifactRoot: string;
-    verbose: boolean;
-    webSocket: WebSocketService;
-    logger: Logger;
     /**
-     * Loop 24 — realpath-strong I/O surface, constructed once at server
+     * Loop 04 — per-server `WorkspaceContext`, constructed once at server
      * start in `GraphServer.start()` and threaded through every per-call
      * `regenDeps()` payload.
      */
-    io: WorkspaceIO;
+    ctx: WorkspaceContext;
+    verbose: boolean;
+    webSocket: WebSocketService;
+    logger: Logger;
     /**
      * Loop 21 — optional explicit override for the webview asset directory,
      * threaded through from `ServerConfig.assetRoot`. When omitted, the
@@ -45,17 +45,15 @@ export interface RegenerateDeps {
 export async function regenerateWebview(deps: RegenerateDeps): Promise<void> {
     log.info('Regenerating webview...');
     // Loop 11 followup — `generateGraph` itself now emits folder-tree +
-    // folder-edges artifacts. We pass `io` through so the launcher reuses
-    // our long-lived `WorkspaceIO` (avoids a redundant realpath
+    // folder-edges artifacts. We pass the context through so the launcher
+    // reuses our long-lived `WorkspaceIO` (avoids a redundant realpath
     // canonicalization on every file-watcher tick). An aggregator failure
     // throws out of `generateGraphLauncher`, aborting before the websocket
     // broadcast — same fail-loud posture as the previous explicit call.
     const result = await generateGraphLauncher({
-        workspaceRoot: deps.workspaceRoot,
-        artifactRoot: deps.artifactRoot,
+        ctx: deps.ctx,
         graphOnly: false,
         assetRoot: deps.assetRoot,
-        io: deps.io,
     });
 
     if (deps.verbose) {
@@ -83,16 +81,9 @@ export async function rescanSourcesAndRegenerate(
     deps: RegenerateDeps,
 ): Promise<void> {
     log.info('Regenerating edges for changed files', { count: files.length });
-    const artifactDir = path.join(deps.workspaceRoot, deps.artifactRoot);
 
     for (const file of files) {
-        await scanFile({
-            workspaceRoot: asWorkspaceRoot(deps.workspaceRoot),
-            filePath: file,
-            artifactDir,
-            io: deps.io,
-            logger: deps.logger,
-        });
+        await scanFile(deps.ctx, { filePath: file });
     }
 
     log.info('Edges regenerated');

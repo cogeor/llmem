@@ -24,6 +24,7 @@ import { registerRoutes } from '../../../src/claude/server/routes';
 import type { ServerContext } from '../../../src/claude/server/routes';
 import type { ServerConfig } from '../../../src/claude/server';
 import { NoopLogger } from '../../../src/core/logger';
+import { createWorkspaceContext } from '../../../src/application/workspace-context';
 
 export interface RequestResult {
     status: number;
@@ -75,8 +76,17 @@ export async function withServer(
         verbose: false,
     });
 
+    // Loop 04: ServerContext now carries a WorkspaceContext. Build it
+    // against the same temp workspace as `config.workspaceRoot` so route
+    // handlers that read `ctx.ctx.artifactRoot` see the test directory.
+    const wsCtx = await createWorkspaceContext({
+        workspaceRoot: config.workspaceRoot,
+        configOverrides: { artifactRoot: config.artifactRoot },
+    });
+
     const ctx: ServerContext = {
         config,
+        ctx: wsCtx,
         logger: NoopLogger,
         watchManager: overrides.watchManager ?? ({
             getWatchState: () => ({

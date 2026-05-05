@@ -3,6 +3,9 @@
  *
  * Summarizes a folder using the EdgeList graph and returns a prompt
  * for the LLM to generate high-level folder documentation.
+ *
+ * Loop 04: shares the server-side `WorkspaceContext` via
+ * `getStoredContext()`.
  */
 
 import { z } from 'zod';
@@ -19,8 +22,8 @@ import {
     validateWorkspacePath,
 } from '../path-utils';
 import { buildDocumentFolderPrompt } from '../../application/document-folder';
-import { asWorkspaceRoot, asRelPath } from '../../core/paths';
-import { WorkspaceIO } from '../../workspace/workspace-io';
+import { asRelPath } from '../../core/paths';
+import { getStoredContext } from '../server';
 import { assertWorkspaceRootMatch } from './shared';
 
 export const FolderInfoSchema = z.object({
@@ -44,11 +47,9 @@ async function handleFolderInfoImpl(
     assertWorkspaceRootMatch(workspaceRoot);
     validateWorkspacePath(workspaceRoot, folderPath);
 
-    const io = await WorkspaceIO.create(asWorkspaceRoot(workspaceRoot));
-    const data = await buildDocumentFolderPrompt({
-        workspaceRoot: asWorkspaceRoot(workspaceRoot),
+    const ctx = await getStoredContext();
+    const data = await buildDocumentFolderPrompt(ctx, {
         folderPath: asRelPath(folderPath),
-        io,
     });
 
     return formatPromptResponse(

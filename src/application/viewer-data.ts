@@ -11,36 +11,27 @@
  * `populateTreeStatus` and `scanAndPopulateSplitEdgeLists`. The legacy
  * file `src/webview/data-service.ts` is deleted in this same loop.
  *
- * Logger discipline: this module MUST NOT call console.*. Pass a
- * Logger; NoopLogger is used when none is provided. (Same shape used by
- * `application/scan.ts`.)
+ * Logger discipline: this module MUST NOT call console.*. The `ctx.logger`
+ * is used; hosts construct the context with a NoopLogger by default (see
+ * `application/workspace-context.ts`).
  *
  * Markdown rendering: the application layer does NOT render markdown.
  * `designDocs` is returned as `Record<string, string>` of raw markdown,
  * keyed by the design-doc key contract from `docs/arch-store`. Callers
  * (panel, hot-reload) render at the consumption boundary using
- * `webview/design-docs.ts`. This is the deliberate Loop 06 design
- * correction: presentation lives in the presentation layer.
+ * `webview/design-docs.ts`.
  *
- * `.arch` walker: inlined here rather than reaching into
- * `DesignDocManager` (a webview-layer module). The inline walker is ~20
- * lines and avoids creating a new `application -> webview` boundary
- * violation. `getArchRoot` and `getDesignDocKey` from `docs/arch-store`
- * provide the path mapping.
- *
- * Loop 26: every read-side `fs.*` site (existsSync × 3, readdirSync × 1)
- * is replaced with `WorkspaceIO` calls. The `io: WorkspaceIO` field is
- * REQUIRED on the option types so realpath-strong containment is enforced
- * uniformly. The directory walker becomes async because `io.readDir` /
- * `io.stat` are async-only by design.
+ * Loop 04: signatures are now `(ctx)` / `(ctx, request)` — the parallel
+ * `(workspaceRoot, artifactRoot, io, logger)` bag is gone. The `ctx.archRoot`
+ * field is used directly (single source of truth for the `.arch` prefix
+ * lives on the context).
  */
 
 import * as path from 'path';
 import type { WorkspaceRoot, AbsPath } from '../core/paths';
 import { asWorkspaceRoot, asAbsPath } from '../core/paths';
 import type { Logger } from '../core/logger';
-import { NoopLogger } from '../core/logger';
-import { getArchRoot, getDesignDocKey } from '../docs/arch-store';
+import { getDesignDocKey } from '../docs/arch-store';
 import { generateWorkTree, type ITreeNode } from '../webview/worktree';
 import {
     prepareWebviewDataFromSplitEdgeLists,
@@ -53,7 +44,8 @@ import { artifactToEdgeList } from '../graph/artifact-converter';
 import { LAZY_CODEBASE_LINE_THRESHOLD } from '../parser/config';
 import { computeAllFolderStatuses } from '../webview/graph-status';
 import { WatchService } from '../graph/worktree-state';
-import { WorkspaceIO } from '../workspace/workspace-io';
+import type { WorkspaceIO } from '../workspace/workspace-io';
+import type { WorkspaceContext } from './workspace-context';
 
 /**
  * Shape of the data the viewer renders. Note: `designDocs` is RAW markdown.
@@ -66,28 +58,14 @@ export interface ViewerData {
     designDocs: Record<string, string>;
 }
 
-export interface CollectViewerDataOptions {
-    workspaceRoot: WorkspaceRoot;
-    artifactRoot: AbsPath;
-    /** Required (L26): realpath-strong I/O surface anchored on the workspace root. */
-    io: WorkspaceIO;
-    logger?: Logger;
-}
-
 /**
- * Options for the lower-level helper used by hot-reload, which already
- * holds open `EdgeListStore` instances and doesn't want to pay the
- * load/save round-trip again.
+ * Per-call request fields for `collectViewerDataWithStores`. The stores
+ * are caller-owned (e.g. hot-reload's long-lived stores) and are passed
+ * in rather than freshly loaded.
  */
-export interface CollectViewerDataWithStoresOptions {
-    workspaceRoot: WorkspaceRoot;
+export interface CollectViewerDataWithStoresRequest {
     importStore: ImportEdgeListStore;
     callStore: CallEdgeListStore;
-    /** Required (L26): realpath-strong I/O surface anchored on the workspace root. */
-    io: WorkspaceIO;
-    /** When provided, watched-files filtering is applied. */
-    artifactRoot?: AbsPath;
-    logger?: Logger;
 }
 
 /** Convert an absolute path under the workspace to its workspace-relative POSIX form. */
@@ -98,15 +76,14 @@ function toWorkspaceRel(workspaceRoot: WorkspaceRoot, abs: string): string {
 /**
  * Collect all data required for the viewer from disk.
  *
- * If edge lists exist under `artifactRoot`, they are loaded. Otherwise
+ * If edge lists exist under `ctx.artifactRoot`, they are loaded. Otherwise
  * a TS scan populates them and saves. `.arch` and `.artifacts`
  * directories are created (recursive) when missing.
  */
 export async function collectViewerData(
-    opts: CollectViewerDataOptions,
+    ctx: WorkspaceContext,
 ): Promise<ViewerData> {
-    const { workspaceRoot, artifactRoot, io } = opts;
-    const logger = opts.logger ?? NoopLogger;
+    const { workspaceRoot, artifactRoot, archRoot, io, logger } = ctx;
 
     // Ensure artifact root exists. The realpath-strong `io.mkdirRecursive`
     // walks up to the nearest existing ancestor and asserts containment.
@@ -149,7 +126,6 @@ export async function collectViewerData(
     // Ensure .arch exists. `io.mkdirRecursive` surfaces a structured
     // PathEscapeError if the candidate escapes the workspace, which can't
     // happen for the well-known '.arch' relative path.
-    const archRoot = getArchRoot(workspaceRoot);
     try {
         await io.mkdirRecursive('.arch');
     } catch (e) {
@@ -197,28 +173,25 @@ export async function collectViewerData(
  * same work; if it is still unused after Loop 12, delete it.
  */
 export async function collectViewerDataWithStores(
-    opts: CollectViewerDataWithStoresOptions,
+    ctx: WorkspaceContext,
+    req: CollectViewerDataWithStoresRequest,
 ): Promise<ViewerData> {
-    const { workspaceRoot, importStore, callStore, artifactRoot, io } = opts;
-    const logger = opts.logger ?? NoopLogger;
+    const { workspaceRoot, artifactRoot, archRoot, io, logger } = ctx;
+    const { importStore, callStore } = req;
 
     // Ensure .arch exists (see collectViewerData for io.mkdirRecursive notes).
-    const archRoot = getArchRoot(workspaceRoot);
     try {
         await io.mkdirRecursive('.arch');
     } catch (e) {
         logger.error(`Failed to create .arch directory: ${e instanceof Error ? e.message : String(e)}`);
     }
 
-    // Load watched files state (if artifactRoot provided)
-    let watchedFiles: Set<string> | undefined;
-    if (artifactRoot) {
-        const watchService = new WatchService(artifactRoot, workspaceRoot);
-        await watchService.load();
-        const watchedFilesArray = watchService.getWatchedFiles();
-        watchedFiles = watchedFilesArray.length > 0 ? new Set(watchedFilesArray) : undefined;
-        logger.info(`[WebviewDataService] Loaded ${watchedFilesArray.length} watched files`);
-    }
+    // Load watched files state.
+    const watchService = new WatchService(artifactRoot, workspaceRoot);
+    await watchService.load();
+    const watchedFilesArray = watchService.getWatchedFiles();
+    const watchedFiles = watchedFilesArray.length > 0 ? new Set(watchedFilesArray) : undefined;
+    logger.info(`[WebviewDataService] Loaded ${watchedFilesArray.length} watched files`);
 
     // 1. Graph Data
     const graphData = prepareWebviewDataFromSplitEdgeLists(
