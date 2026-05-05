@@ -206,6 +206,9 @@ const WRITE_ALLOWLIST: ReadonlySet<string> = new Set([
   'src/scripts/generate_edgelist.ts',
   'src/scripts/scan_codebase.ts',
   'src/webview/generator.ts',
+  // Loop 01: owns `.artifacts/webview/` cache directory; only writes
+  // `.shell-hash` and rms the cache root on hash mismatch.
+  'src/webview/shell-cache.ts',
   'src/webview/utils/md-converter.ts',
   'src/workspace/safe-fs.ts',
   'src/workspace/workspace-io.ts',

@@ -13,16 +13,9 @@ LLMem is an MCP (Model Context Protocol) server extension for VS Code/Antigravit
 
 ## Development Commands
 
-### ⚠️ Important: Webview Cache
+### Webview Cache
 
-**CRITICAL:** When making changes to `src/webview/generator.ts` or `src/webview/design-docs.ts`, the `.artifacts/webview/` directory contains cached files that must be deleted to force regeneration. Otherwise, old cached files will be served and changes won't appear.
-
-**To clear cache:**
-```bash
-rm -rf .artifacts/webview
-# Then trigger regeneration by touching a watched file or restarting serve mode
-touch src/webview/ui/main.ts  # Triggers auto-regeneration in serve mode
-```
+Cache invalidation is automatic — `.artifacts/webview/` is regenerated when `src/webview/shell.ts`, `shell-assets.ts`, or any bundled asset changes. See `src/webview/shell-cache.ts`.
 
 ### Build and Package
 ```bash

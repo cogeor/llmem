@@ -12,6 +12,7 @@ import { parseGraphId } from '../core/ids';
 import type { DesignDoc } from '../webview/design-docs';
 import { renderMarkdown } from '../webview/markdown-renderer';
 import { WorkspaceIO } from '../workspace/workspace-io';
+import { renderShell, type ShellHostHooks } from '../webview/shell';
 
 const log = createLogger('panel');
 
@@ -116,74 +117,32 @@ export class LLMemPanel {
     private _getHtmlForWebview(): string {
         const webview = this._panel.webview;
         const distWebview = vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview');
-        const distStyles = vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview', 'styles');
-
-        // Asset URIs
-        const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(distWebview, 'main.js'));
-        const baseStyle = webview.asWebviewUri(vscode.Uri.joinPath(distStyles, 'base.css'));
-        const layoutStyle = webview.asWebviewUri(vscode.Uri.joinPath(distStyles, 'layout.css'));
-        const treeStyle = webview.asWebviewUri(vscode.Uri.joinPath(distStyles, 'tree.css'));
-        const detailStyle = webview.asWebviewUri(vscode.Uri.joinPath(distStyles, 'detail.css'));
-        const graphStyle = webview.asWebviewUri(vscode.Uri.joinPath(distStyles, 'graph.css'));
-
         const nonce = this._getNonce();
 
-        return `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="
-        default-src 'none';
-        style-src ${webview.cspSource} 'unsafe-inline';
-        script-src 'nonce-${nonce}';
-        font-src ${webview.cspSource};
-        img-src ${webview.cspSource} https: data:;
-    ">
-    <link rel="stylesheet" href="${baseStyle}">
-    <link rel="stylesheet" href="${layoutStyle}">
-    <link rel="stylesheet" href="${treeStyle}">
-    <link rel="stylesheet" href="${detailStyle}">
-    <link rel="stylesheet" href="${graphStyle}">
-    <title>LLMem</title>
-</head>
-<body>
-    <div id="app" class="layout-row">
-        <div id="explorer-pane" class="pane" style="width: 250px;">
-            <div class="pane-header">
-                <span class="pane-title">Explorer</span>
-                <div class="toolbar">
-                    <button id="theme-toggle" class="icon-btn" title="Toggle Theme">☀️</button>
-                </div>
-            </div>
-            <div class="pane-content" id="worktree-root"></div>
-        </div>
-        <div class="splitter" id="splitter-1"></div>
-        <div id="design-pane" class="pane" style="flex: 1;">
-            <div class="pane-header">
-                <span class="pane-title">Design</span>
-                <div class="toolbar"><div id="view-toggle" style="display:none"></div></div>
-            </div>
-            <div class="pane-content">
-                <div id="design-view" class="detail-view"></div>
-            </div>
-        </div>
-        <div class="splitter" id="splitter-2"></div>
-        <div id="graph-pane" class="pane" style="flex: 1;">
-            <div class="pane-header">
-                <span class="pane-title">Graph</span>
-                <div class="toolbar"><div id="graph-type-toggle"></div></div>
-            </div>
-            <div class="pane-content graph-pane-content">
-                <div id="graph-view" class="graph-container">
-                    <div class="graph-canvas"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <script nonce="${nonce}" src="${scriptUri}"></script>
-</body>
-</html>`;
+        // Loop 01: the panel HTML is now produced by the shared shell
+        // renderer (`src/webview/shell.ts`) so the static webview and the
+        // VS Code panel cannot drift on stylesheets, libs, or mount-point
+        // IDs. This host plugs in `webview.asWebviewUri` for asset URL
+        // resolution and supplies the CSP + per-render nonce.
+        const resolveRel = (rel: string): string =>
+            webview.asWebviewUri(vscode.Uri.joinPath(distWebview, ...rel.split('/'))).toString();
+
+        const csp = `default-src 'none'; ` +
+            `style-src ${webview.cspSource} 'unsafe-inline'; ` +
+            `script-src 'nonce-${nonce}'; ` +
+            `font-src ${webview.cspSource}; ` +
+            `img-src ${webview.cspSource} https: data:;`;
+
+        const hooks: ShellHostHooks = {
+            resolveStyle: resolveRel,
+            resolveLib: resolveRel,
+            resolveScript: resolveRel,
+            csp,
+            nonce,
+        };
+
+        // VS Code data path uses postMessage, not data scripts.
+        return renderShell({ hooks, title: 'LLMem', dataScriptUrls: [] });
     }
 
     private async _handleMessage(message: any) {

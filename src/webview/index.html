@@ -1,3 +1,13 @@
+<!--
+    Legacy host shell (loop 01): `renderShell()` in `src/webview/shell.ts` is
+    the canonical source of truth for both the static and VS Code panels.
+    This file is kept solely so `src/scripts/build_webview.ts` can copy it to
+    `dist/webview/index.html`, which `src/claude/web-launcher.ts` and the
+    `tests/integration/arch-watcher.test.ts` precondition check use as a
+    sentinel for asset-root resolution. The static generator no longer reads
+    this file. Edits made here have no runtime effect outside that sentinel
+    path — update `src/webview/shell.ts` instead.
+-->
 <!DOCTYPE html>
 <html lang="en">
 

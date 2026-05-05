@@ -10,6 +10,8 @@ import { WorkspaceIO } from '../workspace/workspace-io';
 import { asWorkspaceRoot } from '../core/paths';
 import { FolderTreeStore } from '../graph/folder-tree-store';
 import { FolderEdgelistStore } from '../graph/folder-edges-store';
+import { renderShell, type ShellHostHooks } from './shell';
+import { computeShellHash, invalidateIfStale, writeCachedShellHash } from './shell-cache';
 
 /**
  * Static-generator output ownership (per CLAUDE.md):
@@ -20,13 +22,13 @@ import { FolderEdgelistStore } from '../graph/folder-edges-store';
  *     - `folder_tree.js`   — `window.FOLDER_TREE = ...`        (loop 11)
  *     - `folder_edges.js`  — `window.FOLDER_EDGES = ...`       (loop 11)
  *
- * The `.artifacts/webview/` output directory is treated as a cache
- * by `npm run serve` and the extension. After changing this file
- * (or the loop 09 stores it loads from), DELETE `.artifacts/webview/`
- * before re-running — stale copies of the above files will mask
- * regressions, since the dist-webview short-circuit at line ~80
- * skips esbuild but the data-script emission ALWAYS runs and overwrites
- * just the JS scripts. Mixed-version assets are the failure mode.
+ * The `.artifacts/webview/` output directory is treated as a cache by
+ * `npm run serve` and the extension. Loop 01 added a content-hash
+ * invalidation guard (`src/webview/shell-cache.ts`) — when `shell.ts`,
+ * `shell-assets.ts`, or any bundled asset under `dist/webview/` changes,
+ * `generateStaticWebview` removes the cached directory before regenerating.
+ * The previous "DELETE `.artifacts/webview/` by hand" step is no longer
+ * required.
  */
 
 const log = createLogger('webview-generator');
@@ -69,6 +71,22 @@ export async function generateStaticWebview(
 
     // Ensure destination exists
     if (!fs.existsSync(destinationDir)) {
+        fs.mkdirSync(destinationDir, { recursive: true });
+    }
+
+    // Loop 01: content-hash invalidation guard. Hash `shell.ts`,
+    // `shell-assets.ts`, and every bundled asset under `dist/webview/`
+    // (or the source styles/libs/ui directories in dev mode), then
+    // remove the cached destination directory if it differs from the
+    // recorded hash. After the regeneration completes below we record
+    // the new hash. This replaces the legacy "delete `.artifacts/webview/`
+    // by hand" developer step; see `src/webview/shell-cache.ts`.
+    const shellHash = computeShellHash(extensionRoot);
+    const wasStale = invalidateIfStale(destinationDir, shellHash);
+    if (wasStale) {
+        log.info('Shell hash changed; cached webview directory invalidated', {
+            destinationDir,
+        });
         fs.mkdirSync(destinationDir, { recursive: true });
     }
 
@@ -169,12 +187,13 @@ export async function generateStaticWebview(
         fs.writeFileSync(treePath, treeContent, 'utf8');
     }
 
-    // 5. Read and Template HTML
-    const htmlPath = path.join(webviewRoot, 'index.html');
-    let htmlContent = fs.readFileSync(htmlPath, 'utf8');
-
-    // Inject data
-    // We inject a script tag before main.js that sets window.GRAPH_DATA_URL
+    // 5. Render the host HTML via the shared shell renderer (loop 01).
+    //    Both the static generator and the VS Code panel now go through
+    //    `renderShell` so the mount-point set, stylesheet manifest, and
+    //    library list cannot drift between hosts. We build the static-mode
+    //    host hooks (identity URL resolution — relative URLs work because
+    //    the generated `index.html` sits next to `styles/`, `libs/`, `js/`)
+    //    and pass them in below after we know which data scripts to embed.
 
     // Write graph data to JS file
     const graphDataPath = path.join(destinationDir, 'graph_data.js');
@@ -220,32 +239,33 @@ export async function generateStaticWebview(
         fs.writeFileSync(designDocsPath, designDocsContent, 'utf8');
     }
 
-    // Build injection script based on what was generated
-    const injectionScript = graphOnly
-        ? `
-    <script src="graph_data.js"></script>
-    <script src="folder_tree.js"></script>
-    <script src="folder_edges.js"></script>
-    `
-        : `
-    <script src="graph_data.js"></script>
-    <script src="work_tree.js"></script>
-    <script src="design_docs.js"></script>
-    <script src="folder_tree.js"></script>
-    <script src="folder_edges.js"></script>
-    `;
+    // Compose the data-script URL list. Same conditional that historically
+    // built the inline `injectionScript`. The renderer emits a classic
+    // `<script src=...>` per entry (no `type="module"`; the bundle uses
+    // IIFE for `file://` compatibility).
+    const dataScriptUrls: readonly string[] = graphOnly
+        ? ['graph_data.js', 'folder_tree.js', 'folder_edges.js']
+        : ['graph_data.js', 'work_tree.js', 'design_docs.js', 'folder_tree.js', 'folder_edges.js'];
 
-    // Insert before <script type="module" src="js/main.js">
-    // We just inject the data scripts before the main module script
-    // AND remove type="module" because we are using IIFE for file:// compatibility
-    htmlContent = htmlContent.replace(
-        '<script type="module" src="js/main.js"></script>',
-        `${injectionScript}\n    <script src="js/main.js"></script>`
-    );
+    // Identity host hooks — the generated `index.html` is colocated with
+    // `styles/`, `libs/`, and `js/`, so relative URLs work as-is. No CSP /
+    // nonce in static mode (the VS Code panel adds those in its own host
+    // hooks).
+    const hooks: ShellHostHooks = {
+        resolveStyle: (rel) => rel,
+        resolveLib: (rel) => rel,
+        resolveScript: (rel) => rel,
+    };
+
+    const html = renderShell({ hooks, title: 'Project View', dataScriptUrls });
 
     // Write HTML
     const destHtmlPath = path.join(destinationDir, 'index.html');
-    fs.writeFileSync(destHtmlPath, htmlContent, 'utf8');
+    fs.writeFileSync(destHtmlPath, html, 'utf8');
+
+    // Loop 01: record the shell hash so the next regeneration can
+    // short-circuit when nothing changed.
+    writeCachedShellHash(destinationDir, shellHash);
 
     return destHtmlPath;
 }
