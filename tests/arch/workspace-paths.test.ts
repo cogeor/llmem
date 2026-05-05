@@ -196,15 +196,22 @@ interface WriteCallSite {
 //     creates that directory. The path is rooted at `detectWorkspace()`
 //     output and never escapes (mkdir + writeFile under the resolved
 //     `.llmem/` subdir only).
+// Loop 07 retired:
+//   - 'src/graph/edgelist.ts'
+//   - 'src/graph/folder-edges-store.ts'
+//   - 'src/graph/folder-tree-store.ts'
+//   - 'src/graph/worktree-state.ts'
+//     The four store files no longer call `fs.write*` / `fs.mkdir*`
+//     directly — `WorkspaceIO` is now a *required* constructor argument
+//     and all persistence routes through it.
+//   - 'src/scripts/generate_edgelist.ts'
+//   - 'src/scripts/scan_codebase.ts'
+//     The scripts now build a `WorkspaceContext` and route every store
+//     instantiation + mkdir through `ctx.io`; no direct `fs.*` calls
+//     remain.
 const WRITE_ALLOWLIST: ReadonlySet<string> = new Set([
   'src/artifact/storage.ts',
   'src/claude/cli/commands/init.ts',
-  'src/graph/edgelist.ts',
-  'src/graph/folder-edges-store.ts',
-  'src/graph/folder-tree-store.ts',
-  'src/graph/worktree-state.ts',
-  'src/scripts/generate_edgelist.ts',
-  'src/scripts/scan_codebase.ts',
   'src/webview/generator.ts',
   // Loop 01: owns `.artifacts/webview/` cache directory; only writes
   // `.shell-hash` and rms the cache root on hash mismatch.
@@ -419,50 +426,11 @@ const FS_WRITE_METHODS = new Set([
   'rmSync',
 ]);
 
-// Documented back-compat fallback paths in the L23-migrated files. L24
-// will thread WorkspaceIO through every caller and remove these entries.
+// Documented back-compat fallback paths. Loop 07 retired the four store
+// files (edgelist, worktree-state, folder-tree-store, folder-edges-store)
+// when their constructors were tightened to require `WorkspaceIO`.
 // `graph/plot/generator.ts` is owned by L24 (callers in src/scripts/).
 const KNOWN_WRITE_VIOLATIONS: readonly KnownFsWriteViolation[] = [
-  {
-    rel: 'src/graph/edgelist.ts',
-    method: 'mkdir',
-    reason: 'L23 back-compat fallback in BaseEdgeListStore.save when no `io` is passed (legacy callers); L24 removes once `io` is required.',
-  },
-  {
-    rel: 'src/graph/edgelist.ts',
-    method: 'writeFile',
-    reason: 'L23 back-compat fallback in BaseEdgeListStore.save when no `io` is passed; L24 removes once `io` is required.',
-  },
-  {
-    rel: 'src/graph/worktree-state.ts',
-    method: 'mkdir',
-    reason: 'L23 back-compat fallback in WatchService.save when no `io` is passed; L24 removes once `io` is required.',
-  },
-  {
-    rel: 'src/graph/worktree-state.ts',
-    method: 'writeFile',
-    reason: 'L23 back-compat fallback in WatchService.save when no `io` is passed; L24 removes once `io` is required.',
-  },
-  {
-    rel: 'src/graph/folder-tree-store.ts',
-    method: 'mkdir',
-    reason: 'Loop 09 back-compat fallback in FolderTreeStore.save when no `io` is passed; mirrors BaseEdgeListStore. Loops 10+ thread `io` through every caller.',
-  },
-  {
-    rel: 'src/graph/folder-tree-store.ts',
-    method: 'writeFile',
-    reason: 'Loop 09 back-compat fallback in FolderTreeStore.save when no `io` is passed; mirrors BaseEdgeListStore. Loops 10+ thread `io` through every caller.',
-  },
-  {
-    rel: 'src/graph/folder-edges-store.ts',
-    method: 'mkdir',
-    reason: 'Loop 09 back-compat fallback in FolderEdgelistStore.save when no `io` is passed; mirrors BaseEdgeListStore. Loops 10+ thread `io` through every caller.',
-  },
-  {
-    rel: 'src/graph/folder-edges-store.ts',
-    method: 'writeFile',
-    reason: 'Loop 09 back-compat fallback in FolderEdgelistStore.save when no `io` is passed; mirrors BaseEdgeListStore. Loops 10+ thread `io` through every caller.',
-  },
   {
     rel: 'src/artifact/storage.ts',
     method: 'mkdir',

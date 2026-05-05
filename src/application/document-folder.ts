@@ -159,8 +159,8 @@ export async function buildDocumentFolderPrompt(
         );
     }
 
-    const importStore = new ImportEdgeListStore(artifactDir);
-    const callStore = new CallEdgeListStore(artifactDir);
+    const importStore = new ImportEdgeListStore(artifactDir, io);
+    const callStore = new CallEdgeListStore(artifactDir, io);
     await importStore.load();
     await callStore.load();
 

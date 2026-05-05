@@ -1,8 +1,10 @@
 // tests/unit/graph/folder-tree-store.test.ts
 //
 // Loop 09 — pin the FolderTreeStore round-trip contract on disk.
-// Eight cases per PLAN.md task 3: round-trip + back-compat + missing/malformed/
+// Seven cases per PLAN.md task 3: round-trip + missing/malformed/
 // schema-mismatched/containment-escape rejections + schemaVersion re-stamping.
+// (Loop 07 deleted the back-compat no-io constructor case along with the
+// legacy fs.* fallback in the store itself.)
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -214,29 +216,7 @@ test('FolderTreeStore: save() outside the workspace root throws PATH_ESCAPE', as
 });
 
 // ---------------------------------------------------------------------------
-// 7. Back-compat: no-io constructor still works
-// ---------------------------------------------------------------------------
-
-test('FolderTreeStore: back-compat no-io constructor round-trips', async () => {
-    const parent = mkTmp('llmem-fts-');
-    try {
-        const artifactDir = path.join(parent, '.artifacts');
-        // No io — relies on the legacy fs.* fallback.
-        const store = new FolderTreeStore(artifactDir);
-        const data = makeFixture();
-        await store.save(data);
-        const loaded = await store.load();
-
-        assert.equal(loaded.schemaVersion, FOLDER_TREE_SCHEMA_VERSION);
-        assert.deepEqual(loaded.root, data.root);
-        assert.ok(fs.existsSync(path.join(artifactDir, FOLDER_TREE_FILENAME)));
-    } finally {
-        rm(parent);
-    }
-});
-
-// ---------------------------------------------------------------------------
-// 8. save() re-stamps schemaVersion
+// 7. save() re-stamps schemaVersion
 // ---------------------------------------------------------------------------
 
 test('FolderTreeStore: save() re-stamps schemaVersion to the current constant', async () => {

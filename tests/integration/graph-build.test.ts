@@ -19,6 +19,8 @@ import { prepareWebviewDataFromSplitEdgeLists } from '../../src/graph/webview-da
 import { artifactToEdgeList } from '../../src/graph/artifact-converter';
 import { TypeScriptService } from '../../src/parser/ts-service';
 import { TypeScriptExtractor } from '../../src/parser/ts-extractor';
+import { WorkspaceIO } from '../../src/workspace/workspace-io';
+import { asWorkspaceRoot } from '../../src/core/paths';
 
 // ============================================================================
 // Test Fixtures
@@ -27,16 +29,18 @@ import { TypeScriptExtractor } from '../../src/parser/ts-extractor';
 interface TestWorkspace {
     root: string;
     artifactDir: string;
+    io: WorkspaceIO;
     cleanup: () => void;
 }
 
 /**
  * Create a temporary workspace with sample TypeScript files
  */
-function createTestWorkspace(): TestWorkspace {
+async function createTestWorkspace(): Promise<TestWorkspace> {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-graph-test-'));
     const artifactDir = path.join(root, '.artifacts');
     fs.mkdirSync(artifactDir, { recursive: true });
+    const io = await WorkspaceIO.create(asWorkspaceRoot(root));
 
     // Create src directory
     const srcDir = path.join(root, 'src');
@@ -134,6 +138,7 @@ export function calculate(): number {
     return {
         root,
         artifactDir,
+        io,
         cleanup: () => {
             fs.rmSync(root, { recursive: true, force: true });
         },
@@ -147,8 +152,8 @@ export function calculate(): number {
 describe('EdgeListStore Integration', () => {
     let workspace: TestWorkspace;
 
-    before(() => {
-        workspace = createTestWorkspace();
+    before(async () => {
+        workspace = await createTestWorkspace();
     });
 
     after(() => {
@@ -156,7 +161,7 @@ describe('EdgeListStore Integration', () => {
     });
 
     test('ImportEdgeListStore persists and loads data', async () => {
-        const store = new ImportEdgeListStore(workspace.artifactDir);
+        const store = new ImportEdgeListStore(workspace.artifactDir, workspace.io);
 
         // Add some nodes and edges
         store.addNode({ id: 'src/main.ts', name: 'main.ts', kind: 'file', fileId: 'src/main.ts' });
@@ -167,7 +172,7 @@ describe('EdgeListStore Integration', () => {
         await store.save();
 
         // Load into new instance
-        const store2 = new ImportEdgeListStore(workspace.artifactDir);
+        const store2 = new ImportEdgeListStore(workspace.artifactDir, workspace.io);
         await store2.load();
 
         const nodes = store2.getNodes();
@@ -180,7 +185,7 @@ describe('EdgeListStore Integration', () => {
     });
 
     test('CallEdgeListStore persists and loads data', async () => {
-        const store = new CallEdgeListStore(workspace.artifactDir);
+        const store = new CallEdgeListStore(workspace.artifactDir, workspace.io);
 
         // Add function nodes and call edges
         store.addNode({ id: 'src/main.ts::greet', name: 'greet', kind: 'function', fileId: 'src/main.ts' });
@@ -189,7 +194,7 @@ describe('EdgeListStore Integration', () => {
 
         await store.save();
 
-        const store2 = new CallEdgeListStore(workspace.artifactDir);
+        const store2 = new CallEdgeListStore(workspace.artifactDir, workspace.io);
         await store2.load();
 
         const nodes = store2.getNodes();
@@ -201,7 +206,7 @@ describe('EdgeListStore Integration', () => {
     });
 
     test('removeByFolder removes nodes and edges for folder', async () => {
-        const store = new ImportEdgeListStore(workspace.artifactDir);
+        const store = new ImportEdgeListStore(workspace.artifactDir, workspace.io);
 
         store.addNode({ id: 'src/parser/a.ts', name: 'a.ts', kind: 'file', fileId: 'src/parser/a.ts' });
         store.addNode({ id: 'src/parser/b.ts', name: 'b.ts', kind: 'file', fileId: 'src/parser/b.ts' });
@@ -231,8 +236,8 @@ describe('EdgeListStore Integration', () => {
 describe('TypeScript Extraction to Graph Pipeline', () => {
     let workspace: TestWorkspace;
 
-    before(() => {
-        workspace = createTestWorkspace();
+    before(async () => {
+        workspace = await createTestWorkspace();
     });
 
     after(() => {
@@ -272,8 +277,8 @@ describe('TypeScript Extraction to Graph Pipeline', () => {
         const tsService = new TypeScriptService(workspace.root);
         const extractor = new TypeScriptExtractor(() => tsService.getProgram(), workspace.root);
 
-        const importStore = new ImportEdgeListStore(workspace.artifactDir);
-        const callStore = new CallEdgeListStore(workspace.artifactDir);
+        const importStore = new ImportEdgeListStore(workspace.artifactDir, workspace.io);
+        const callStore = new CallEdgeListStore(workspace.artifactDir, workspace.io);
 
         // Extract all files
         const files = ['src/utils.ts', 'src/math.ts', 'src/main.ts'];
@@ -315,8 +320,8 @@ describe('TypeScript Extraction to Graph Pipeline', () => {
         const tsService = new TypeScriptService(workspace.root);
         const extractor = new TypeScriptExtractor(() => tsService.getProgram(), workspace.root);
 
-        const importStore = new ImportEdgeListStore(workspace.artifactDir);
-        const callStore = new CallEdgeListStore(workspace.artifactDir);
+        const importStore = new ImportEdgeListStore(workspace.artifactDir, workspace.io);
+        const callStore = new CallEdgeListStore(workspace.artifactDir, workspace.io);
 
         // Extract all files
         const files = ['src/utils.ts', 'src/math.ts', 'src/main.ts'];
@@ -499,7 +504,7 @@ describe('Graph Building Edge Cases', () => {
         assert.equal(importGraph.edges.length, 0);
     });
 
-    test('deduplicates edges', () => {
+    test('deduplicates edges', async () => {
         const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-dedup-'));
         try {
             const importData = {
@@ -515,7 +520,8 @@ describe('Graph Building Edge Cases', () => {
                 ],
             };
 
-            const store = new ImportEdgeListStore(tempDir);
+            const io = await WorkspaceIO.create(asWorkspaceRoot(tempDir));
+            const store = new ImportEdgeListStore(tempDir, io);
             store.addEdges(importData.edges);
 
             // Store should deduplicate

@@ -1,37 +1,42 @@
 #!/usr/bin/env npx ts-node
 /**
  * Manual Edge List Generation Script
- * 
+ *
  * Run: npx ts-node src/scripts/generate_edgelist.ts
- * 
+ *
  * This script generates the split edge lists without going through the panel.
  * Used to verify edge list generation works correctly.
  */
 
 import * as path from 'path';
-import * as fs from 'fs';
 import { ImportEdgeListStore, CallEdgeListStore } from '../graph/edgelist';
 import { TypeScriptService } from '../parser/ts-service';
 import { TypeScriptExtractor } from '../parser/ts-extractor';
 import { artifactToEdgeList } from '../graph/artifact-converter';
 import { LAZY_CODEBASE_LINE_THRESHOLD } from '../parser/config';
+import { createWorkspaceContext } from '../application/workspace-context';
 
 async function main() {
     console.log('='.repeat(60));
     console.log('MANUAL EDGE LIST GENERATION (SPLIT STORES)');
     console.log('='.repeat(60));
 
-    const root = process.cwd();
-    const artifactDir = path.join(root, '.artifacts');
+    // Loop 07: build a per-script WorkspaceContext so the edge-list stores
+    // get a real `WorkspaceIO` (mandatory after this loop).
+    const ctx = await createWorkspaceContext({
+        workspaceRoot: process.cwd(),
+        configOverrides: { artifactRoot: '.artifacts' },
+    });
+    const root = ctx.workspaceRoot;
+    const artifactDir = ctx.artifactRoot;
 
     console.log(`\nProject root: ${root}`);
     console.log(`Output dir: ${artifactDir}`);
 
-    // Ensure artifact directory exists
-    if (!fs.existsSync(artifactDir)) {
-        console.log(`\nCreating ${artifactDir}...`);
-        fs.mkdirSync(artifactDir, { recursive: true });
-    }
+    // Ensure artifact directory exists. `io.mkdirRecursive` is idempotent
+    // and asserts containment.
+    const artifactRel = path.relative(ctx.io.getRealRoot(), artifactDir).replace(/\\/g, '/');
+    await ctx.io.mkdirRecursive(artifactRel);
 
     // Initialize TypeScript service
     console.log('\nInitializing TypeScript service...');
@@ -45,7 +50,7 @@ async function main() {
     }
 
     // Normalize root for path comparison
-    const normalizedRoot = root.replace(/\\/g, '/');
+    const normalizedRoot = (root as string).replace(/\\/g, '/');
 
     // Get source files
     const sourceFiles = program.getSourceFiles().filter(sf => {
@@ -69,8 +74,8 @@ async function main() {
     console.log(`Total codebase lines: ${totalCodebaseLines}, lazy mode: ${isLazyMode} (threshold: ${LAZY_CODEBASE_LINE_THRESHOLD})`);
 
     // Create split edge list stores
-    const importStore = new ImportEdgeListStore(artifactDir);
-    const callStore = new CallEdgeListStore(artifactDir);
+    const importStore = new ImportEdgeListStore(artifactDir, ctx.io);
+    const callStore = new CallEdgeListStore(artifactDir, ctx.io);
     importStore.clear(); // Start fresh
     callStore.clear();
 

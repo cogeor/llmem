@@ -308,8 +308,8 @@ export async function generateGraph(
     }
 
     // Load split edge lists
-    const importStore = new ImportEdgeListStore(artifactDir);
-    const callStore = new CallEdgeListStore(artifactDir);
+    const importStore = new ImportEdgeListStore(artifactDir, ctx.io);
+    const callStore = new CallEdgeListStore(artifactDir, ctx.io);
 
     await importStore.load();
     await callStore.load();
@@ -336,7 +336,7 @@ export async function generateGraph(
     await buildAndSaveFolderArtifacts(ctx);
 
     // Load watched files state
-    const watchService = new WatchService(artifactDir, ctx.workspaceRoot);
+    const watchService = new WatchService(artifactDir, ctx.workspaceRoot, ctx.io);
     await watchService.load();
     const watchedFiles = new Set(watchService.getWatchedFiles());
 
@@ -421,8 +421,8 @@ export async function getGraphStats(
 }> {
     const artifactDir = ctx.artifactRoot;
 
-    const importStore = new ImportEdgeListStore(artifactDir);
-    const callStore = new CallEdgeListStore(artifactDir);
+    const importStore = new ImportEdgeListStore(artifactDir, ctx.io);
+    const callStore = new CallEdgeListStore(artifactDir, ctx.io);
 
     await importStore.load();
     await callStore.load();

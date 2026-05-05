@@ -193,15 +193,16 @@ export async function removeWatchedPath(
         }
     }
 
-    // Delete edges for the path from both stores. L24: `io` threaded for
-    // realpath-strong save; the boundary `Logger` interface here differs
-    // from the edge-list store's `common/logger` shape, so we omit it.
-    const importStore = new ImportEdgeListStore(artifactRoot, undefined, io);
+    // Delete edges for the path from both stores. Loop 07: `io` is the
+    // second (mandatory) constructor arg; the boundary `Logger` interface
+    // here differs from the edge-list store's `common/logger` shape, so
+    // we omit it.
+    const importStore = new ImportEdgeListStore(artifactRoot, io);
     await importStore.load();
     importStore.removeByFolder(targetPath);
     await importStore.save();
 
-    const callStore = new CallEdgeListStore(artifactRoot, undefined, io);
+    const callStore = new CallEdgeListStore(artifactRoot, io);
     await callStore.load();
     callStore.removeByFolder(targetPath);
     await callStore.save();

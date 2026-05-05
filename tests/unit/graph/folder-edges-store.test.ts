@@ -1,7 +1,9 @@
 // tests/unit/graph/folder-edges-store.test.ts
 //
 // Loop 09 — pin the FolderEdgelistStore round-trip contract on disk.
-// Eight cases per PLAN.md task 3, mirroring folder-tree-store.test.ts.
+// Seven cases per PLAN.md task 3, mirroring folder-tree-store.test.ts.
+// (Loop 07 deleted the back-compat no-io constructor case along with the
+// legacy fs.* fallback in the store itself.)
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -214,29 +216,7 @@ test('FolderEdgelistStore: save() outside the workspace root throws PATH_ESCAPE'
 });
 
 // ---------------------------------------------------------------------------
-// 7. Back-compat: no-io constructor still works
-// ---------------------------------------------------------------------------
-
-test('FolderEdgelistStore: back-compat no-io constructor round-trips', async () => {
-    const parent = mkTmp('llmem-fes-');
-    try {
-        const artifactDir = path.join(parent, '.artifacts');
-        const store = new FolderEdgelistStore(artifactDir);
-        const data = makeFixture();
-        await store.save(data);
-        const loaded = await store.load();
-
-        assert.equal(loaded.schemaVersion, FOLDER_EDGES_SCHEMA_VERSION);
-        assert.deepEqual(loaded.edges, data.edges);
-        assert.equal(loaded.weightP90, data.weightP90);
-        assert.ok(fs.existsSync(path.join(artifactDir, FOLDER_EDGELIST_FILENAME)));
-    } finally {
-        rm(parent);
-    }
-});
-
-// ---------------------------------------------------------------------------
-// 8. save() re-stamps schemaVersion
+// 7. save() re-stamps schemaVersion
 // ---------------------------------------------------------------------------
 
 test('FolderEdgelistStore: save() re-stamps schemaVersion to the current constant', async () => {

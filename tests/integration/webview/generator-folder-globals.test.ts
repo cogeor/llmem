@@ -103,8 +103,8 @@ async function setup(prefix: string, options: { graphOnly?: boolean } = {}): Pro
 
     await buildAndSaveFolderArtifacts(ctx);
 
-    const importStore = new ImportEdgeListStore(artifactDir);
-    const callStore = new CallEdgeListStore(artifactDir);
+    const importStore = new ImportEdgeListStore(artifactDir, ctx.io);
+    const callStore = new CallEdgeListStore(artifactDir, ctx.io);
     await importStore.load();
     await callStore.load();
     const graphData = prepareWebviewDataFromSplitEdgeLists(

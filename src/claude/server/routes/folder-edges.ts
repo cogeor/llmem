@@ -28,7 +28,7 @@ export async function handleFolderEdgesRoute(
 
     try {
         // Loop 04: artifactRoot lives on the server's WorkspaceContext.
-        const data = await new FolderEdgelistStore(ctx.ctx.artifactRoot).load();
+        const data = await new FolderEdgelistStore(ctx.ctx.artifactRoot, ctx.ctx.io).load();
         ctx.httpHandler.sendJson(res, 200, data);
     } catch (err) {
         if (err instanceof FolderEdgelistLoadError) {

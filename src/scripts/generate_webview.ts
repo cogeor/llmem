@@ -2,6 +2,7 @@ import { prepareWebviewDataFromSplitEdgeLists } from '../graph/webview-data';
 import { ImportEdgeListStore, CallEdgeListStore } from '../graph/edgelist';
 import { generateStaticWebview, GeneratorOptions } from '../webview/generator';
 import { loadConfig, getConfig } from '../extension/config';
+import { createWorkspaceContext } from '../application/workspace-context';
 import * as path from 'path';
 
 function parseArgs(): GeneratorOptions {
@@ -25,13 +26,18 @@ async function run() {
         loadConfig();
         const config = getConfig();
 
-        // Ensure absolute path
-        const root = process.cwd();
-        const artifactDir = path.join(root, config.artifactRoot);
+        // Loop 07: build a per-script WorkspaceContext so the edge-list
+        // stores get a real `WorkspaceIO` (mandatory after this loop).
+        const ctx = await createWorkspaceContext({
+            workspaceRoot: process.cwd(),
+            configOverrides: { artifactRoot: config.artifactRoot },
+        });
+        const root = ctx.workspaceRoot;
+        const artifactDir = ctx.artifactRoot;
 
         console.log(`Loading edge lists from: ${artifactDir}`);
-        const importStore = new ImportEdgeListStore(artifactDir);
-        const callStore = new CallEdgeListStore(artifactDir);
+        const importStore = new ImportEdgeListStore(artifactDir, ctx.io);
+        const callStore = new CallEdgeListStore(artifactDir, ctx.io);
         await Promise.all([importStore.load(), callStore.load()]);
 
         const importStats = importStore.getStats();

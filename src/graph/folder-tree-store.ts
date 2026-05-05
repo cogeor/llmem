@@ -7,14 +7,11 @@
  * dirty-flag dance. The regenerator builds a fresh `FolderTreeData` per
  * scan and hands it to `save`.
  *
- * Containment is enforced by `WorkspaceIO` itself (its public methods
- * call `assertContained` internally). When no `io` is threaded, the
- * constructor falls back to direct `fs.*` calls — back-compat parity
- * with `BaseEdgeListStore`. Loops 10+ always thread an `io`.
+ * Containment is enforced by `WorkspaceIO`; the legacy direct-fs branch
+ * was removed in loop 07 — `WorkspaceIO` is now a *required* constructor
+ * argument.
  */
 
-import * as fs from 'fs/promises';
-import * as fsSync from 'fs';
 import * as path from 'path';
 
 import { WorkspaceIO } from '../workspace/workspace-io';
@@ -29,16 +26,14 @@ export const FOLDER_TREE_FILENAME = 'folder-tree.json';
 
 export class FolderTreeStore {
     private readonly filePath: string;
-    private readonly io: WorkspaceIO | null;
-    /** Workspace-relative form of `filePath`. Only meaningful when `io` is set. */
+    private readonly io: WorkspaceIO;
+    /** Workspace-relative form of `filePath`. */
     private readonly relPath: string;
 
-    constructor(artifactDir: string, io?: WorkspaceIO) {
+    constructor(artifactDir: string, io: WorkspaceIO) {
         this.filePath = path.join(artifactDir, FOLDER_TREE_FILENAME);
-        this.io = io ?? null;
-        this.relPath = this.io
-            ? path.relative(this.io.getRealRoot(), this.filePath)
-            : '';
+        this.io = io;
+        this.relPath = path.relative(this.io.getRealRoot(), this.filePath);
     }
 
     /**
@@ -53,30 +48,7 @@ export class FolderTreeStore {
      *   - unknown `schemaVersion` → reason `'unknown-version'`.
      */
     async load(): Promise<FolderTreeData> {
-        if (this.io) {
-            if (!(await this.io.exists(this.relPath))) {
-                throw new FolderTreeLoadError(
-                    this.filePath,
-                    'parse-error',
-                    'file not found',
-                );
-            }
-            let raw: unknown;
-            try {
-                const content = await this.io.readFile(this.relPath, 'utf-8');
-                raw = JSON.parse(content);
-            } catch (e) {
-                throw new FolderTreeLoadError(
-                    this.filePath,
-                    'parse-error',
-                    `JSON.parse failed: ${(e as Error).message}`,
-                    e,
-                );
-            }
-            return migrateFolderTree(raw, this.filePath);
-        }
-
-        if (!fsSync.existsSync(this.filePath)) {
+        if (!(await this.io.exists(this.relPath))) {
             throw new FolderTreeLoadError(
                 this.filePath,
                 'parse-error',
@@ -85,7 +57,7 @@ export class FolderTreeStore {
         }
         let raw: unknown;
         try {
-            const content = await fs.readFile(this.filePath, 'utf-8');
+            const content = await this.io.readFile(this.relPath, 'utf-8');
             raw = JSON.parse(content);
         } catch (e) {
             throw new FolderTreeLoadError(
@@ -119,16 +91,7 @@ export class FolderTreeStore {
         };
         const content = JSON.stringify(stamped, null, 2);
 
-        if (this.io) {
-            await this.io.mkdirRecursive(path.dirname(this.relPath));
-            await this.io.writeFile(this.relPath, content);
-            return;
-        }
-
-        const dir = path.dirname(this.filePath);
-        if (!fsSync.existsSync(dir)) {
-            await fs.mkdir(dir, { recursive: true });
-        }
-        await fs.writeFile(this.filePath, content, 'utf-8');
+        await this.io.mkdirRecursive(path.dirname(this.relPath));
+        await this.io.writeFile(this.relPath, content);
     }
 }

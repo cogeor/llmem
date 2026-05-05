@@ -43,8 +43,8 @@ async function handleOpenWindowImpl(
     const artifactDir = ctx.artifactRoot;
 
     // Load split edge lists and build graphs
-    const importStore = new ImportEdgeListStore(artifactDir);
-    const callStore = new CallEdgeListStore(artifactDir);
+    const importStore = new ImportEdgeListStore(artifactDir, ctx.io);
+    const callStore = new CallEdgeListStore(artifactDir, ctx.io);
     await Promise.all([importStore.load(), callStore.load()]);
     const graphData = prepareWebviewDataFromSplitEdgeLists(importStore.getData(), callStore.getData());
 

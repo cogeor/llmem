@@ -211,7 +211,7 @@ export class LLMemPanel {
 
             // Load the updated edge lists to get the new nodes and edges
             const { CallEdgeListStore } = await import('../graph/edgelist');
-            const callStore = new CallEdgeListStore(ctx.artifactRoot);
+            const callStore = new CallEdgeListStore(ctx.artifactRoot, ctx.io);
             await callStore.load();
 
             // Get nodes and edges for this folder. Use the graph-ID contract:
@@ -418,7 +418,7 @@ export class LLMemPanel {
 
         // Load watch state using WatchService
         const { WatchService } = await import('../graph/worktree-state');
-        const watchService = new WatchService(ctx.artifactRoot, ctx.workspaceRoot);
+        const watchService = new WatchService(ctx.artifactRoot, ctx.workspaceRoot, ctx.io);
         await watchService.load();
 
         const watchedFiles = watchService.getWatchedFiles();

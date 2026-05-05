@@ -47,8 +47,8 @@ export async function computeAllFolderStatuses(
     const results = new Map<string, FolderGraphStatus>();
 
     // Load edge lists
-    const importStore = new ImportEdgeListStore(artifactRoot);
-    const callStore = new CallEdgeListStore(artifactRoot);
+    const importStore = new ImportEdgeListStore(artifactRoot, io);
+    const callStore = new CallEdgeListStore(artifactRoot, io);
 
     const importPath = path.join(artifactRoot, 'import-edgelist.json');
     const callPath = path.join(artifactRoot, 'call-edgelist.json');

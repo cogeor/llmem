@@ -1,16 +1,16 @@
 /**
  * Scan codebase and populate split edge lists.
- * 
+ *
  * Run with: npx ts-node src/scripts/scan_codebase.ts
  */
 
 import * as path from 'path';
-import * as fs from 'fs';
 import { ImportEdgeListStore, CallEdgeListStore } from '../graph/edgelist';
 import { TypeScriptExtractor } from '../parser/ts-extractor';
 import { TypeScriptService } from '../parser/ts-service';
 import { artifactToEdgeList } from '../graph/artifact-converter';
 import { loadConfig, getConfig } from '../extension/config';
+import { createWorkspaceContext } from '../application/workspace-context';
 
 async function scan() {
     console.log('='.repeat(60));
@@ -21,16 +21,22 @@ async function scan() {
     loadConfig();
     const config = getConfig();
 
-    const root = process.cwd();
-    const artifactDir = path.join(root, config.artifactRoot);
+    // Loop 07: build a per-script WorkspaceContext so the edge-list stores
+    // get a real `WorkspaceIO` (mandatory after this loop).
+    const ctx = await createWorkspaceContext({
+        workspaceRoot: process.cwd(),
+        configOverrides: { artifactRoot: config.artifactRoot },
+    });
+    const root = ctx.workspaceRoot;
+    const artifactDir = ctx.artifactRoot;
 
     console.log(`\nRoot: ${root}`);
     console.log(`Artifact dir: ${artifactDir}`);
 
-    // Ensure artifact directory exists
-    if (!fs.existsSync(artifactDir)) {
-        fs.mkdirSync(artifactDir, { recursive: true });
-    }
+    // Ensure artifact directory exists. `io.mkdirRecursive` is idempotent
+    // and asserts containment.
+    const artifactRel = path.relative(ctx.io.getRealRoot(), artifactDir).replace(/\\/g, '/');
+    await ctx.io.mkdirRecursive(artifactRel);
 
     // Initialize TypeScript service
     console.log('\nInitializing TypeScript service...');
@@ -45,7 +51,7 @@ async function scan() {
     }
 
     // Normalize root for comparison (TS compiler may use forward slashes)
-    const normalizedRoot = root.replace(/\\/g, '/');
+    const normalizedRoot = (root as string).replace(/\\/g, '/');
     const sourceFiles = program.getSourceFiles().filter(sf => {
         const filePath = sf.fileName.replace(/\\/g, '/');
         // Skip node_modules and declaration files
@@ -57,8 +63,8 @@ async function scan() {
     console.log(`\nFound ${sourceFiles.length} TypeScript files to scan`);
 
     // Create split edge list stores
-    const importStore = new ImportEdgeListStore(artifactDir);
-    const callStore = new CallEdgeListStore(artifactDir);
+    const importStore = new ImportEdgeListStore(artifactDir, ctx.io);
+    const callStore = new CallEdgeListStore(artifactDir, ctx.io);
     await importStore.load();
     await callStore.load();
     importStore.clear(); // Start fresh

@@ -91,8 +91,8 @@ export async function collectViewerData(
     await io.mkdirRecursive(artifactRel);
 
     // Load or generate split edge lists
-    const importStore = new ImportEdgeListStore(artifactRoot);
-    const callStore = new CallEdgeListStore(artifactRoot);
+    const importStore = new ImportEdgeListStore(artifactRoot, io);
+    const callStore = new CallEdgeListStore(artifactRoot, io);
 
     const importPath = path.join(artifactRoot, 'import-edgelist.json');
     const callPath = path.join(artifactRoot, 'call-edgelist.json');
@@ -133,7 +133,7 @@ export async function collectViewerData(
     }
 
     // Load watched files state
-    const watchService = new WatchService(artifactRoot, workspaceRoot);
+    const watchService = new WatchService(artifactRoot, workspaceRoot, io);
     await watchService.load();
     const watchedFiles = new Set(watchService.getWatchedFiles());
     logger.info(`[WebviewDataService] Loaded ${watchedFiles.size} watched files`);
@@ -187,7 +187,7 @@ export async function collectViewerDataWithStores(
     }
 
     // Load watched files state.
-    const watchService = new WatchService(artifactRoot, workspaceRoot);
+    const watchService = new WatchService(artifactRoot, workspaceRoot, io);
     await watchService.load();
     const watchedFilesArray = watchService.getWatchedFiles();
     const watchedFiles = watchedFilesArray.length > 0 ? new Set(watchedFilesArray) : undefined;

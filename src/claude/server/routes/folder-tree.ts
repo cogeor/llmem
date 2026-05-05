@@ -29,7 +29,7 @@ export async function handleFolderTreeRoute(
     try {
         // Loop 04: artifactRoot lives on the server's WorkspaceContext;
         // we no longer recompute path.join(workspaceRoot, artifactRoot).
-        const data = await new FolderTreeStore(ctx.ctx.artifactRoot).load();
+        const data = await new FolderTreeStore(ctx.ctx.artifactRoot, ctx.ctx.io).load();
         ctx.httpHandler.sendJson(res, 200, data);
     } catch (err) {
         if (err instanceof FolderTreeLoadError) {

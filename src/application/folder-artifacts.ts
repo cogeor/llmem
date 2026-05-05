@@ -53,12 +53,11 @@ export async function buildAndSaveFolderArtifacts(
 ): Promise<void> {
     const { artifactRoot: artifactDir, io } = ctx;
 
-    // Load existing edge lists. Pass `io` for realpath-strong load. The
-    // `undefined` slot is the optional Logger parameter — `BaseEdgeListStore`
-    // falls back to its internal `createLogger` when omitted (matches the
-    // convention in `src/application/scan.ts`).
-    const importStore = new ImportEdgeListStore(artifactDir, undefined, io);
-    const callStore = new CallEdgeListStore(artifactDir, undefined, io);
+    // Load existing edge lists. Loop 07: `io` is now the second
+    // (mandatory) constructor argument; `BaseEdgeListStore` falls back to
+    // its internal `createLogger` when no logger is supplied.
+    const importStore = new ImportEdgeListStore(artifactDir, io);
+    const callStore = new CallEdgeListStore(artifactDir, io);
     await importStore.load();
     await callStore.load();
 

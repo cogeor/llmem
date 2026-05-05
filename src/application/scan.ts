@@ -88,12 +88,13 @@ export async function scanFile(
     // been validated.
     const absoluteFile = path.join(io.getRealRoot(), filePath);
 
-    // Load existing edge lists. L24: pass `io` for realpath-strong load/save;
-    // the edge-list stores' own logger is created internally (their `Logger`
-    // shape is `common/logger`'s, not the boundary `core/logger.Logger`
-    // accepted by ScanFileOptions / ScanFolderOptions, so we omit it).
-    const callStore = new CallEdgeListStore(artifactDir, undefined, io);
-    const importStore = new ImportEdgeListStore(artifactDir, undefined, io);
+    // Load existing edge lists. Loop 07: `io` is the second (mandatory)
+    // constructor arg; the edge-list stores' own logger is created
+    // internally (their `Logger` shape is `common/logger`'s, not the
+    // boundary `core/logger.Logger` accepted by ScanFileOptions /
+    // ScanFolderOptions, so we omit it).
+    const callStore = new CallEdgeListStore(artifactDir, io);
+    const importStore = new ImportEdgeListStore(artifactDir, io);
     await callStore.load();
     await importStore.load();
     const existingCallEdgeCount = callStore.getStats().edges;
@@ -181,11 +182,12 @@ export async function scanFolder(
 
     const absoluteFolder = path.join(io.getRealRoot(), folderPath);
 
-    // Load existing edge lists. L24: see note in scanFile — `io` is threaded;
-    // the boundary logger's shape is incompatible with the edge-list store's,
-    // so the stores fall back to their internal `createLogger`.
-    const callStore = new CallEdgeListStore(artifactDir, undefined, io);
-    const importStore = new ImportEdgeListStore(artifactDir, undefined, io);
+    // Load existing edge lists. Loop 07: see note in scanFile — `io` is
+    // the second (mandatory) constructor arg; the boundary logger's
+    // shape is incompatible with the edge-list store's, so the stores
+    // fall back to their internal `createLogger`.
+    const callStore = new CallEdgeListStore(artifactDir, io);
+    const importStore = new ImportEdgeListStore(artifactDir, io);
     await callStore.load();
     await importStore.load();
     const existingCallEdgeCount = callStore.getStats().edges;
