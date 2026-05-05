@@ -5,13 +5,22 @@
  */
 
 import { VisNode, VisEdge, WorkTreeNode } from '../types';
-import { GraphRenderOptions, FolderRegion, FileRegion } from './graphTypes';
+import { GraphRenderOptions, FileRegion } from './graphTypes';
 import { HierarchicalLayout } from './HierarchicalLayout';
 import { GroupRenderer } from './GroupRenderer';
 import { NodeRenderer } from './NodeRenderer';
 import { EdgeRenderer } from './EdgeRenderer';
 import { CameraController } from './CameraController';
 import { WebviewLogger, createWebviewLogger } from '../services/webview-logger';
+import {
+    getAllNodesFromLayout,
+    computeNodeColors,
+    getNodesInFolder,
+    getNodesInFile,
+    filterTopLevelContainer,
+    foldersBounds,
+    nodePositionsBounds,
+} from './graphRendererQueries';
 
 export class GraphRenderer {
     private container: HTMLElement;
@@ -135,16 +144,10 @@ export class GraphRenderer {
         // 2. Update camera
         this.cameraController.setPositions(layoutResult.nodePositions, layoutResult.folders);
 
-        // 3. Render folders and file groups (file groups only for call graphs)
-        // Filter out the top-level container folder (usually 'src' or depth 1) if it's the only one
-        // This makes the "src" box effectively the canvas background
-        let foldersToRender = layoutResult.folders;
-        const topLevelFolders = layoutResult.folders.filter(f => f.depth === 1);
-        if (topLevelFolders.length === 1) {
-            const topFolder = topLevelFolders[0];
-            foldersToRender = layoutResult.folders.filter(f => f !== topFolder);
-        }
-
+        // 3. Render folders and file groups (file groups only for call graphs).
+        // Filter out the top-level container folder (usually 'src' depth=1)
+        // when it is the only one — makes "src" the canvas background.
+        const foldersToRender = filterTopLevelContainer(layoutResult.folders);
         const fileRegionsToRender = graphType === 'call' ? layoutResult.fileRegions : undefined;
         this.groupRenderer.render(
             foldersToRender,
@@ -154,7 +157,7 @@ export class GraphRenderer {
         );
 
         // 4. Compute node colors (match containing folder)
-        const nodeColors = this.computeNodeColors(nodes, layoutResult.folders);
+        const nodeColors = computeNodeColors(nodes, layoutResult.folders, this.groupRenderer);
 
         // 5. Render edges
         this.edgeRenderer.render(edges, layoutResult.nodePositions);
@@ -168,58 +171,18 @@ export class GraphRenderer {
             undefined
         );
 
-        // 7. Fit to view (width)
-        // Calculate content bounds
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-
-        // Use the full folder list for bounds calculation to ensure everything is visible
-        if (layoutResult.folders.length > 0) {
-            for (const f of layoutResult.folders) {
-                minX = Math.min(minX, f.x0);
-                minY = Math.min(minY, f.y0);
-                maxX = Math.max(maxX, f.x1);
-                maxY = Math.max(maxY, f.y1);
-            }
-        } else {
-            // Fallback to nodes if no folders (unlikely)
-            for (const pos of layoutResult.nodePositions.values()) {
-                minX = Math.min(minX, pos.x);
-                minY = Math.min(minY, pos.y);
-                maxX = Math.max(maxX, pos.x + 200);
-                maxY = Math.max(maxY, pos.y + 100);
-            }
-        }
-
-        if (minX !== Infinity && maxX !== -Infinity) {
-            const bounds = { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
-
-            // Update camera bounds
+        // 7. Fit to view (width). Use the full folder list for bounds —
+        // every folder must be visible. Fall back to node-position bounds
+        // when no folders rendered (rare).
+        const bounds =
+            foldersBounds(layoutResult.folders) ??
+            nodePositionsBounds(layoutResult.nodePositions);
+        if (bounds !== null) {
             this.cameraController.setBounds(bounds);
-
             this.cameraController.fitToWidth(bounds);
         } else {
             this.cameraController.fitAll(false);
         }
-    }
-
-    /**
-     * Compute node colors based on containing folder.
-     */
-    private computeNodeColors(nodes: VisNode[], folders: FolderRegion[]): Map<string, string> {
-        const colors = new Map<string, string>();
-
-        for (const node of nodes) {
-            const path = (node.fileId || node.id).replace(/\\/g, '/');
-            const lastSlash = path.lastIndexOf('/');
-            const folderPath = lastSlash > 0 ? path.substring(0, lastSlash) : '';
-
-            const folder = folders.find(f => f.path === folderPath);
-            if (folder) {
-                colors.set(node.id, this.groupRenderer.getColorForPath(folder.path, folder.depth));
-            }
-        }
-
-        return colors;
     }
 
     /**
@@ -246,13 +209,7 @@ export class GraphRenderer {
         this.cameraController.setPositions(layoutResult.nodePositions, layoutResult.folders);
 
         // Re-render (full re-render for simplicity - can optimize later)
-        let foldersToRender = layoutResult.folders;
-        const topLevelFolders = layoutResult.folders.filter(f => f.depth === 1);
-        if (topLevelFolders.length === 1) {
-            const topFolder = topLevelFolders[0];
-            foldersToRender = layoutResult.folders.filter(f => f !== topFolder);
-        }
-
+        const foldersToRender = filterTopLevelContainer(layoutResult.folders);
         const fileRegionsToRender = graphType === 'call' ? layoutResult.fileRegions : undefined;
         this.groupRenderer.render(
             foldersToRender,
@@ -262,8 +219,8 @@ export class GraphRenderer {
         );
 
         // Get all nodes from layout for color computation
-        const allNodes = this.getAllNodesFromLayout(layoutResult.nodePositions);
-        const nodeColors = this.computeNodeColors(allNodes, layoutResult.folders);
+        const allNodes = getAllNodesFromLayout(this.nodesGroup, layoutResult.nodePositions);
+        const nodeColors = computeNodeColors(allNodes, layoutResult.folders, this.groupRenderer);
 
         this.edgeRenderer.render(this.currentEdges, layoutResult.nodePositions);
         this.nodeRenderer.render(
@@ -275,45 +232,13 @@ export class GraphRenderer {
         );
 
         // Update camera bounds
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        for (const f of layoutResult.folders) {
-            minX = Math.min(minX, f.x0);
-            minY = Math.min(minY, f.y0);
-            maxX = Math.max(maxX, f.x1);
-            maxY = Math.max(maxY, f.y1);
-        }
-
-        if (minX !== Infinity && maxX !== -Infinity) {
-            const bounds = { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+        const bounds = foldersBounds(layoutResult.folders);
+        if (bounds !== null) {
             this.cameraController.setBounds(bounds);
         }
 
         this.logger.log(`[GraphRenderer] Incremental update complete: ${layoutResult.nodePositions.size} total nodes`);
     }
-
-    /**
-     * Get all nodes from layout positions (for re-rendering after incremental update).
-     */
-    private getAllNodesFromLayout(nodePositions: Map<string, { x: number; y: number }>): VisNode[] {
-        const nodes: VisNode[] = [];
-        const nodeGroups = this.nodesGroup.querySelectorAll('.node-group');
-        nodeGroups.forEach(g => {
-            const id = g.getAttribute('data-id');
-            const fileId = g.getAttribute('data-file-id');
-            const label = g.querySelector('text')?.textContent;
-            if (id && nodePositions.has(id)) {
-                nodes.push({
-                    id,
-                    label: label || id,
-                    group: '',
-                    fileId: fileId || id
-                });
-            }
-        });
-        return nodes;
-    }
-
-
 
     /**
      * Highlight neighbors.
@@ -377,7 +302,7 @@ export class GraphRenderer {
      */
     panToFile(filePath: string): void {
         // Try to find a node in this file to center on
-        const nodesInFile = this.getNodesInFile(filePath);
+        const nodesInFile = getNodesInFile(this.nodesGroup, filePath);
         if (nodesInFile.size > 0) {
             const firstNodeId = nodesInFile.values().next().value;
             if (firstNodeId) {
@@ -400,7 +325,7 @@ export class GraphRenderer {
         this.groupRenderer.highlightFolder(folderPath);
 
         // Get IDs of nodes in this folder
-        const nodesInFolder = this.getNodesInFolder(folderPath);
+        const nodesInFolder = getNodesInFolder(this.nodesGroup, folderPath);
 
         // Collect all direct neighbors
         const neighbors = new Set<string>();
@@ -428,7 +353,7 @@ export class GraphRenderer {
         this.groupRenderer.highlightFile(filePath);
 
         // Get IDs of nodes in this file
-        const nodesInFile = this.getNodesInFile(filePath);
+        const nodesInFile = getNodesInFile(this.nodesGroup, filePath);
 
         // Collect all direct neighbors
         const neighbors = new Set<string>();
@@ -448,46 +373,4 @@ export class GraphRenderer {
         this.edgeRenderer.highlightEdgesForNodes(nodesInFile);
     }
 
-    /**
-     * Get all node IDs in a folder.
-     */
-    private getNodesInFolder(folderPath: string): Set<string> {
-        const normalizedFolder = folderPath.replace(/\\/g, '/');
-        const result = new Set<string>();
-
-        const groups = this.nodesGroup.querySelectorAll('.node-group');
-        groups.forEach(g => {
-            const id = g.getAttribute('data-id') || '';
-            const fileId = g.getAttribute('data-file-id') || id;
-            const normalizedFileId = fileId.replace(/\\/g, '/');
-
-            if (normalizedFileId.startsWith(normalizedFolder + '/') || normalizedFileId === normalizedFolder) {
-                result.add(id);
-            }
-        });
-
-        return result;
-    }
-
-    /**
-     * Get all node IDs in a specific file.
-     */
-    private getNodesInFile(filePath: string): Set<string> {
-        const normalizedFile = filePath.replace(/\\/g, '/');
-        const result = new Set<string>();
-
-        const groups = this.nodesGroup.querySelectorAll('.node-group');
-        groups.forEach(g => {
-            const id = g.getAttribute('data-id') || '';
-            const fileId = g.getAttribute('data-file-id') || id;
-            const normalizedFileId = fileId.replace(/\\/g, '/');
-
-            // Exact match for file path
-            if (normalizedFileId === normalizedFile) {
-                result.add(id);
-            }
-        });
-
-        return result;
-    }
 }
