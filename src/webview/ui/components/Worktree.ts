@@ -4,11 +4,13 @@ import { State } from '../state';
 import { WorkTreeNode, FileNode, DirectoryNode, AppState, GraphStatus } from '../types';
 import { folder, file, chevronRight } from '../icons';
 import { escape } from '../utils/escape';
+import { WebviewLogger, createWebviewLogger } from '../services/webview-logger';
 
 interface Props {
     el: HTMLElement;
     state: State;
     dataProvider: DataProvider;
+    logger?: WebviewLogger;
 }
 
 /**
@@ -43,11 +45,13 @@ export class Worktree {
     private dataProvider: DataProvider;
     private tree: WorkTreeNode | null = null;
     private unsubscribe?: () => void;
+    private logger: WebviewLogger;
 
-    constructor({ el, state, dataProvider }: Props) {
+    constructor({ el, state, dataProvider, logger }: Props) {
         this.el = el;
         this.state = state;
         this.dataProvider = dataProvider;
+        this.logger = logger ?? createWebviewLogger({ enabled: false });
     }
 
     private clickHandlerBound: boolean = false;
@@ -233,7 +237,7 @@ export class Worktree {
         try {
             localStorage.setItem('llmem:expandedPaths', JSON.stringify(expandedPaths));
         } catch (e) {
-            console.warn('[Worktree] Failed to save expansion state:', e);
+            this.logger.warn('[Worktree] Failed to save expansion state:', e);
         }
     }
 
@@ -262,7 +266,7 @@ export class Worktree {
                 }
             }
         } catch (e) {
-            console.warn('[Worktree] Failed to restore expansion state:', e);
+            this.logger.warn('[Worktree] Failed to restore expansion state:', e);
         }
     }
 
@@ -286,7 +290,7 @@ export class Worktree {
         }
 
         const newWatchedState = !isCurrentlyWatched;
-        console.log(`[Worktree] Toggle ${isDir ? 'folder' : 'file'}: ${clickedPath} -> ${newWatchedState}`);
+        this.logger.log(`[Worktree] Toggle ${isDir ? 'folder' : 'file'}: ${clickedPath} -> ${newWatchedState}`);
 
         // Show loading indicator on button
         const btn = nodeEl?.querySelector('.status-btn') as HTMLElement;
@@ -299,7 +303,7 @@ export class Worktree {
             // Use abstracted toggleWatch - works in both VS Code and standalone mode
             const response = await this.dataProvider.toggleWatch(clickedPath, newWatchedState);
 
-            console.log(`[Worktree] Toggle response:`, response);
+            this.logger.log(`[Worktree] Toggle response:`, response);
 
             // Update local state with the affected files
             const updatedPaths = new Set(currentState.watchedPaths);
@@ -318,7 +322,7 @@ export class Worktree {
             // Update state (this will trigger button color updates)
             this.state.set({ watchedPaths: updatedPaths });
         } catch (error) {
-            console.error(`[Worktree] Failed to toggle watch:`, error);
+            this.logger.error(`[Worktree] Failed to toggle watch:`, error);
             alert(`Failed to toggle watch: ${error instanceof Error ? error.message : String(error)}`);
         } finally {
             // Reset button appearance

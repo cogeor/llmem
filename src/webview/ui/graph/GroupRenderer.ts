@@ -31,6 +31,11 @@ export class GroupRenderer {
     private onFolderClick?: (path: string) => void;
     private onFileClick?: (path: string) => void;
 
+    /**
+     * Loop 14: constructor signature unchanged. The previous `console.log`
+     * on the moduleHues map was DELETED (content-leak acceptance criterion).
+     * No logger threaded — this renderer no longer logs.
+     */
     constructor(svg: SVGGElement) {
         this.svg = svg;
     }
@@ -54,7 +59,10 @@ export class GroupRenderer {
         // Assign distinct hues to each module
         this.assignModuleHues(folders);
 
-        console.log('[GroupRenderer] Module hues:', Object.fromEntries(this.moduleHues));
+        // Loop 14: removed `console.log('[GroupRenderer] Module hues:', ...)`
+        // — full module-hue map dump per the loop's content-leak acceptance
+        // criterion. The same data is observable on the renderer instance
+        // via DevTools during a debug session.
 
         // Sort by depth (render deeper folders on top)
         const sorted = [...folders].sort((a, b) => a.depth - b.depth);

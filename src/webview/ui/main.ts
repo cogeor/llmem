@@ -3,6 +3,7 @@ import { state } from './state';
 import { ThemeManager } from './theme';
 import { Router } from './router';
 import { createDataProvider } from './services/dataProviderFactory';
+import { createWebviewLogger } from './services/webview-logger';
 import { Worktree } from './components/Worktree';
 import { GraphTypeToggle } from './components/GraphTypeToggle';
 import { DesignModeToggle } from './components/DesignModeToggle';
@@ -23,10 +24,18 @@ import '../live-reload'; // WebSocket live reload for HTTP server mode
 // it is hoisted out of the loop-02 top-level try/catch below.
 declare const acquireVsCodeApi: () => { postMessage(msg: unknown): void };
 
+// Loop 14: construct the single browser logger BEFORE the top-level try
+// so the outer catch handler (fatal-bootstrap path) can also route
+// through `logger.error`. The factory has no side effects beyond closure
+// creation, so it cannot itself throw.
+// Asymmetric gating: error/warn always emit; log/debug gated on
+// `window.LLMEM_DEBUG`.
+const logger = createWebviewLogger({ enabled: Boolean(window.LLMEM_DEBUG) });
+
 try {
 
 // Create data provider for this environment (auto-detects VS Code vs standalone)
-const dataProvider = createDataProvider();
+const dataProvider = createDataProvider(logger);
 
 // Elements — `requireElement` (loop 02) replaces the previous
 // `as HTMLElement` casts so a missing mount-point ID surfaces a clear
@@ -67,7 +76,7 @@ if (isGraphOnlyMode) {
         // Ensure proper flex behavior
         elGraphPane.style.maxWidth = 'none';
     }
-    console.log('[Webview] Running in graph-only mode');
+    logger.log('[Webview] Running in graph-only mode');
     // Force graph view since design view is unavailable
     state.set({ currentView: 'graph' });
 }
@@ -97,13 +106,15 @@ if (!isGraphOnlyMode) {
     worktree = new Worktree({
         el: elWorktree,
         state,
-        dataProvider
+        dataProvider,
+        logger,
     });
 
     designTextView = new DesignTextView({
         el: elDesignView,
         state,
-        dataProvider
+        dataProvider,
+        logger,
     });
 
     designModeToggle = new DesignModeToggle({
@@ -126,13 +137,15 @@ const graphTypeToggle = new GraphTypeToggle({
 const graphView = new GraphView({
     el: elGraphView,
     state,
-    dataProvider
+    dataProvider,
+    logger,
 });
 
 const packageView = new PackageView({
     el: elPackageView,
     state,
-    dataProvider
+    dataProvider,
+    logger,
 });
 
 const folderStructureView = new FolderStructureView({
@@ -157,7 +170,7 @@ router.registerRoute('folders', folderStructureView);
 
 // Subscribe to refresh events (hot reload)
 dataProvider.onRefresh(async () => {
-    console.log('[Webview] Refresh triggered - reloading graph');
+    logger.log('[Webview] Refresh triggered - reloading graph');
     // Only refresh graph view - Worktree structure doesn't change on edge refresh
     await graphView.mount();
     if (designTextView) await designTextView.mount();
@@ -167,7 +180,7 @@ dataProvider.onRefresh(async () => {
 // Subscribe to watched paths restoration (persisted state from disk)
 if (dataProvider.onWatchedPathsRestored) {
     dataProvider.onWatchedPathsRestored((paths: string[]) => {
-        console.log(`[Webview] Restoring ${paths.length} watched paths`);
+        logger.log(`[Webview] Restoring ${paths.length} watched paths`);
         state.set({ watchedPaths: new Set(paths) });
     });
 }
@@ -175,7 +188,7 @@ if (dataProvider.onWatchedPathsRestored) {
 // Initialize watched paths from window.WATCHED_FILES (for static mode)
 if (!isVsCode && (window as any).WATCHED_FILES) {
     const watchedFiles = (window as any).WATCHED_FILES as string[];
-    console.log(`[Webview] Initializing ${watchedFiles.length} watched paths from static data`);
+    logger.log(`[Webview] Initializing ${watchedFiles.length} watched paths from static data`);
     state.set({ watchedPaths: new Set(watchedFiles) });
 }
 
@@ -226,9 +239,9 @@ const initHeaderIcons = () => {
 
         await Promise.all(mountPromises);
 
-        console.log("Webview initialized");
+        logger.log("Webview initialized");
     } catch (e) {
-        console.error("Initialization failed", e);
+        logger.error("Initialization failed", e);
     }
 })();
 
@@ -236,7 +249,10 @@ const initHeaderIcons = () => {
     // Loop 02: surface element-lookup errors that fire at module-evaluation
     // time (before the async bootstrap IIFE runs) so the user sees a
     // useful banner instead of a blank panel.
-    console.error('[webview/main] Initialization failed', e);
+    // Loop 14: `logger` is hoisted above the try block so this fatal-
+    // bootstrap branch routes through it; `error` always emits regardless
+    // of `window.LLMEM_DEBUG`.
+    logger.error('[webview/main] Initialization failed', e);
     const body = document.body;
     if (body) {
         const banner = document.createElement('pre');

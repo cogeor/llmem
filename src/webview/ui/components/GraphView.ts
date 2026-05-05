@@ -12,11 +12,13 @@ import { State } from "../state";
 import { AppState, GraphData, WorkTreeNode, DirectoryNode } from "../types";
 import { parseGraphId } from "../../../core/ids";
 import { escape } from "../utils/escape";
+import { WebviewLogger, createWebviewLogger } from "../services/webview-logger";
 
 interface Props {
     el: HTMLElement;
     state: State;
     dataProvider: DataProvider;
+    logger?: WebviewLogger;
 }
 
 export class GraphView {
@@ -29,11 +31,13 @@ export class GraphView {
     private unsubscribe?: () => void;
     private isRendered: boolean = false;
     private currentGraphType: string = 'import';
+    private logger: WebviewLogger;
 
-    constructor({ el, state, dataProvider }: Props) {
+    constructor({ el, state, dataProvider, logger }: Props) {
         this.el = el;
         this.state = state;
         this.dataProvider = dataProvider;
+        this.logger = logger ?? createWebviewLogger({ enabled: false });
     }
 
     async mount() {
@@ -52,12 +56,9 @@ export class GraphView {
         // Backend filters to TS/JS only, so if there are nodes, call graph is available
         const callGraphAvailable = (this.data?.callGraph?.nodes?.length ?? 0) > 0;
 
-        console.log('[GraphView] Data loaded:', {
-            importNodes: this.data?.importGraph?.nodes?.length,
-            callNodes: this.data?.callGraph?.nodes?.length,
-            callGraphAvailable,
-            worktree: this.worktree?.name
-        });
+        // Loop 14: removed `console.log('[GraphView] Data loaded:', { ... })`
+        // — the dump leaked node/edge counts plus a worktree reference per
+        // the loop's content-leak acceptance criterion.
 
         // Update state with callGraphAvailable (backend determined)
         this.state.set({ callGraphAvailable });
@@ -80,13 +81,13 @@ export class GraphView {
      */
     private initializeGraph(graphType: string): void {
         if (!this.data || !this.worktree) {
-            console.warn('[GraphView] Cannot initialize: data or worktree not loaded');
+            this.logger.warn('[GraphView] Cannot initialize: data or worktree not loaded');
             return;
         }
 
         const canvasEl = this.el.querySelector('.graph-canvas') as HTMLElement;
         if (!canvasEl) {
-            console.warn('[GraphView] Cannot initialize: canvas element not found');
+            this.logger.warn('[GraphView] Cannot initialize: canvas element not found');
             return;
         }
 
@@ -105,19 +106,20 @@ export class GraphView {
         const width = canvasEl.clientWidth || 1200;
         const height = canvasEl.clientHeight || 800;
 
-        console.log('[GraphView] Initializing graph:', { graphType, width, height });
+        this.logger.log('[GraphView] Initializing graph:', { graphType, width, height });
 
         // safe: empty string clearing the element.
         canvasEl.innerHTML = '';
 
-        // Create new renderer
+        // Create new renderer — thread the logger through so the graph
+        // call tree shares one gating decision (Loop 14).
         this.graphRenderer = new GraphRenderer(canvasEl, {
             width,
             height,
             onNodeClick: (nodeId: string) => this.handleNodeClick(nodeId),
             onFolderClick: (folderPath: string) => this.handleFolderClick(folderPath),
             onFileClick: (filePath: string) => this.handleFileClick(filePath)
-        });
+        }, this.logger);
 
         // Get the appropriate graph
         const graph = graphType === "import"
@@ -131,9 +133,9 @@ export class GraphView {
             this.currentGraphType = graphType;
             this.isRendered = true;
 
-            console.log('[GraphView] Graph rendered successfully');
+            this.logger.log('[GraphView] Graph rendered successfully');
         } catch (err: any) {
-            console.error('[GraphView] Render error:', err);
+            this.logger.error('[GraphView] Render error:', err);
             // Loop 13: error.message and error.stack can carry user-controlled
             // path fragments and arbitrary text — they must be HTML-escaped
             // before interpolation into the error display.
@@ -315,7 +317,7 @@ export class GraphView {
             if (width === 0) width = 1000;
             if (height === 0) height = 800;
 
-            console.log('[GraphView] handleResize:', { width, height, time: Date.now() });
+            this.logger.log('[GraphView] handleResize:', { width, height, time: Date.now() });
 
             if (this.graphRenderer) {
                 this.graphRenderer.resize(width, height);
@@ -326,7 +328,7 @@ export class GraphView {
                     this.graphRenderer.render(graph, this.worktree, this.currentGraphType as any);
                 }
             } else {
-                console.log('[GraphView] Resize triggered but no renderer yet');
+                this.logger.log('[GraphView] Resize triggered but no renderer yet');
             }
         }, 100);
     }

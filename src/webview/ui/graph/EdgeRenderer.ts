@@ -5,13 +5,17 @@
  */
 
 import { VisEdge } from '../types';
+import { WebviewLogger, createWebviewLogger } from '../services/webview-logger';
 
 export class EdgeRenderer {
     private svg: SVGGElement;
     private defs: SVGDefsElement;
+    private logger: WebviewLogger;
 
-    constructor(svg: SVGGElement, parentSvg: SVGSVGElement) {
+    /** Loop 14: `logger` optional; default silent for log/debug. */
+    constructor(svg: SVGGElement, parentSvg: SVGSVGElement, logger?: WebviewLogger) {
         this.svg = svg;
+        this.logger = logger ?? createWebviewLogger({ enabled: false });
 
         // Create arrowhead markers
         this.defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
@@ -44,16 +48,12 @@ export class EdgeRenderer {
 
         let rendered = 0;
         let skipped = 0;
-        const skippedSamples: string[] = [];
 
         for (const edge of edges) {
             const from = positions.get(edge.from);
             const to = positions.get(edge.to);
             if (!from || !to) {
                 skipped++;
-                if (skippedSamples.length < 5) {
-                    skippedSamples.push(`${edge.from} -> ${edge.to} (from: ${!!from}, to: ${!!to})`);
-                }
                 continue;
             }
 
@@ -61,10 +61,10 @@ export class EdgeRenderer {
             rendered++;
         }
 
-        console.log(`[EdgeRenderer] Edges: ${rendered} rendered, ${skipped} skipped (total: ${edges.length})`);
-        if (skippedSamples.length > 0) {
-            console.log('[EdgeRenderer] Sample skipped edges:', skippedSamples);
-        }
+        this.logger.log(`[EdgeRenderer] Edges: ${rendered} rendered, ${skipped} skipped (total: ${edges.length})`);
+        // Loop 14: removed `console.log('[EdgeRenderer] Sample skipped edges:', skippedSamples)`
+        // and the skippedSamples accumulator that fed it — sample edge data
+        // dump per the loop's content-leak acceptance criterion.
     }
 
     /**

@@ -1,5 +1,6 @@
 
 import { GraphData } from '../types';
+import { WebviewLogger, createWebviewLogger } from './webview-logger';
 
 /**
  * Service to load and access graph data.
@@ -7,6 +8,12 @@ import { GraphData } from '../types';
  */
 export class GraphDataService {
     private data: GraphData | null = null;
+    private logger: WebviewLogger;
+
+    /** Loop 14: `logger` optional; default silent for log/debug. */
+    constructor(logger?: WebviewLogger) {
+        this.logger = logger ?? createWebviewLogger({ enabled: false });
+    }
 
     async load(): Promise<GraphData> {
         if (this.data) return this.data;
@@ -18,7 +25,7 @@ export class GraphDataService {
                 const response = await fetch(window.GRAPH_DATA_URL);
                 this.data = await response.json();
             } catch (err) {
-                console.error("Failed to load graph data", err);
+                this.logger.error("Failed to load graph data", err);
                 // Return empty structure on failure to prevent crash
                 this.data = { importGraph: { nodes: [], edges: [] }, callGraph: { nodes: [], edges: [] } };
             }

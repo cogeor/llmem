@@ -4,6 +4,7 @@ import { GraphData, WorkTreeNode, DesignDoc } from '../types';
 import { WatchApiClient } from './watchApiClient';
 import { designDocCache } from './designDocCache';
 import { liveReloadClient } from '../../live-reload';
+import { WebviewLogger, createWebviewLogger } from './webview-logger';
 import type { FolderTreeData } from '../../../graph/folder-tree';
 import type { FolderEdgelistData } from '../../../graph/folder-edges';
 
@@ -31,19 +32,27 @@ export class StaticDataProvider implements DataProvider {
     private watchApiClient: WatchApiClient;
     private refreshCallbacks: Set<() => void> = new Set();
     private designDocCallbacks: Set<(path: string, doc: DesignDoc | null) => void> = new Set();
+    private logger: WebviewLogger;
 
-    constructor() {
+    /**
+     * Loop 14: `logger` is optional so the existing test stubs that
+     * construct `new StaticDataProvider()` keep working. The default
+     * (silent for log/debug, console for warn/error) matches the
+     * runtime default when `window.LLMEM_DEBUG` is unset.
+     */
+    constructor(logger?: WebviewLogger) {
+        this.logger = logger ?? createWebviewLogger({ enabled: false });
         this.watchApiClient = new WatchApiClient();
 
         // Subscribe to graph updates from WebSocket
         liveReloadClient.on('graph:updated', () => {
-            console.log('[StaticDataProvider] Graph updated, triggering refresh');
+            this.logger.log('[StaticDataProvider] Graph updated, triggering refresh');
             this.triggerRefresh();
         });
 
         // Subscribe to design doc changes
         designDocCache.onChange((path, doc, type) => {
-            console.log(`[StaticDataProvider] Design doc ${type}: ${path}`);
+            this.logger.log(`[StaticDataProvider] Design doc ${type}: ${path}`);
             this.notifyDesignDocChange(path, doc);
         });
     }
@@ -138,7 +147,7 @@ export class StaticDataProvider implements DataProvider {
             try {
                 callback();
             } catch (e) {
-                console.error('[StaticDataProvider] Refresh callback error:', e);
+                this.logger.error('[StaticDataProvider] Refresh callback error:', e);
             }
         }
     }
@@ -151,7 +160,7 @@ export class StaticDataProvider implements DataProvider {
             try {
                 callback(path, doc);
             } catch (e) {
-                console.error('[StaticDataProvider] Design doc callback error:', e);
+                this.logger.error('[StaticDataProvider] Design doc callback error:', e);
             }
         }
     }
@@ -183,7 +192,7 @@ export class StaticDataProvider implements DataProvider {
      * contract.
      */
     revealRange(filePath: string, line: number): void {
-        console.warn(
+        this.logger.warn(
             `[StaticDataProvider] revealRange not supported in browser mode (path=${filePath}, line=${line})`
         );
     }

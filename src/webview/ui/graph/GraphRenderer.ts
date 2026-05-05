@@ -11,6 +11,7 @@ import { GroupRenderer } from './GroupRenderer';
 import { NodeRenderer } from './NodeRenderer';
 import { EdgeRenderer } from './EdgeRenderer';
 import { CameraController } from './CameraController';
+import { WebviewLogger, createWebviewLogger } from '../services/webview-logger';
 
 export class GraphRenderer {
     private container: HTMLElement;
@@ -34,9 +35,15 @@ export class GraphRenderer {
 
     private currentEdges: VisEdge[] = [];
     private currentFileRegions: FileRegion[] = [];
+    private logger: WebviewLogger;
 
-    constructor(container: HTMLElement, options: GraphRenderOptions) {
+    /**
+     * Loop 14: `logger` optional. Threaded down into each child renderer
+     * so the whole graph-render call tree shares one gating decision.
+     */
+    constructor(container: HTMLElement, options: GraphRenderOptions, logger?: WebviewLogger) {
         this.container = container;
+        this.logger = logger ?? createWebviewLogger({ enabled: false });
         this.width = options.width || container.clientWidth || 1200;
         this.height = options.height || container.clientHeight || 800;
         this.onNodeClick = options.onNodeClick;
@@ -72,11 +79,14 @@ export class GraphRenderer {
         this.nodesGroup.setAttribute('class', 'nodes-layer');
         this.mainGroup.appendChild(this.nodesGroup);
 
-        // Initialize components
-        this.hierarchicalLayout = new HierarchicalLayout(this.width, this.height);
+        // Initialize components — thread the logger through so the whole
+        // call tree shares one gating decision (Loop 14). GroupRenderer
+        // doesn't log (its sole console.log was deleted as a content-leak)
+        // so it doesn't take the logger.
+        this.hierarchicalLayout = new HierarchicalLayout(this.width, this.height, this.logger);
         this.groupRenderer = new GroupRenderer(this.foldersGroup);
-        this.nodeRenderer = new NodeRenderer(this.nodesGroup);
-        this.edgeRenderer = new EdgeRenderer(this.edgesGroup, this.svg);
+        this.nodeRenderer = new NodeRenderer(this.nodesGroup, this.logger);
+        this.edgeRenderer = new EdgeRenderer(this.edgesGroup, this.svg, this.logger);
         this.cameraController = new CameraController(this.svg, this.mainGroup, this.width, this.height);
 
         // Click on background clears selection (but not after a drag)
@@ -95,7 +105,7 @@ export class GraphRenderer {
         this.height = height;
 
         this.svg.setAttribute('viewBox', `0 0 ${this.width} ${this.height}`);
-        this.hierarchicalLayout = new HierarchicalLayout(this.width, this.height);
+        this.hierarchicalLayout = new HierarchicalLayout(this.width, this.height, this.logger);
         this.cameraController.resize(this.width, this.height);
 
         // Note: Caller must call render() after resize to re-compute layout
@@ -113,17 +123,14 @@ export class GraphRenderer {
         const { nodes, edges } = graphData;
         this.currentEdges = edges;
 
-        console.log('[GraphRenderer] Rendering:', { graphType, nodes: nodes.length, edges: edges.length });
+        this.logger.log('[GraphRenderer] Rendering:', { graphType, nodes: nodes.length, edges: edges.length });
 
         // 1. Compute layout
         const layoutResult = this.hierarchicalLayout.compute(nodes, edges, worktree);
         this.currentFileRegions = layoutResult.fileRegions;
 
-        console.log('[GraphRenderer] Layout computed:', {
-            folders: layoutResult.folders.length,
-            fileRegions: layoutResult.fileRegions.length,
-            positions: layoutResult.nodePositions.size
-        });
+        // Loop 14: removed `console.log('[GraphRenderer] Layout computed:', { ... })`
+        // — graph-data summary dump per the loop's content-leak acceptance criterion.
 
         // 2. Update camera
         this.cameraController.setPositions(layoutResult.nodePositions, layoutResult.folders);
@@ -226,7 +233,7 @@ export class GraphRenderer {
         worktree: WorkTreeNode,
         graphType: 'import' | 'call' = 'call'
     ): void {
-        console.log(`[GraphRenderer] Adding ${newNodes.length} nodes to ${folderPath}`);
+        this.logger.log(`[GraphRenderer] Adding ${newNodes.length} nodes to ${folderPath}`);
 
         // Merge edges
         this.currentEdges = [...this.currentEdges, ...newEdges];
@@ -281,7 +288,7 @@ export class GraphRenderer {
             this.cameraController.setBounds(bounds);
         }
 
-        console.log(`[GraphRenderer] Incremental update complete: ${layoutResult.nodePositions.size} total nodes`);
+        this.logger.log(`[GraphRenderer] Incremental update complete: ${layoutResult.nodePositions.size} total nodes`);
     }
 
     /**

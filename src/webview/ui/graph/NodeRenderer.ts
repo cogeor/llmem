@@ -5,6 +5,7 @@
  */
 
 import { VisNode } from '../types';
+import { WebviewLogger, createWebviewLogger } from '../services/webview-logger';
 
 const NODE_RADIUS = 8;
 const LABEL_OFFSET = 12;
@@ -15,9 +16,12 @@ export class NodeRenderer {
     private nodeColors: Map<string, string> = new Map();
     private onNodeClick?: (nodeId: string) => void;
     private onNodeHover?: (nodeId: string | null) => void;
+    private logger: WebviewLogger;
 
-    constructor(svg: SVGGElement) {
+    /** Loop 14: `logger` optional; default silent for log/debug. */
+    constructor(svg: SVGGElement, logger?: WebviewLogger) {
         this.svg = svg;
+        this.logger = logger ?? createWebviewLogger({ enabled: false });
     }
 
     /**
@@ -150,14 +154,14 @@ export class NodeRenderer {
      * Highlight all nodes within a folder path.
      */
     highlightNodesInFolder(folderPath: string): void {
-        console.log('[NodeRenderer] highlightNodesInFolder called:', folderPath);
+        this.logger.debug('[NodeRenderer] highlightNodesInFolder called:', folderPath);
         this.clearHighlight();
 
         const normalizedFolder = folderPath.replace(/\\/g, '/');
-        console.log('[NodeRenderer] Normalized folder:', normalizedFolder);
+        this.logger.debug('[NodeRenderer] Normalized folder:', normalizedFolder);
 
         const groups = this.svg.querySelectorAll('.node-group');
-        console.log('[NodeRenderer] Found', groups.length, 'node groups');
+        this.logger.debug('[NodeRenderer] Found', groups.length, 'node groups');
 
         let matchCount = 0;
         groups.forEach(g => {
@@ -179,7 +183,7 @@ export class NodeRenderer {
                 g.classList.add('faded');
             }
         });
-        console.log('[NodeRenderer] Matched', matchCount, 'nodes');
+        this.logger.debug('[NodeRenderer] Matched', matchCount, 'nodes');
     }
 
     /**

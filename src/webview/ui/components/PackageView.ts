@@ -35,6 +35,7 @@ import { State } from '../state';
 import { AppState, DesignDoc } from '../types';
 import { escape } from '../utils/escape';
 import { DesignRender } from './DesignRender';
+import { WebviewLogger, createWebviewLogger } from '../services/webview-logger';
 
 /**
  * Minimal vis-network surface used by PackageView. The lib is loaded
@@ -149,6 +150,7 @@ interface Props {
     el: HTMLElement;
     state: State;
     dataProvider: DataProvider;
+    logger?: WebviewLogger;
 }
 
 export class PackageView {
@@ -180,11 +182,13 @@ export class PackageView {
      */
     private hoverSnapshot: Map<string, { color: VisNetworkEdge['color']; width?: number }> =
         new Map();
+    private logger: WebviewLogger;
 
-    constructor({ el, state, dataProvider }: Props) {
+    constructor({ el, state, dataProvider, logger }: Props) {
         this.el = el;
         this.state = state;
         this.dataProvider = dataProvider;
+        this.logger = logger ?? createWebviewLogger({ enabled: false });
     }
 
     async mount(): Promise<void> {
@@ -207,7 +211,7 @@ export class PackageView {
         try {
             this.edges = await this.dataProvider.loadFolderEdges();
         } catch (err) {
-            console.warn(
+            this.logger.warn(
                 '[PackageView] loadFolderEdges failed; rendering cards-only.',
                 err,
             );
@@ -230,7 +234,7 @@ export class PackageView {
         try {
             this.designDocs = await this.dataProvider.loadDesignDocs();
         } catch (err) {
-            console.warn(
+            this.logger.warn(
                 '[PackageView] loadDesignDocs failed; description panel disabled.',
                 err,
             );
@@ -308,7 +312,7 @@ export class PackageView {
             // generator skipped libs, etc.). Surface the gap loudly so a
             // missing file is debuggable, but do NOT throw — cards still
             // render.
-            console.error(
+            this.logger.error(
                 '[PackageView] window.vis is undefined — vis-network.min.js failed to load. ' +
                 'Cards render but folder arcs are skipped. Check src/webview/index.html ' +
                 'has <script src="libs/vis-network.min.js"> and the generator copied libs/.',
@@ -324,7 +328,7 @@ export class PackageView {
         // overlay a "no edges above the p90 threshold — toggle 'Show
         // all'" placeholder.
         if (visNodes.length === 0) {
-            console.log('[PackageView] no folder nodes — skipping network');
+            this.logger.log('[PackageView] no folder nodes — skipping network');
             return;
         }
 
@@ -349,7 +353,7 @@ export class PackageView {
                 },
             );
         } catch (err) {
-            console.error('[PackageView] vis.Network construction failed', err);
+            this.logger.error('[PackageView] vis.Network construction failed', err);
             this.network = null;
             return;
         }
@@ -630,7 +634,7 @@ export class PackageView {
         if (this.edges === null) return;
         const folderEdge = this.findFolderEdgeById(edgeId);
         if (folderEdge === null) {
-            console.warn('[PackageView] click on unknown arc id', edgeId);
+            this.logger.warn('[PackageView] click on unknown arc id', edgeId);
             return;
         }
         this.renderBottomPanel(folderEdge);
@@ -790,7 +794,7 @@ export class PackageView {
             try {
                 this.network.destroy();
             } catch (err) {
-                console.warn('[PackageView] network.destroy() during toggle threw', err);
+                this.logger.warn('[PackageView] network.destroy() during toggle threw', err);
             }
             this.network = null;
         }
@@ -804,7 +808,7 @@ export class PackageView {
             try {
                 this.network.destroy();
             } catch (err) {
-                console.warn('[PackageView] network.destroy() threw', err);
+                this.logger.warn('[PackageView] network.destroy() threw', err);
             }
             this.network = null;
         }

@@ -101,5 +101,8 @@ declare global {
         GRAPH_DATA_URL?: string; // Optional if loading via URL
         FOLDER_TREE?: FolderTreeData;     // loop 13 (emitted by loop 11)
         FOLDER_EDGES?: FolderEdgelistData; // loop 13 (emitted by loop 11)
+        /** Loop 14: when truthy, the webview logger emits .log/.debug.
+         *  .warn/.error always emit regardless of this flag. */
+        LLMEM_DEBUG?: boolean;
     }
 }

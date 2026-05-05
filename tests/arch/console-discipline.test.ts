@@ -6,16 +6,26 @@
 // directive. Anything else fails the build.
 //
 // Allow-list (forward-slash, repo-relative):
-//   - src/common/logger.ts                  // logger module (sink)
-//   - src/core/logger.ts                    // boundary interface + consoleLogger
-//   - src/webview/ui/**                     // browser bundle
-//   - src/webview/live-reload.ts            // browser WebSocket client
-//   - src/claude/cli/**                     // CLI user-facing output (loop 01 split)
-//   - src/info/cli.ts                       // CLI user-facing output
-//   - src/info/cli_folder.ts                // CLI user-facing output
-//   - src/scripts/**                        // dev script entrypoints
-//   - src/claude/server/open-browser.ts     // user-facing fallback
-//                                              ("Please open ${url} manually")
+//   - src/common/logger.ts                          // logger module (sink)
+//   - src/core/logger.ts                            // boundary interface + consoleLogger
+//   - src/webview/ui/services/webview-logger.ts     // browser logger sink (Loop 14)
+//   - src/webview/live-reload.ts                    // browser WebSocket client
+//   - src/claude/cli/**                             // CLI user-facing output (loop 01 split)
+//   - src/info/cli.ts                               // CLI user-facing output
+//   - src/info/cli_folder.ts                        // CLI user-facing output
+//   - src/scripts/**                                // dev script entrypoints
+//   - src/claude/server/open-browser.ts             // user-facing fallback
+//                                                      ("Please open ${url} manually")
+//
+// Removed in Loop 14:
+//   - src/webview/ui/**                             // narrowed to webview-logger.ts only
+//
+// Loop 14 also adds a second test in this file: a string-includes scan
+// for the forbidden content-leak markers `'markdown preview'` and
+// `'Content to save'` under `src/webview/ui/**`. Those strings are
+// banned tree-wide (under that subtree) as markers of the
+// `DesignTextView.ts` save-trace leak — even inside the
+// allow-listed webview-logger module.
 //
 // Implementation notes:
 //   - Detection uses the TypeScript Compiler API (no regex on raw
@@ -91,20 +101,25 @@ function walkSrc(root: string, out: string[] = []): string[] {
 }
 
 /**
- * Path is in the allow-list (browser bundle, CLI surfaces, scripts,
- * logger sink itself, the boundary interface module, the browser
- * live-reload client, and the open-browser user-facing fallback).
+ * Path is in the allow-list (CLI surfaces, scripts, logger sinks,
+ * the boundary interface module, the browser live-reload client, and
+ * the open-browser user-facing fallback).
+ *
+ * Loop 14: the previous blanket pass for `src/webview/ui/**` is gone.
+ * The browser bundle now has exactly one allow-listed path —
+ * `src/webview/ui/services/webview-logger.ts` — every other call site
+ * under `src/webview/ui/` must route through that module.
  */
 function isAllowedPath(rel: string): boolean {
     return (
         rel === 'src/common/logger.ts' ||
         rel === 'src/core/logger.ts' ||
         rel === 'src/webview/live-reload.ts' ||
+        rel === 'src/webview/ui/services/webview-logger.ts' ||
         rel === 'src/info/cli.ts' ||
         rel === 'src/info/cli_folder.ts' ||
         rel === 'src/claude/server/open-browser.ts' ||
         rel.startsWith('src/claude/cli/') ||
-        rel.startsWith('src/webview/ui/') ||
         rel.startsWith('src/scripts/')
     );
 }
@@ -228,5 +243,47 @@ test('console-discipline: every KNOWN_VIOLATIONS entry is still observed (no STA
             );
         }
         assert.fail(`${stale.length} stale KNOWN_VIOLATIONS entry/entries detected.`);
+    }
+});
+
+// ----------------------------------------------------------------------------
+// Loop 14: forbidden content-leak strings under src/webview/ui/**
+//
+// `DesignTextView.ts` previously printed the user's full markdown body
+// during save (`'[DesignTextView] Content to save:', markdown`) plus a
+// 100-character preview tagged `'markdown preview:'`. Both were removed
+// in Loop 14. This test is a regression net: it scans every file under
+// `src/webview/ui/` for the literal marker strings and fails on any
+// match, even inside the allow-listed `webview-logger.ts` (the strings
+// are markers of the leak, not language tokens — the ban applies tree-
+// wide, not just to the gated paths).
+//
+// String-includes (not AST) is the correct shape: the strings are
+// markers, not syntax. The matches are case-sensitive on purpose so
+// unrelated docstrings like `@param markdown Markdown content to save`
+// in `src/webview/ui/services/dataProvider.ts` (lower-case "content")
+// do not trip the test.
+// ----------------------------------------------------------------------------
+
+test('console-discipline: forbidden content-leak strings absent from src/webview/ui/**', () => {
+    const SRC_UI = path.join(SRC_ROOT, 'webview', 'ui');
+    const FORBIDDEN: readonly string[] = ['markdown preview', 'Content to save'];
+    const offenders: { rel: string; needle: string; line: number }[] = [];
+    for (const file of walkSrc(SRC_UI)) {
+        const text = fs.readFileSync(file, 'utf-8');
+        const lines = text.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+            for (const needle of FORBIDDEN) {
+                if (lines[i]!.includes(needle)) {
+                    offenders.push({ rel: toRepoRel(file), needle, line: i + 1 });
+                }
+            }
+        }
+    }
+    if (offenders.length > 0) {
+        for (const o of offenders) {
+            console.error(`FORBIDDEN-STRING  ${o.rel}:${o.line}  contains "${o.needle}"`);
+        }
+        assert.fail(`${offenders.length} forbidden content-leak string(s) found.`);
     }
 });

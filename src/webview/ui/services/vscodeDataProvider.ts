@@ -1,6 +1,7 @@
 
 import { DataProvider, HostKind, WatchToggleResult } from './dataProvider';
 import { GraphData, WorkTreeNode, VisNode, VisEdge, DesignDoc } from '../types';
+import { WebviewLogger, createWebviewLogger } from './webview-logger';
 import type { FolderTreeData } from '../../../graph/folder-tree';
 import type { FolderEdgelistData } from '../../../graph/folder-edges';
 
@@ -46,6 +47,7 @@ export class VSCodeDataProvider implements DataProvider {
     private refreshListeners: Set<() => void> = new Set();
     private watchedPathsListeners: Set<(paths: string[]) => void> = new Set();
     private cachedWatchedPaths: string[] | null = null;
+    private logger: WebviewLogger;
 
     // Cached data from extension
     private graphData: GraphData | null = null;
@@ -97,7 +99,13 @@ export class VSCodeDataProvider implements DataProvider {
         timeoutHandle: ReturnType<typeof setTimeout>;
     }> = new Map();
 
-    constructor() {
+    /**
+     * Loop 14: `logger` is optional so existing test stubs that construct
+     * `new VSCodeDataProvider()` keep working. Default behavior matches
+     * `window.LLMEM_DEBUG` unset — silent for log/debug, console for warn/error.
+     */
+    constructor(logger?: WebviewLogger) {
+        this.logger = logger ?? createWebviewLogger({ enabled: false });
         this.vscode = acquireVsCodeApi();
         this.dataReady = new Promise(resolve => {
             this.resolveDataReady = resolve;
@@ -151,7 +159,7 @@ export class VSCodeDataProvider implements DataProvider {
                 //       we supplied in `toggleWatch` so we can resolve the
                 //       right pending promise (Loop 14 — see comment on
                 //       `pendingWatchToggles`).
-                console.log(`[VSCodeDataProvider] Received ${message.paths?.length || 0} watched paths`);
+                this.logger.log(`[VSCodeDataProvider] Received ${message.paths?.length || 0} watched paths`);
                 this.cachedWatchedPaths = message.paths || [];
                 this.watchedPathsListeners.forEach(cb => cb(message.paths || []));
 

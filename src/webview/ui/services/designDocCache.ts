@@ -10,6 +10,7 @@
 
 import { DesignDoc } from '../types';
 import { liveReloadClient, ArchEventData } from '../../live-reload';
+import { WebviewLogger, createWebviewLogger } from './webview-logger';
 
 type ChangeCallback = (path: string, doc: DesignDoc | null, type: 'created' | 'updated' | 'deleted') => void;
 
@@ -20,8 +21,18 @@ export class DesignDocCache {
     private cache: Map<string, DesignDoc> = new Map();
     private changeListeners: Set<ChangeCallback> = new Set();
     private baseUrl: string;
+    private logger: WebviewLogger;
 
-    constructor() {
+    /**
+     * Loop 14: `logger` is optional so the existing module-level singleton
+     * export (`designDocCache` at the bottom of this file) keeps working;
+     * tests / unrelated callers continue to construct without an arg.
+     * The default logger is silent for log/debug and routes warn/error to
+     * the console — the same shape as the runtime default with
+     * `window.LLMEM_DEBUG` unset.
+     */
+    constructor(logger?: WebviewLogger) {
+        this.logger = logger ?? createWebviewLogger({ enabled: false });
         this.baseUrl = window.location.origin;
 
         // Initialize from window.DESIGN_DOCS
@@ -41,7 +52,7 @@ export class DesignDocCache {
                 this.cache.set(key, doc as DesignDoc);
             }
         }
-        console.log(`[DesignDocCache] Initialized with ${this.cache.size} docs from window`);
+        this.logger.log(`[DesignDocCache] Initialized with ${this.cache.size} docs from window`);
     }
 
     /**
@@ -88,12 +99,12 @@ export class DesignDocCache {
 
         if (type === 'deleted') {
             this.cache.delete(key);
-            console.log(`[DesignDocCache] Deleted: ${key}`);
+            this.logger.log(`[DesignDocCache] Deleted: ${key}`);
             this.notifyListeners(key, null, 'deleted');
         } else if (markdown !== undefined && html !== undefined) {
             const doc: DesignDoc = { markdown, html };
             this.cache.set(key, doc);
-            console.log(`[DesignDocCache] ${type}: ${key}`);
+            this.logger.log(`[DesignDocCache] ${type}: ${key}`);
             this.notifyListeners(key, doc, type);
         }
     }
@@ -106,7 +117,7 @@ export class DesignDocCache {
             try {
                 listener(path, doc, type);
             } catch (e) {
-                console.error('[DesignDocCache] Error in change listener:', e);
+                this.logger.error('[DesignDocCache] Error in change listener:', e);
             }
         }
     }
@@ -174,7 +185,7 @@ export class DesignDocCache {
             }
             return null;
         } catch (e) {
-            console.error(`[DesignDocCache] Fetch error:`, e);
+            this.logger.error(`[DesignDocCache] Fetch error:`, e);
             return null;
         }
     }
@@ -201,7 +212,7 @@ export class DesignDocCache {
             const data = await response.json();
             return data.success === true;
         } catch (e) {
-            console.error(`[DesignDocCache] Save error:`, e);
+            this.logger.error(`[DesignDocCache] Save error:`, e);
             return false;
         }
     }

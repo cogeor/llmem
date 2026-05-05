@@ -8,6 +8,7 @@
 
 import { VisNode, VisEdge, WorkTreeNode, DirectoryNode } from '../types';
 import { FolderRegion, FileRegion, LayoutResult } from './graphTypes';
+import { WebviewLogger, createWebviewLogger } from '../services/webview-logger';
 
 const PADDING = 12;
 const LABEL_HEIGHT = 16;
@@ -46,13 +47,16 @@ interface FolderNode {
 export class HierarchicalLayout {
     private width: number;
     private height: number;
+    private logger: WebviewLogger;
 
     // Persistent layout state for incremental updates
     private folderTree: FolderNode | null = null;
 
-    constructor(width: number, height: number) {
+    /** Loop 14: `logger` optional; default silent for log/debug. */
+    constructor(width: number, height: number, logger?: WebviewLogger) {
         this.width = width;
         this.height = height;
+        this.logger = logger ?? createWebviewLogger({ enabled: false });
     }
 
     compute(
@@ -99,10 +103,11 @@ export class HierarchicalLayout {
             }
         }
         if (missingPositions.length > 0) {
-            console.warn(`[HierarchicalLayout] ${missingPositions.length} nodes have no position!`);
-            console.warn('[HierarchicalLayout] Sample missing:', missingPositions.slice(0, 5));
+            this.logger.warn(`[HierarchicalLayout] ${missingPositions.length} nodes have no position!`);
+            // Loop 14: removed `console.warn('[HierarchicalLayout] Sample missing:', ...)`
+            // — sample data dump per the loop's content-leak acceptance criterion.
         }
-        console.log(`[HierarchicalLayout] Computed ${nodePositions.size}/${nodes.length} positions`);
+        this.logger.log(`[HierarchicalLayout] Computed ${nodePositions.size}/${nodes.length} positions`);
 
         return { folders, fileRegions, nodePositions };
     }
@@ -587,7 +592,7 @@ export class HierarchicalLayout {
         const fileRegions: FileRegion[] = [];
         this.extractResults(this.folderTree, nodePositions, folders, fileRegions);
 
-        console.log(`[HierarchicalLayout] Incremental add: ${newNodes.length} nodes to ${targetFolderPath}`);
+        this.logger.log(`[HierarchicalLayout] Incremental add: ${newNodes.length} nodes to ${targetFolderPath}`);
 
         return { folders, fileRegions, nodePositions };
     }

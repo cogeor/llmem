@@ -4,6 +4,7 @@ import { State } from '../state';
 import { AppState, DesignDoc, DesignViewMode } from '../types';
 import { DesignRender } from './DesignRender';
 import { escape } from '../utils/escape';
+import { WebviewLogger, createWebviewLogger } from '../services/webview-logger';
 
 // Helper to normalize path for display and matching
 function normalizePath(path: string): string {
@@ -14,6 +15,7 @@ interface DesignTextViewProps {
     el: HTMLElement;
     state: State;
     dataProvider: DataProvider;
+    logger?: WebviewLogger;
 }
 
 // Inline styles for the Shadow DOM (works in both VS Code and standalone)
@@ -164,11 +166,13 @@ export class DesignTextView {
     private renderer: DesignRender | null = null;
     private currentPath: string | null = null;
     private isSaving = false;
+    private logger: WebviewLogger;
 
-    constructor({ el, state, dataProvider }: DesignTextViewProps) {
+    constructor({ el, state, dataProvider, logger }: DesignTextViewProps) {
         this.el = el;
         this.state = state;
         this.dataProvider = dataProvider;
+        this.logger = logger ?? createWebviewLogger({ enabled: false });
         this.shadow = this.el.attachShadow({ mode: 'open' });
 
         // Setup shadow DOM with styles and content container
@@ -207,11 +211,11 @@ export class DesignTextView {
         if (doc) {
             // Update or add doc to cache
             this.designDocs[path] = doc;
-            console.log(`[DesignTextView] Doc updated: ${path}`);
+            this.logger.log(`[DesignTextView] Doc updated: ${path}`);
         } else {
             // Delete doc from cache
             delete this.designDocs[path];
-            console.log(`[DesignTextView] Doc deleted: ${path}`);
+            this.logger.log(`[DesignTextView] Doc deleted: ${path}`);
         }
 
         // If we're currently viewing this doc, refresh the display
@@ -223,41 +227,42 @@ export class DesignTextView {
     }
 
     /**
-     * Trigger save from external button (public API)
+     * Trigger save from external button (public API).
+     *
+     * Loop 14: removed the noisy save-flow trace that printed
+     * `renderer exists`, `currentPath`, `textarea found`, the textarea
+     * value length, and a 100-char textarea preview. Those lines leaked
+     * the user's markdown body (and its existence) into the DevTools
+     * console on every save. The error branches still surface — they
+     * carry no payload.
      */
     public triggerSave(): void {
-        console.log('[DesignTextView] triggerSave called');
-        console.log('[DesignTextView] renderer exists:', !!this.renderer);
-        console.log('[DesignTextView] currentPath:', this.currentPath);
-
         if (this.renderer && this.currentPath) {
             // Get current markdown from textarea
             const container = this.container;
             const textarea = container.querySelector('.design-markdown-editor') as HTMLTextAreaElement;
 
-            console.log('[DesignTextView] textarea found:', !!textarea);
             if (textarea) {
-                console.log('[DesignTextView] textarea value length:', textarea.value.length);
-                console.log('[DesignTextView] textarea value preview:', textarea.value.substring(0, 100));
                 this.handleSave(textarea.value);
             } else {
-                console.error('[DesignTextView] Textarea not found in container');
+                this.logger.error('[DesignTextView] Textarea not found in container');
             }
         } else {
-            console.error('[DesignTextView] Cannot save - no renderer or currentPath');
+            this.logger.error('[DesignTextView] Cannot save - no renderer or currentPath');
         }
     }
 
     /**
-     * Save the current design doc
+     * Save the current design doc.
+     *
+     * Loop 14: removed the markdown-length / markdown-preview-substring /
+     * full-payload save trace. The forbidden-string architecture test
+     * (`tests/arch/console-discipline.test.ts`) bans those literal marker
+     * strings tree-wide to prevent regression of the leak.
      */
     private async handleSave(markdown: string): Promise<void> {
-        console.log('[DesignTextView] handleSave called');
-        console.log('[DesignTextView] markdown length:', markdown?.length);
-        console.log('[DesignTextView] markdown preview:', markdown?.substring(0, 100));
-
         if (!this.currentPath || this.isSaving) {
-            console.error('[DesignTextView] Cannot save - no currentPath or already saving');
+            this.logger.error('[DesignTextView] Cannot save - no currentPath or already saving');
             return;
         }
 
@@ -267,25 +272,23 @@ export class DesignTextView {
         // This preserves the full source path including extension
         let archPath = `${this.currentPath}.md`;
 
-        console.log(`[DesignTextView] Saving to: ${archPath}`);
-        console.log(`[DesignTextView] Content to save:`, markdown);
         this.isSaving = true;
 
         try {
             if (this.dataProvider.saveDesignDoc) {
                 const success = await this.dataProvider.saveDesignDoc(archPath, markdown);
                 if (success) {
-                    console.log(`[DesignTextView] Saved successfully: ${archPath}`);
+                    this.logger.log(`[DesignTextView] Saved successfully: ${archPath}`);
                     // Note: The WebSocket will broadcast the update and cache will be updated
                 } else {
-                    console.error(`[DesignTextView] Save failed: ${archPath}`);
+                    this.logger.error(`[DesignTextView] Save failed: ${archPath}`);
                     // Could show error UI here
                 }
             } else {
-                console.warn('[DesignTextView] saveDesignDoc not supported by data provider');
+                this.logger.warn('[DesignTextView] saveDesignDoc not supported by data provider');
             }
         } catch (e) {
-            console.error(`[DesignTextView] Save error:`, e);
+            this.logger.error(`[DesignTextView] Save error:`, e);
         } finally {
             this.isSaving = false;
         }
@@ -320,7 +323,7 @@ export class DesignTextView {
                         }
                     }
                 } catch (e) {
-                    console.warn('[DesignTextView] Failed to fetch doc from API:', e);
+                    this.logger.warn('[DesignTextView] Failed to fetch doc from API:', e);
                 }
             }
         }

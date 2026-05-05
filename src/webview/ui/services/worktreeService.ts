@@ -1,9 +1,16 @@
 
 import { WorkTreeNode, DirectoryNode, FileNode } from '../types';
+import { WebviewLogger, createWebviewLogger } from './webview-logger';
 
 export class WorktreeService {
     private tree: WorkTreeNode | null = null;
     private index: Map<string, WorkTreeNode> = new Map();
+    private logger: WebviewLogger;
+
+    /** Loop 14: `logger` optional; default silent for log/debug. */
+    constructor(logger?: WebviewLogger) {
+        this.logger = logger ?? createWebviewLogger({ enabled: false });
+    }
 
     async load(): Promise<WorkTreeNode> {
         if (this.tree) return this.tree;
@@ -12,7 +19,7 @@ export class WorktreeService {
             this.tree = window.WORK_TREE;
             this._buildIndex(this.tree);
         } else {
-            console.warn("No WORK_TREE found in window");
+            this.logger.warn("No WORK_TREE found in window");
             this.tree = { name: "root", path: "", type: "directory", children: [] } as DirectoryNode;
         }
         return this.tree;
