@@ -54,9 +54,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Claude package
-        run: npm run build:claude
-
+      # `npm publish` triggers `prepublishOnly` → `npm test`, whose
+      # `pretest` builds dist/claude/* and dist/webview/* before running
+      # the suite. Both are shipped per package.json `files`, so the
+      # build+test gate is the package-correctness contract — we don't
+      # need an explicit build step here.
       - name: Publish to npm
         run: npm publish --access public
         env:
