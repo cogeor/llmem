@@ -44,7 +44,7 @@
   "activationEvents": [
     "onStartupFinished"
   ],
-  "main": "./dist/extension/extension.js",
+  "main": "./dist/claude/index.js",
   "exports": {
     ".": "./dist/claude/index.js"
   },
@@ -52,11 +52,16 @@
     "llmem": "./bin/llmem"
   },
   "files": [
-    "dist/",
     "bin/",
+    "dist/claude/cli/main.js",
+    "dist/claude/index.js",
+    "dist/webview/*.js",
+    "dist/webview/*.html",
+    "dist/webview/libs/**",
+    "dist/webview/styles/**",
+    "dist/webview/utils/**/*.js",
     "README.md",
-    "LICENSE",
-    "assets/"
+    "LICENSE"
   ],
   "contributes": {
     "commands": [
