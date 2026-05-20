@@ -205,6 +205,36 @@ describe('EdgeListStore Integration', () => {
         assert.equal(edges[0].kind, 'call');
     });
 
+    test('load() on a missing file then save() writes an empty envelope to disk', async () => {
+        // Regression for the empty-workspace serve crash: when scan finds 0
+        // supported files, the store's load() sees no on-disk file and
+        // populates an empty in-memory envelope. The contract is that the
+        // next save() flushes that envelope so downstream tools that probe
+        // for the file (e.g. generateGraph via hasEdgeLists) succeed. Prior
+        // to the fix, save() short-circuited on dirty=false and the file
+        // never appeared.
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-load-save-'));
+        try {
+            const io = await WorkspaceIO.create(asWorkspaceRoot(tmp));
+            const artifactDir = path.join(tmp, '.artifacts');
+            fs.mkdirSync(artifactDir, { recursive: true });
+
+            const store = new ImportEdgeListStore(artifactDir, io);
+            const onDisk = path.join(artifactDir, 'import-edgelist.json');
+
+            assert.equal(fs.existsSync(onDisk), false, 'precondition: file absent');
+            await store.load();   // no file → in-memory empty + dirty=true
+            await store.save();   // must flush empty envelope to disk
+            assert.equal(fs.existsSync(onDisk), true, 'save() must persist the empty envelope');
+
+            const persisted = JSON.parse(fs.readFileSync(onDisk, 'utf-8'));
+            assert.deepEqual(persisted.nodes, []);
+            assert.deepEqual(persisted.edges, []);
+        } finally {
+            fs.rmSync(tmp, { recursive: true, force: true });
+        }
+    });
+
     test('removeByFolder removes nodes and edges for folder', async () => {
         const store = new ImportEdgeListStore(workspace.artifactDir, workspace.io);
 

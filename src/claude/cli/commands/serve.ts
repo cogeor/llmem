@@ -65,6 +65,14 @@ export const serveCommand: CommandSpec<typeof serveArgs> = {
                 `Indexed ${result.filesProcessed} files ` +
                 `(${result.filesSkipped} skipped, ${result.errors.length} errors).`,
             );
+            if (result.filesProcessed === 0) {
+                console.log(
+                    'No supported source files found. LLMem ships with TypeScript/JavaScript ' +
+                    'support out of the box; install peer grammars (tree-sitter-python, ' +
+                    'tree-sitter-rust, tree-sitter-cpp, @davisvaughan/tree-sitter-r) for ' +
+                    'additional languages. Starting server anyway with an empty graph.',
+                );
+            }
         }
 
         // Regenerate if requested or if webview doesn't exist

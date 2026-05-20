@@ -94,7 +94,12 @@ abstract class BaseEdgeListStore {
     async load(): Promise<void> {
         if (!(await this.io.exists(this.relPath))) {
             this.data = createEmptyEdgeList();
-            this.dirty = false;
+            // Mirrors `clear()`: in-memory state diverges from disk (file
+            // does not exist yet), so the next `save()` must flush an
+            // empty envelope. Without this, scans that find 0 supported
+            // files leave the artifact directory empty and downstream
+            // `generateGraph` throws "Edge lists not found".
+            this.dirty = true;
             return;
         }
         let raw: unknown;

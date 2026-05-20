@@ -102,15 +102,42 @@ export function getLanguageFromPath(filePath: string): string {
 // ============================================================================
 
 /**
- * Folders to always ignore when scanning
+ * Folders to always ignore when scanning.
+ *
+ * Mix of JS/TS build outputs (`node_modules`, `dist`, `out`, `build`,
+ * `.next`, `.nuxt`, `coverage`), Python venvs and caches (`__pycache__`,
+ * `.venv`, `venv`), Rust/Go/.NET build outputs (`target`, `vendor`,
+ * `bin`, `obj`), and editor/VCS dirs (`.git`, `.idea`, `.vscode`). Without
+ * these, scanning a typical Python or Rust repo walks tens of thousands
+ * of stdlib/dependency files and pegs CPU.
  */
 export const IGNORED_FOLDERS = new Set([
-    'node_modules',
+    // VCS / editors
     '.git',
+    '.hg',
+    '.svn',
+    '.idea',
+    '.vscode',
+    // LLMem's own artifacts
     '.artifacts',
     '.arch',
-    '.vscode',
+    // JS / TS
+    'node_modules',
     'dist',
     'out',
-    'build'
+    'build',
+    'coverage',
+    '.next',
+    '.nuxt',
+    // Python
+    '__pycache__',
+    '.venv',
+    'venv',
+    '.tox',
+    '.pytest_cache',
+    // Rust / Go / .NET
+    'target',
+    'vendor',
+    'bin',
+    'obj',
 ]);
