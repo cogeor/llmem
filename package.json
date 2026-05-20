@@ -3,15 +3,15 @@
   "displayName": "LLMem - Codebase Graph & Documentation",
   "description": "MCP server extension for generating interactive graph visualizations and documentation for codebases",
   "version": "0.1.0",
-  "publisher": "llmem",
+  "publisher": "cogeor",
   "license": "MIT",
-  "homepage": "https://github.com/llmem/llmem",
+  "homepage": "https://github.com/cogeor/llmem",
   "bugs": {
-    "url": "https://github.com/llmem/llmem/issues"
+    "url": "https://github.com/cogeor/llmem/issues"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/llmem/llmem.git"
+    "url": "https://github.com/cogeor/llmem.git"
   },
   "keywords": [
     "mcp",
@@ -40,7 +40,7 @@
   "extensionKind": [
     "workspace"
   ],
-  "mcpName": "io.github.llmem/llmem",
+  "mcpName": "io.github.cogeor/llmem",
   "activationEvents": [
     "onStartupFinished"
   ],

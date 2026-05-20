@@ -52,14 +52,14 @@ npm install @davisvaughan/tree-sitter-r  # R support
 ## 📦 Installation
 
 Prerequisites:
-- Node.js (v18+)
+- Node.js (v20+)
 - Claude Code CLI, Antigravity IDE, or VS Code
 
 ### Option A: Claude Code Plugin
 
 1. **Clone and build**
    ```bash
-   git clone https://github.com/llmem/llmem.git
+   git clone https://github.com/cogeor/llmem.git
    cd llmem
    npm install
    npm run build:claude
@@ -95,7 +95,7 @@ Prerequisites:
 
 1. **Clone and build**
    ```bash
-   git clone https://github.com/llmem/llmem.git
+   git clone https://github.com/cogeor/llmem.git
    cd llmem
    npm install
    npm run package
@@ -120,7 +120,7 @@ For contributors:
 
 1. **Clone and install**
    ```bash
-   git clone https://github.com/llmem/llmem.git
+   git clone https://github.com/cogeor/llmem.git
    cd llmem
    npm install
    ```

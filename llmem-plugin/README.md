@@ -8,7 +8,7 @@ Interactive graph visualization and documentation for codebases.
 
 ```bash
 # Clone the llmem repository
-git clone https://github.com/llmem/llmem.git
+git clone https://github.com/cogeor/llmem.git
 cd llmem
 
 # Install dependencies and build
