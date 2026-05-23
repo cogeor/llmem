@@ -32,56 +32,75 @@ export class ParserRegistry {
      * Auto-registers all built-in language adapters
      */
     private constructor() {
-        log.info('Initializing language parsers...');
+        const active: string[] = [];
+        const missing: string[] = [];
 
         // TypeScript/JavaScript (always available - uses compiler API)
         // This is the ONLY language with call graph support
         try {
             const { TypeScriptAdapter } = require('./typescript/adapter');
-            this.registerAdapter(new TypeScriptAdapter());
+            const adapter: LanguageAdapter = new TypeScriptAdapter();
+            this.registerAdapter(adapter);
+            active.push(adapter.displayName);
         } catch (error) {
             log.error('Failed to load TypeScript adapter', {
                 error: error instanceof Error ? error.message : String(error),
             });
         }
 
+        // Helper: try to load an optional tree-sitter grammar.
+        // Missing modules (MODULE_NOT_FOUND / ERR_MODULE_NOT_FOUND) are silently
+        // recorded in `missing`. Any other error - i.e. the grammar IS installed
+        // but failed to import - is surfaced as a warning so it doesn't get
+        // hidden by the "not installed" path.
+        const tryRegisterOptional = (pkg: string, load: () => LanguageAdapter): void => {
+            try {
+                const adapter = load();
+                this.registerAdapter(adapter);
+                active.push(adapter.displayName);
+            } catch (error) {
+                const err = error as NodeJS.ErrnoException;
+                if (err?.code === 'MODULE_NOT_FOUND' || err?.code === 'ERR_MODULE_NOT_FOUND') {
+                    missing.push(pkg);
+                } else {
+                    log.warn(`Failed to load ${pkg}: ${err?.message ?? String(error)}`);
+                }
+            }
+        };
+
         // Python (tree-sitter based - imports only, no call graph)
-        try {
+        tryRegisterOptional('tree-sitter-python', () => {
             require('tree-sitter-python');
             const { PythonAdapter } = require('./python/adapter');
-            this.registerAdapter(new PythonAdapter());
-        } catch {
-            log.warn('Python parser not available (tree-sitter-python not installed)');
-        }
+            return new PythonAdapter();
+        });
 
         // C/C++ (tree-sitter based - imports only via #include)
-        try {
+        tryRegisterOptional('tree-sitter-cpp', () => {
             require('tree-sitter-cpp');
             const { CppAdapter } = require('./cpp/adapter');
-            this.registerAdapter(new CppAdapter());
-        } catch {
-            log.warn('C/C++ parser not available (tree-sitter-cpp not installed)');
-        }
+            return new CppAdapter();
+        });
 
         // Rust (tree-sitter based - imports only via use statements)
-        try {
+        tryRegisterOptional('tree-sitter-rust', () => {
             require('tree-sitter-rust');
             const { RustAdapter } = require('./rust/adapter');
-            this.registerAdapter(new RustAdapter());
-        } catch {
-            log.warn('Rust parser not available (tree-sitter-rust not installed)');
-        }
+            return new RustAdapter();
+        });
 
         // R (tree-sitter based - imports only via library/require/source)
-        try {
+        tryRegisterOptional('@davisvaughan/tree-sitter-r', () => {
             require('@davisvaughan/tree-sitter-r');
             const { RAdapter } = require('./r/adapter');
-            this.registerAdapter(new RAdapter());
-        } catch {
-            log.warn('R parser not available (@davisvaughan/tree-sitter-r not installed)');
-        }
+            return new RAdapter();
+        });
 
-        log.info('Initialization complete');
+        let summary = `Languages active: ${active.join(', ')}.`;
+        if (missing.length > 0) {
+            summary += ` Optional: install ${missing.join(', ')} to enable more.`;
+        }
+        log.info(summary);
     }
 
     /**
