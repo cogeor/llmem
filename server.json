@@ -46,10 +46,6 @@
       "description": "Save LLM-generated folder documentation to the .arch/ shadow filesystem"
     },
     {
-      "name": "inspect_source",
-      "description": "Read specific line ranges from source files"
-    },
-    {
       "name": "open_window",
       "description": "Open the LLMem dependency graph visualization panel"
     }

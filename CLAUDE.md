@@ -68,7 +68,6 @@ The MCP server exposes tools for AI agents to analyze and document code:
 **Available MCP Tools**:
 - `file_info` / `report_file_info`: Generate and save file documentation
 - `folder_info` / `report_folder_info`: Generate and save folder documentation
-- `inspect_source`: Read specific line ranges from files
 - `open_window`: Open the LLMem webview panel
 
 **Two-Phase Documentation Workflow**:

@@ -11,7 +11,6 @@ import { fileInfoTool } from './file-info';
 import { reportFileInfoTool } from './report-file-info';
 import { folderInfoTool } from './folder-info';
 import { reportFolderInfoTool } from './report-folder-info';
-import { inspectSourceTool } from './inspect-source';
 import { openWindowTool } from './open-window';
 
 // Per-tool re-exports (schemas, handlers, tool definitions)
@@ -44,14 +43,6 @@ export {
 export type { ReportFolderInfoInput } from './report-folder-info';
 
 export {
-    inspectSourceTool,
-    InspectSourceSchema,
-    handleInspectSource,
-    handleInspectSourceImpl,
-} from './inspect-source';
-export type { InspectSourceInput } from './inspect-source';
-
-export {
     openWindowTool,
     OpenWindowSchema,
     handleOpenWindow,
@@ -59,13 +50,12 @@ export {
 export type { OpenWindowInput } from './open-window';
 
 // The registrar — order is preserved for human-readable startup logs
-// (file/report pairs first, then inspect, then open_window).
+// (file/report pairs first, then open_window).
 export const toolDefinitions = [
     fileInfoTool,
     reportFileInfoTool,
     folderInfoTool,
     reportFolderInfoTool,
-    inspectSourceTool,
     openWindowTool,
 ];
 

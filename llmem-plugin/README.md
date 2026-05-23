@@ -101,7 +101,6 @@ The plugin provides these MCP tools for Claude:
 - `folder_info` - Get folder overview
 - `report_file_info` - Save AI-generated documentation
 - `report_folder_info` - Save folder documentation
-- `inspect_source` - Read specific lines from files
 
 ## Usage
 

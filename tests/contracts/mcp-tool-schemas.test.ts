@@ -27,7 +27,6 @@ import {
     ReportFileInfoSchema,
     FolderInfoSchema,
     ReportFolderInfoSchema,
-    InspectSourceSchema,
     OpenWindowSchema,
 } from '../../src/mcp/tools';
 
@@ -241,52 +240,6 @@ describe('mcp tool schema: report_folder_info', () => {
             key_files: [{ name: 'foo.ts' /* missing summary */ }],
         };
         assert.throws(() => ReportFolderInfoSchema.parse(bad), z.ZodError);
-    });
-});
-
-// =============================================================================
-// inspect_source
-// =============================================================================
-
-describe('mcp tool schema: inspect_source', () => {
-    const KNOWN_GOOD = {
-        path: 'src/foo.ts',
-        startLine: 10,
-        endLine: 50,
-    };
-
-    test('parses a known-good payload', () => {
-        const got = InspectSourceSchema.parse(KNOWN_GOOD);
-        assert.deepEqual(got, KNOWN_GOOD);
-    });
-
-    test('property set is exactly [endLine, path, startLine]', () => {
-        const parsed = InspectSourceSchema.parse(KNOWN_GOOD);
-        assert.deepEqual(
-            Object.keys(parsed).sort(),
-            ['endLine', 'path', 'startLine'],
-        );
-    });
-
-    test('rejects payload missing path', () => {
-        assert.throws(
-            () => InspectSourceSchema.parse({ startLine: 1, endLine: 10 }),
-            z.ZodError,
-        );
-    });
-
-    test('rejects payload with non-numeric startLine', () => {
-        assert.throws(
-            () => InspectSourceSchema.parse({ path: 'src/foo.ts', startLine: 'one', endLine: 10 }),
-            z.ZodError,
-        );
-    });
-
-    test('rejects payload with non-numeric endLine', () => {
-        assert.throws(
-            () => InspectSourceSchema.parse({ path: 'src/foo.ts', startLine: 1, endLine: 'ten' }),
-            z.ZodError,
-        );
     });
 });
 
