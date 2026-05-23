@@ -183,15 +183,26 @@ The graph displays:
 
 | Tool | Purpose |
 |------|---------|
-| `folder_info` | Get folder structure + prompt for LLM documentation |
-| `file_info` | Get file details + prompt for LLM documentation |
-| `report_folder_info` | Save LLM-generated folder docs to `.arch/{folder}/README.md` |
-| `report_file_info` | Save LLM-generated file docs to `.arch/{file}.md` |
-| `inspect_source` | Read specific line ranges from source files |
-| `open_window` | Open the LLMem panel in the IDE |
+| `folder_info` | Returns folder structure + an LLM enrichment prompt. **Pair with `report_folder_info`** (process the prompt through your LLM first). |
+| `file_info` | Returns file structure + an LLM enrichment prompt. **Pair with `report_file_info`** (process the prompt through your LLM first). |
+| `report_folder_info` | Save the LLM-enriched folder doc to `.arch/{folder}/README.md`. |
+| `report_file_info` | Save the LLM-enriched file doc to `.arch/{file}.md`. |
+| `open_window` | Open the LLMem graph: a `file://` snapshot URL in standalone mode, an integrated panel in VS Code / Antigravity. |
 
 > [!IMPORTANT]
 > MCP documentation tools require the graph to be computed first. Make sure to **toggle watched files** before generating summaries.
+
+### Generating Spec Docs (Worked Example)
+
+To document `src/parser`, the agent runs four steps:
+
+1. Call `folder_info` with `{ path: "src/parser" }` → receives structural payload + LLM enrichment prompt.
+2. Process the prompt through its LLM → produces JSON with `overview`, `key_files`, `architecture` (and optional `inputs` / `outputs`).
+3. Call `report_folder_info` with that enriched payload → LLMem writes **`.arch/src/parser/README.md`**.
+4. Per-file equivalent: `file_info` → LLM → `report_file_info` writes **`.arch/src/parser/<file>.md`** (e.g. `.arch/src/parser/registry.ts.md`).
+
+> [!NOTE]
+> Without an MCP-aware agent, the same pipeline runs from a shell: `llmem document src/parser --prompt-only` prints the prompt; pipe your LLM's JSON response back with `llmem document src/parser --content-file -` to write the `.arch/` doc.
 
 ## 🏗️ Architecture
 
