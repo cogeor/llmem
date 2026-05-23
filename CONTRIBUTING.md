@@ -4,7 +4,7 @@ Thank you for your interest in contributing. This document covers the developmen
 
 ## Prerequisites
 
-- Node.js v18 or later
+- Node.js v20 or later (matches `engines.node` in `package.json`)
 - npm v8 or later
 - Git
 
@@ -23,32 +23,22 @@ Thank you for your interest in contributing. This document covers the developmen
 
 3. Build the project:
    ```bash
-   npm run build
+   npm run build:all
    ```
 
 ## Build Commands
 
 | Command | Description |
 |---------|-------------|
-| `npm run build` | Full build: compile TypeScript and build webview |
+| `npm run build:all` | Build VS Code extension + Claude CLI |
+| `npm run build:vscode` | Build VS Code extension only |
+| `npm run build:claude` | Build Claude CLI only |
 | `npm run compile` | TypeScript compilation only |
-| `npm run watch` | Watch mode for TypeScript (auto-recompile on save) |
-| `npm run package` | Create `.vsix` package (runs full build first) |
-| `npm run build:claude` | Build Claude Code CLI entry point only |
+| `npm run watch` | Watch mode for TypeScript |
+| `npm run package` | Create `cogeor-llmem-<version>.vsix` |
+| `npm run serve` | Build + start the graph server |
 
-### Webview Cache
-
-When modifying `src/webview/generator.ts` or `src/webview/design-docs.ts`, delete the cached webview output to force regeneration:
-
-```bash
-rm -rf .artifacts/webview
-```
-
-Then touch a watched file to trigger regeneration in serve mode:
-
-```bash
-touch src/webview/ui/main.ts
-```
+The webview cache (`.artifacts/webview/`) is invalidated automatically — see `src/webview/shell-cache.ts`. No manual cleanup needed.
 
 ## Testing
 
@@ -74,24 +64,40 @@ All code must pass linting before submission. Fix lint errors before opening a p
 
 ## Running in Development
 
-- **VS Code / Antigravity IDE**: Press `F5` to launch an Extension Development Host with the extension loaded.
-- **Claude Code**: Start the graph server and MCP server separately:
-  ```bash
-  npm run serve            # Graph server (http://localhost:5757)
-  node dist/claude/index.js  # MCP server (stdio, used by Claude)
-  ```
+- **VS Code / Antigravity**: Press <kbd>F5</kbd> to launch an Extension Development Host with the extension loaded.
+- **Claude CLI from a checkout**: `node ./bin/llmem serve` (graph server) and `node ./bin/llmem mcp` (MCP stdio server) — they're independent processes.
 
-## Project Structure
+## Repo Layout
 
-Key areas to understand before contributing:
-
-- `src/mcp/` — MCP server tools and handlers
-- `src/graph/` — Edge list data structures
-- `src/parser/` — Language parsers (TypeScript Compiler API + Tree-sitter)
-- `src/info/` — Documentation extraction and prompt building
-- `src/webview/` — Graph visualization UI
+| Directory | What's inside |
+|---|---|
+| `src/extension` | VS Code / Antigravity extension entry points |
+| `src/claude` | CLI plugin, graph HTTP server, MCP entrypoint |
+| `src/mcp` | MCP tool handlers (`file_info`, `report_*`, `open_window`, …) |
+| `src/application` | Pipeline glue used by both CLI and MCP |
+| `src/parser` | TypeScript Compiler API + tree-sitter adapters |
+| `src/graph` | Edge-list stores for imports and calls |
+| `src/info` | Structural info extraction for docs |
+| `src/webview` | Graph + spec viewer UI (bundled via esbuild) |
+| `src/artifact` | `.arch/` shadow filesystem |
+| `src/workspace` | Workspace IO with realpath containment |
+| `tests/unit` | Pure-function unit tests |
+| `tests/contracts` | Schema / snapshot tests |
+| `tests/arch` | Architectural invariant tests |
+| `tests/integration` | End-to-end tests (CLI shim, MCP stdio, HTTP routes) |
 
 See `CLAUDE.md` for a detailed architecture overview.
+
+## Workspace Root Detection
+
+The MCP server figures out which directory to operate on via this priority order:
+
+1. Explicit `LLMEM_WORKSPACE` environment variable
+2. Stored extension context (when running inside the VS Code extension)
+3. Walk up from `cwd` looking for `.git`, `package.json`, `.arch`, `.artifacts`, or `.llmem`
+4. Fall back to `cwd`
+
+Set `LLMEM_WORKSPACE` explicitly when in doubt — particularly in CI or test harnesses.
 
 ## Pull Request Guidelines
 
