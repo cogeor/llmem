@@ -10,6 +10,7 @@
 import { z } from 'zod';
 
 import { REGISTRY, type CommandSpec } from './registry';
+import { serveCommand } from './commands/serve';
 import { createCliContext } from './context';
 
 /**
@@ -228,7 +229,11 @@ export async function main(): Promise<void> {
     const argv = process.argv.slice(2);
 
     // Global --help / -h short-circuit (handled before dispatch).
-    const { command, flagMap, helpRequested } = parseArgv(argv);
+    const parsedArgv = parseArgv(argv);
+    const { flagMap, helpRequested } = parsedArgv;
+    // `command` is `let` so the no-args branch can route to `serveCommand`
+    // (see below). Everything else (`flagMap`, `helpRequested`) stays const.
+    let command = parsedArgv.command;
 
     if (helpRequested) {
         printHelp();
@@ -236,10 +241,22 @@ export async function main(): Promise<void> {
     }
 
     if (command === null) {
-        // Preserve today's "no args → help, exit 1" contract.
-        // (Default-routing to serve is deferred to a later loop per PLAN.md.)
-        printHelp();
-        process.exit(argv.length === 0 ? 1 : 0);
+        // No-args path (`llmem`): route to `serveCommand` so the help-text
+        // "(default)" label is honest. `flagMap` is `{}` here; the Zod
+        // defaults on `serveArgs` fill in port=5757, open=true,
+        // regenerate=false, verbose=false. Falls through to the standard
+        // coerce → safeParse → run pipeline below.
+        //
+        // Unknown-command path (`llmem fnord`): preserve today's exact
+        // behavior — print help and `process.exit(0)`. (See PLAN.md edge
+        // case: changing the unknown-command exit code is a separate
+        // behavior change, deliberately not bundled with this loop.)
+        if (argv.length === 0) {
+            command = serveCommand;
+        } else {
+            printHelp();
+            process.exit(0);
+        }
     }
 
     const coerced = coerceForSchema(command.args, flagMap);

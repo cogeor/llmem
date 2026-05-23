@@ -3,10 +3,17 @@
  *
  * Loop 01 originally pinned "lists the four commands" against the old
  * hardcoded help. Loop 07 made `printHelp` registry-driven and hid
- * `generate`/`stats`, so the assertion now is:
+ * `generate`/`stats`. The code-polish "no-args defaults to serve" loop
+ * dropped the third assertion ("no args → help + exit 1") because that
+ * contract no longer holds — `llmem` with no args now starts the server.
+ * The new contract is pinned by the unit test
+ * `tests/unit/claude/cli-main-no-args.test.ts`, which monkey-patches
+ * `serveCommand.run` and so does not require a long-lived child process
+ * or a port bind at the integration layer.
+ *
+ * Current assertions:
  *   1. `--help` exits 0 and lists the six visible commands.
  *   2. `--help` does NOT mention the hidden commands (`generate`, `stats`).
- *   3. No-args prints help and exits 1 (preserves today's behavior).
  *
  * Cross-platform note: spawning `node` explicitly with the JS path bypasses
  * npm's `.cmd` wrapper on Windows and tests the actual JS shim.
@@ -53,9 +60,3 @@ test('bin/llmem --help exits 0 and lists every visible command, no hidden ones',
     }
 });
 
-test('bin/llmem with no args prints help and exits 1', () => {
-    ensureBuilt();
-    const result = spawnSync('node', [BIN], { encoding: 'utf8' });
-    assert.equal(result.status, 1, `expected exit 1, got ${result.status}; stderr=${result.stderr}`);
-    assert.match(result.stdout, /Usage:/i);
-});
