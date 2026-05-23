@@ -57,17 +57,16 @@ Prerequisites:
 
 ### Option A: Claude Code Plugin
 
-1. **Clone and build**
+1. **Install from npm** — pick one:
    ```bash
-   git clone https://github.com/cogeor/llmem.git
-   cd llmem
-   npm install
-   npm run build:claude
+   npm install -g @cogeor/llmem    # global install — `llmem` on PATH
+   # or one-shot, no install:
+   npx @cogeor/llmem serve
    ```
 
 2. **(Optional) Add language support** — install grammars for languages you need:
    ```bash
-   npm install tree-sitter-python tree-sitter-cpp  # etc.
+   npm install -g tree-sitter-python tree-sitter-cpp  # etc.
    ```
 
 3. **Add to Claude Code config** (`~/.config/claude/config.json` or `settings.json`):
@@ -75,8 +74,8 @@ Prerequisites:
    {
      "mcpServers": {
        "llmem": {
-         "command": "node",
-         "args": ["/path/to/llmem/dist/claude/index.js"]
+         "command": "npx",
+         "args": ["-y", "@cogeor/llmem", "mcp"]
        }
      }
    }
@@ -84,14 +83,16 @@ Prerequisites:
 
 4. **Start the graph server** (in your project directory):
    ```bash
-   npm run serve
+   llmem serve
    ```
    This starts a live-reloading webview at `http://localhost:5757` (override with `--port`).
 
 > [!NOTE]
-> `dist/claude/index.js` (the MCP server) and `npm run serve` (the graph server) are **two separate processes**. The MCP server handles tool calls from Claude; the graph server serves the visualization UI. Both must be running for the full experience.
+> `llmem mcp` (the MCP server) and `llmem serve` (the graph server) are **two separate processes**. The MCP server handles tool calls from Claude; the graph server serves the visualization UI. Both must be running for the full experience.
 
 ### Option B: VS Code / Antigravity Extension
+
+The VS Code / Antigravity extension is not yet published to the marketplace. Build the VSIX from source:
 
 1. **Clone and build**
    ```bash
@@ -100,7 +101,7 @@ Prerequisites:
    npm install
    npm run package
    ```
-   This creates a `.vsix` file in the project root.
+   This creates a `cogeor-llmem-<version>.vsix` file in the project root.
 
 2. **(Optional) Add language support** — install grammars for languages you need:
    ```bash
@@ -109,9 +110,9 @@ Prerequisites:
 
 3. **Install the VSIX**
    ```bash
-   code --install-extension llmem-0.1.0.vsix
+   code --install-extension cogeor-llmem-*.vsix
    # or for Antigravity:
-   antigravity --install-extension llmem-0.1.0.vsix
+   antigravity --install-extension cogeor-llmem-*.vsix
    ```
 
 ### Development Mode
@@ -142,7 +143,7 @@ LLMem works in two stages: **graph visualization** and **documentation generatio
 
 1. **Start the graph server** in your project:
    ```bash
-   npm run serve
+   llmem serve
    ```
    This opens the webview at `http://localhost:5757` with live reload (override with `--port`).
 
@@ -272,8 +273,8 @@ The MCP server determines the workspace root in this priority order:
 {
   "mcpServers": {
     "llmem": {
-      "command": "node",
-      "args": ["/absolute/path/to/llmem/dist/claude/index.js"],
+      "command": "npx",
+      "args": ["-y", "@cogeor/llmem", "mcp"],
       "env": {
         "LLMEM_WORKSPACE": "/absolute/path/to/your/project"
       }
@@ -290,8 +291,8 @@ The MCP server determines the workspace root in this priority order:
 {
   "mcpServers": {
     "llmem": {
-      "command": "node",
-      "args": ["/absolute/path/to/llmem/dist/claude/index.js"]
+      "command": "npx",
+      "args": ["-y", "@cogeor/llmem", "mcp"]
     }
   }
 }
@@ -309,4 +310,4 @@ The MCP server determines the workspace root in this priority order:
 
 ## 📄 License
 
-This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
