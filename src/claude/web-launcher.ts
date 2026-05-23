@@ -48,7 +48,7 @@ export interface GraphGenerationOptions {
      * (`index.html`, `main.js`, `styles/`, `libs/`). When omitted, the
      * launcher discovers it via `<workspaceRoot>/dist/webview` →
      * repo-root probe (walk up from `process.cwd()` looking for a
-     * `package.json` whose `name === 'llmem'`) → `<repoRoot>/dist/webview`
+     * `package.json` whose `name === '@cogeor/llmem'`) → `<repoRoot>/dist/webview`
      * → install-root probe (walk up from this file's `__dirname` looking
      * for the same `package.json`) → `<installedRoot>/dist/webview` →
      * `<repoRoot>/src/webview` (development fallback). The install-root
@@ -71,7 +71,7 @@ export interface GraphGenerationOptions {
 
 /**
  * Walk up from `process.cwd()` looking for a `package.json` whose
- * `name === 'llmem'`. Returns the first match's directory or `null` if
+ * `name === '@cogeor/llmem'`. Returns the first match's directory or `null` if
  * we hit the filesystem root without finding one.
  *
  * Used by `resolveAssetRoot` as a fallback when neither an explicit
@@ -83,14 +83,14 @@ export function findRepoRoot(): string | null {
 
 /**
  * Walk up from this file's directory looking for a `package.json` whose
- * `name === 'llmem'`. Reliably finds the install root when llmem is run
+ * `name === '@cogeor/llmem'`. Reliably finds the install root when llmem is run
  * from a global npm install (where cwd is the user's repo, not ours).
  *
  * In dev (ts-node) this resolves `<repo>/src/claude` → `<repo>`.
  * In compiled CommonJS this resolves `<install>/dist/claude` → `<install>`.
  * For global npm installs `<install>` is e.g.
  * `<global>/lib/node_modules/llmem`, whose `package.json` carries
- * `name === 'llmem'` so the walk-up matches.
+ * `name === '@cogeor/llmem'` so the walk-up matches.
  *
  * Returns null if the walk hits the filesystem root without finding it.
  */
@@ -118,7 +118,7 @@ export const __testHooks = {
 
 /**
  * Shared walk-up: starting from `from`, climb the directory tree looking
- * for a `package.json` whose `name === 'llmem'`. Returns the first
+ * for a `package.json` whose `name === '@cogeor/llmem'`. Returns the first
  * match's directory or `null` on filesystem-root miss.
  */
 function findLlmemPackageRoot(from: string): string | null {
@@ -130,7 +130,7 @@ function findLlmemPackageRoot(from: string): string | null {
         if (fs.existsSync(pkgPath)) {
             try {
                 const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
-                if (pkg && pkg.name === 'llmem') {
+                if (pkg && pkg.name === '@cogeor/llmem') {
                     return current;
                 }
             } catch {
@@ -195,7 +195,7 @@ export function resolveAssetRoot(opts: { workspaceRoot?: string; assetRoot?: str
             return repoDist;
         }
     } else {
-        probed.push('repoRoot: <not found> (no package.json with name="llmem" walking up from process.cwd())');
+        probed.push('repoRoot: <not found> (no package.json with name="@cogeor/llmem" walking up from process.cwd())');
     }
 
     // 4. Install-root walk-up from `__dirname` → dist/webview. Catches
@@ -210,7 +210,7 @@ export function resolveAssetRoot(opts: { workspaceRoot?: string; assetRoot?: str
             return installDist;
         }
     } else {
-        probed.push('installedRoot: <not found> (no package.json with name="llmem" walking up from this module\'s install location)');
+        probed.push('installedRoot: <not found> (no package.json with name="@cogeor/llmem" walking up from this module\'s install location)');
     }
 
     // 5. Development fallback: src/webview (no index.html check —

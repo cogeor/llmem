@@ -117,7 +117,7 @@ test('resolveAssetRoot: repo-walk-up from cwd lands on <repoRoot>/dist/webview',
         fs.mkdirSync(repoRoot, { recursive: true });
         fs.writeFileSync(
             path.join(repoRoot, 'package.json'),
-            JSON.stringify({ name: 'llmem', version: '0.0.0' }),
+            JSON.stringify({ name: '@cogeor/llmem', version: '0.0.0' }),
         );
         const repoDist = path.join(repoRoot, 'dist', 'webview');
         writeIndex(repoDist);
@@ -170,7 +170,7 @@ test('resolveAssetRoot: install-root walk-up wins when cwd walk-up cannot find t
         fs.mkdirSync(installRoot, { recursive: true });
         fs.writeFileSync(
             path.join(installRoot, 'package.json'),
-            JSON.stringify({ name: 'llmem', version: '0.0.0' }),
+            JSON.stringify({ name: '@cogeor/llmem', version: '0.0.0' }),
         );
         const installDist = path.join(installRoot, 'dist', 'webview');
         writeIndex(installDist);
@@ -205,7 +205,7 @@ test('findInstalledPackageRoot: locates the real llmem repo when run from inside
     const pkg = JSON.parse(
         fs.readFileSync(path.join(found!, 'package.json'), 'utf-8'),
     );
-    assert.equal(pkg.name, 'llmem');
+    assert.equal(pkg.name, '@cogeor/llmem');
 });
 
 test('resolveAssetRoot: throws an error that does NOT mention __dirname when nothing resolves', () => {
