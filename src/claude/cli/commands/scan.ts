@@ -15,7 +15,7 @@
 
 import { z } from 'zod';
 
-import { scanFolderRecursive } from '../../../application/scan';
+import { scanFolderRecursive, formatUnsupportedSourceHints } from '../../../application/scan';
 import { buildAndSaveFolderArtifacts } from '../../../application/folder-artifacts';
 import { detectWorkspace } from '../workspace';
 import type { CommandSpec } from '../registry';
@@ -48,6 +48,13 @@ export const scanCommand: CommandSpec<typeof scanArgs> = {
             `Indexed ${result.filesProcessed} files ` +
             `(${result.filesSkipped} skipped, ${result.errors.length} errors).`,
         );
+
+        // Loop-03 / code-polish: surface skipped-language counts so users
+        // know which peer grammars to install. Zero lines when no
+        // allowlist files were silently dropped.
+        for (const line of formatUnsupportedSourceHints(result.unsupportedSourceLikeCounts)) {
+            console.log(line);
+        }
 
         // Loop 10 — emit folder-tree.json + folder-edgelist.json next to
         // the edge lists. Closes the loop-05 stub. Order matters: this

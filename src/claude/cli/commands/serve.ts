@@ -21,7 +21,7 @@ import { z } from 'zod';
 
 import { GraphServer } from '../../server';
 import { hasEdgeLists, generateGraph } from '../../web-launcher';
-import { scanFolderRecursive } from '../../../application/scan';
+import { scanFolderRecursive, formatUnsupportedSourceHints } from '../../../application/scan';
 import { detectWorkspace } from '../workspace';
 import { DEFAULT_PORT } from '../../../config-defaults';
 import type { CommandSpec } from '../registry';
@@ -65,6 +65,15 @@ export const serveCommand: CommandSpec<typeof serveArgs> = {
                 `Indexed ${result.filesProcessed} files ` +
                 `(${result.filesSkipped} skipped, ${result.errors.length} errors).`,
             );
+            // Loop-03 / code-polish: surface skipped-language counts so
+            // users know which peer grammars to install. Zero lines when
+            // no allowlist files were silently dropped. Placed BEFORE
+            // the existing zero-files message so the two complement
+            // each other — this one covers "found some, missed others",
+            // the next one covers "found nothing".
+            for (const line of formatUnsupportedSourceHints(result.unsupportedSourceLikeCounts)) {
+                console.log(line);
+            }
             if (result.filesProcessed === 0) {
                 console.log(
                     'No supported source files found. LLMem ships with TypeScript/JavaScript ' +

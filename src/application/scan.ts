@@ -29,6 +29,84 @@ import type { Logger } from '../core/logger';
 import type { WorkspaceContext } from './workspace-context';
 
 /**
+ * Hardcoded source-like extension → install-hint package(s).
+ *
+ * Intentionally NOT derived from `ParserRegistry` state — the whole point
+ * of this map is to nudge users toward grammars they have not installed
+ * yet. Deriving it from registry state would silently shrink the hint
+ * surface to languages already loaded, defeating the purpose.
+ *
+ * All C/C++ family extensions (`.c`, `.h`, `.cpp`, `.hpp`, `.cc`, `.cxx`,
+ * `.hxx`) collapse to a single `tree-sitter-cpp` hint at format time —
+ * they share one grammar package. The `.r`/`.R` extensions collapse to
+ * one line naming both candidate packages.
+ *
+ * Keys are lowercased extensions with a leading dot (matching the output
+ * of `path.extname().toLowerCase()`).
+ */
+const SOURCE_LIKE_INSTALL_HINTS: ReadonlyMap<string, string> = new Map([
+    ['.py', 'tree-sitter-python'],
+    ['.rs', 'tree-sitter-rust'],
+    ['.c', 'tree-sitter-cpp'],
+    ['.h', 'tree-sitter-cpp'],
+    ['.cpp', 'tree-sitter-cpp'],
+    ['.hpp', 'tree-sitter-cpp'],
+    ['.cc', 'tree-sitter-cpp'],
+    ['.cxx', 'tree-sitter-cpp'],
+    ['.hxx', 'tree-sitter-cpp'],
+    ['.r', 'tree-sitter-r or @davisvaughan/tree-sitter-r'],
+]);
+
+/** Lowercased C/C++ family extensions — collapse to a single hint line. */
+const CPP_FAMILY_EXTS: ReadonlySet<string> = new Set([
+    '.c', '.h', '.cpp', '.hpp', '.cc', '.cxx', '.hxx',
+]);
+
+/**
+ * Format `ScanResult.unsupportedSourceLikeCounts` into zero or more
+ * human-readable hint lines. Pure function — no I/O, no logging.
+ *
+ * Behavior:
+ *  - Returns `[]` when every count is 0 / the map is empty.
+ *  - Collapses all C/C++ family entries into one combined line keyed by
+ *    `tree-sitter-cpp`.
+ *  - Collapses `.r` (we lowercase at accumulation time, so `.R` lands
+ *    under `.r`) into one line naming both candidate packages.
+ *  - Other extensions get one line each, with the literal lowercased
+ *    extension in the message.
+ *  - Singular vs plural is not branched — "1 .py files" is acceptable
+ *    per the loop-03 plan.
+ */
+export function formatUnsupportedSourceHints(
+    counts: Record<string, number>,
+): string[] {
+    const lines: string[] = [];
+
+    // C/C++ family: sum across all family extensions, emit one line.
+    let cppTotal = 0;
+    for (const ext of CPP_FAMILY_EXTS) {
+        cppTotal += counts[ext] ?? 0;
+    }
+    if (cppTotal > 0) {
+        lines.push(
+            `Skipped ${cppTotal} C/C++ files — install tree-sitter-cpp to include them.`,
+        );
+    }
+
+    // Remaining extensions in deterministic order (insertion order of the
+    // allowlist). Skip C/C++ family members (already handled above) and
+    // any entry with count 0.
+    for (const [ext, hint] of SOURCE_LIKE_INSTALL_HINTS) {
+        if (CPP_FAMILY_EXTS.has(ext)) continue;
+        const n = counts[ext] ?? 0;
+        if (n <= 0) continue;
+        lines.push(`Skipped ${n} ${ext} files — install ${hint} to include them.`);
+    }
+
+    return lines;
+}
+
+/**
  * A per-file failure surfaced to the caller. The scan continues past these
  * (matching the legacy console.warn behavior); callers decide how to render.
  */
@@ -68,6 +146,17 @@ export interface ScanResult {
     newEdges: number;
     /** Total edges across both stores after the operation. */
     totalEdges: number;
+    /**
+     * Per-extension count of source-like files that were silently dropped
+     * because no parser is registered for them — keyed by lowercased
+     * extension (with leading dot, matching the keys of
+     * `SOURCE_LIKE_INSTALL_HINTS`). Always present; `{}` when no
+     * allowlist files were skipped (or the scan was a single-file scan).
+     *
+     * Callers format this via `formatUnsupportedSourceHints` so the
+     * C/C++-family-collapsing logic lives in one place.
+     */
+    unsupportedSourceLikeCounts: Record<string, number>;
 }
 
 /** Scan a single file and append edges. */
@@ -123,6 +212,10 @@ export async function scanFile(
             errors: [{ filePath, message: `No parser for extension ${fileExt}`, cause: null }],
             newEdges: 0,
             totalEdges: callStore.getStats().edges,
+            // Per-file scans don't aggregate allowlist counts — a single
+            // unsupported file already shows up as `filesSkipped: 1` with
+            // an error message above. Always `{}` on this path.
+            unsupportedSourceLikeCounts: {},
         };
     }
 
@@ -168,6 +261,8 @@ export async function scanFile(
             errors: [],
             newEdges: actualNewCallEdges + actualNewImportEdges,
             totalEdges: finalCallEdgeCount + finalImportEdgeCount,
+            // Per-file scan: nothing to aggregate.
+            unsupportedSourceLikeCounts: {},
         };
     } catch (e: any) {
         throw new Error(`Failed to process ${filePath}: ${e?.message ?? String(e)}`);
@@ -213,13 +308,32 @@ export async function scanFolder(
     // L24: io.readDir realpath-validates the directory; io.stat does the same
     // for each entry. The parser API needs an absolute path, so we
     // materialize from getRealRoot() after the realpath check has succeeded.
+    //
+    // Loop-03 / code-polish: while walking, accumulate per-extension counts
+    // of source-like files (the hardcoded `SOURCE_LIKE_INSTALL_HINTS`
+    // allowlist) for which `registry.getParser` returns null — these are
+    // the files we would otherwise drop without telling the user. C/C++
+    // family entries are stored under their real extension (e.g. `.cpp`,
+    // `.hpp`) and collapsed at format time. `.R` is pre-lowercased to
+    // `.r` so the two share one bucket.
     const entries = await io.readDir(folderPath);
     const sourceFiles: string[] = [];
+    const unsupportedCounts = new Map<string, number>();
 
     for (const entry of entries) {
         const childRel = path.join(folderPath, entry).replace(/\\/g, '/');
         const stat = await io.stat(childRel);
-        if (stat.isFile() && registry.isSupported(entry)) {
+        if (!stat.isFile()) continue;
+
+        const ext = path.extname(entry).toLowerCase();
+        if (SOURCE_LIKE_INSTALL_HINTS.has(ext)) {
+            const absoluteChild = path.join(io.getRealRoot(), childRel);
+            if (!registry.getParser(absoluteChild, workspaceRoot)) {
+                unsupportedCounts.set(ext, (unsupportedCounts.get(ext) ?? 0) + 1);
+            }
+        }
+
+        if (registry.isSupported(entry)) {
             sourceFiles.push(path.join(io.getRealRoot(), childRel));
         }
     }
@@ -304,6 +418,7 @@ export async function scanFolder(
         errors,
         newEdges: actualNewCallEdges + actualNewImportEdges,
         totalEdges: finalCallEdgeCount + finalImportEdgeCount,
+        unsupportedSourceLikeCounts: Object.fromEntries(unsupportedCounts),
     };
 }
 
@@ -401,6 +516,13 @@ export async function scanFolderRecursive(
             const subResult = await scanFolderRecursive(ctx, {
                 folderPath: subRel,
             });
+            // Sum allowlist-but-unsupported counts key-by-key. Both sides
+            // share the same canonical lowercased-extension keying, so a
+            // plain merge suffices.
+            const mergedCounts: Record<string, number> = { ...acc.unsupportedSourceLikeCounts };
+            for (const [ext, n] of Object.entries(subResult.unsupportedSourceLikeCounts)) {
+                mergedCounts[ext] = (mergedCounts[ext] ?? 0) + n;
+            }
             acc = {
                 filesProcessed: acc.filesProcessed + subResult.filesProcessed,
                 filesSkipped: acc.filesSkipped + subResult.filesSkipped,
@@ -409,6 +531,7 @@ export async function scanFolderRecursive(
                 // The last sub-recursion's totalEdges is the freshest snapshot
                 // (each scanFolder ends in save(); the next load() sees it).
                 totalEdges: subResult.totalEdges,
+                unsupportedSourceLikeCounts: mergedCounts,
             };
         }
     }
