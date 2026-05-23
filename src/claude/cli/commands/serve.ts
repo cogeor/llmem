@@ -86,7 +86,15 @@ export const serveCommand: CommandSpec<typeof serveArgs> = {
                 graphOnly: false,  // Generate full 3-panel UI by default
                 assetRoot: ASSET_ROOT_OVERRIDE,
             });
-            console.log(`✓ Graph generated: ${result.importNodeCount} files, ${result.importEdgeCount} imports`);
+            console.log(
+                `✓ Displayed graph (watched subset): ${result.importNodeCount} files, ` +
+                `${result.importEdgeCount} imports`,
+            );
+            if (result.importNodeCount === 0) {
+                console.log(
+                    '  Toggle files in the explorer (left pane) to add them to the graph.',
+                );
+            }
             console.log('');
         }
 
