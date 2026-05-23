@@ -4,6 +4,7 @@
   "description": "MCP server extension for generating interactive graph visualizations and documentation for codebases",
   "version": "0.1.0",
   "publisher": "cogeor",
+  "author": "Costa Georgantas <c.georgantas@hotmail.com>",
   "license": "MIT",
   "homepage": "https://github.com/cogeor/llmem",
   "bugs": {
