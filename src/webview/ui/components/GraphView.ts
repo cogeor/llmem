@@ -13,6 +13,10 @@ import { AppState, GraphData, WorkTreeNode, DirectoryNode } from "../types";
 import { parseGraphId } from "../../../core/ids";
 import { escape } from "../utils/escape";
 import { WebviewLogger, createWebviewLogger } from "../services/webview-logger";
+import {
+    EMPTY_STATE_MESSAGE,
+    shouldShowGraphEmptyState,
+} from "./graph-empty-state";
 
 interface Props {
     el: HTMLElement;
@@ -32,6 +36,10 @@ export class GraphView {
     private isRendered: boolean = false;
     private currentGraphType: string = 'import';
     private logger: WebviewLogger;
+    // Loop 05: overlay element shown when scan-has-data but watched=0.
+    // Lifecycle is owned entirely by renderEmptyState/removeEmptyState; the
+    // D3 canvas under `.graph-canvas` is not touched.
+    private emptyStateEl: HTMLElement | null = null;
 
     constructor({ el, state, dataProvider, logger }: Props) {
         this.el = el;
@@ -150,8 +158,20 @@ export class GraphView {
     /**
      * Handle state changes - pan camera and highlight as needed.
      */
-    onState({ currentView, graphType, selectedPath, selectedType, selectionSource }: AppState) {
+    onState({ currentView, graphType, selectedPath, selectedType, selectionSource, watchedPaths }: AppState) {
         const canvasEl = this.el.querySelector('.graph-canvas') as HTMLElement;
+
+        // Loop 05: drive the empty-state overlay from the same subscription
+        // tick. Evaluated BEFORE the early returns below so that toggling a
+        // file (which leaves selectedPath/graphType unchanged) still hides
+        // the overlay, and the synchronous initial subscribe-callback fires
+        // it on mount when scan-has-data but watched=0.
+        const importNodeCount = this.data?.importGraph?.nodes?.length ?? 0;
+        if (shouldShowGraphEmptyState(importNodeCount, watchedPaths)) {
+            this.renderEmptyState();
+        } else {
+            this.removeEmptyState();
+        }
 
         // If graph type changed, re-initialize
         if (graphType !== this.currentGraphType) {
@@ -246,6 +266,32 @@ export class GraphView {
     };
 
     /**
+     * Loop 05: render the centered empty-state overlay as a sibling to
+     * `.graph-canvas` inside `.graph-container`. Idempotent — calling
+     * twice is a no-op. The card uses textContent so no escape is needed.
+     */
+    private renderEmptyState(): void {
+        if (this.emptyStateEl) return;
+        const overlay = document.createElement('div');
+        overlay.className = 'graph-empty-state';
+        const card = document.createElement('div');
+        card.className = 'graph-empty-state-card';
+        card.textContent = EMPTY_STATE_MESSAGE;
+        overlay.appendChild(card);
+        this.el.appendChild(overlay);
+        this.emptyStateEl = overlay;
+    }
+
+    /**
+     * Loop 05: remove the overlay if present. Idempotent.
+     */
+    private removeEmptyState(): void {
+        if (!this.emptyStateEl) return;
+        this.emptyStateEl.remove();
+        this.emptyStateEl = null;
+    }
+
+    /**
      * Cleanup on unmount.
      */
     unmount() {
@@ -253,6 +299,10 @@ export class GraphView {
         window.removeEventListener('theme-changed', this.handleThemeChange);
         this.resizeObserver?.disconnect();
         this.graphRenderer?.destroy();
+        // Loop 05: defensively drop the overlay — host normally tears down
+        // #graph-view's subtree on view switch, but keeping emptyStateEl's
+        // lifetime contained here avoids a dangling field reference.
+        this.removeEmptyState();
     }
 
     // --- Worktree helpers ---

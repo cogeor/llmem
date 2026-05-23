@@ -151,3 +151,33 @@
 #arrow-head path {
     fill: var(--edge-color);
 }
+
+/* Loop 05: empty-state overlay for the Graph pane.
+   Shown when the scan produced > 0 import nodes but watchedPaths is
+   empty (lazy mode, fresh `llmem serve`). Pinned to the centre of
+   `.graph-container` (which has position: relative). pointer-events
+   on the container is `none` so the file explorer + toolbar remain
+   clickable through the overlay; the card itself re-enables pointer
+   events in case a future iteration adds a button inside. */
+.graph-empty-state {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+
+.graph-empty-state-card {
+    pointer-events: auto;
+    background: var(--background);
+    color: var(--description-foreground);
+    border: 1px solid var(--border-color);
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-radius: 4px;
+    font-family: var(--vscode-font-family, var(--font-family));
+    font-size: 13px;
+    max-width: 480px;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
