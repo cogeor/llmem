@@ -123,13 +123,13 @@ export async function collectViewerData(
     logger.info(`[WebviewDataService] Import graph: ${importStats.nodes} nodes, ${importStats.edges} edges`);
     logger.info(`[WebviewDataService] Call graph: ${callStats.nodes} nodes, ${callStats.edges} edges`);
 
-    // Ensure .arch exists. `io.mkdirRecursive` surfaces a structured
+    // Ensure the docs dir exists. `io.mkdirRecursive` surfaces a structured
     // PathEscapeError if the candidate escapes the workspace, which can't
-    // happen for the well-known '.arch' relative path.
+    // happen for the well-known `ctx.archRootRel` relative path (.llmem/docs).
     try {
-        await io.mkdirRecursive('.arch');
+        await io.mkdirRecursive(ctx.archRootRel);
     } catch (e) {
-        logger.error(`Failed to create .arch directory: ${e instanceof Error ? e.message : String(e)}`);
+        logger.error(`Failed to create docs directory: ${e instanceof Error ? e.message : String(e)}`);
     }
 
     // Load watched files state
@@ -179,11 +179,11 @@ export async function collectViewerDataWithStores(
     const { workspaceRoot, artifactRoot, archRoot, io, logger } = ctx;
     const { importStore, callStore } = req;
 
-    // Ensure .arch exists (see collectViewerData for io.mkdirRecursive notes).
+    // Ensure the docs dir exists (see collectViewerData for io.mkdirRecursive notes).
     try {
-        await io.mkdirRecursive('.arch');
+        await io.mkdirRecursive(ctx.archRootRel);
     } catch (e) {
-        logger.error(`Failed to create .arch directory: ${e instanceof Error ? e.message : String(e)}`);
+        logger.error(`Failed to create docs directory: ${e instanceof Error ? e.message : String(e)}`);
     }
 
     // Load watched files state.

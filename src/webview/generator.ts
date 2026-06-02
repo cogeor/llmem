@@ -3,7 +3,6 @@ import * as fs from 'fs-extra';
 import * as path from 'path';
 // NOTE: esbuild is lazy-loaded to avoid errors when not installed (e.g., in bundled MCP server)
 import { generateWorkTree } from './worktree';
-import { convertAllMarkdown } from './utils/md-converter';
 import { loadDesignDocs } from './design-docs';
 import { createLogger } from '../common/logger';
 import { createWorkspaceContext, type WorkspaceContext } from '../application/workspace-context';
@@ -159,24 +158,6 @@ export async function generateStaticWebview(
         fs.cpSync(libsSrc, libsDest, { recursive: true });
     } else {
         log.warn('libs folder not found', { libsSrc });
-    }
-
-    // 3. Copy .arch folder to arch (skip in graph-only mode)
-    const archSrc = path.join(workspaceRoot, '.arch');
-    const archDest = path.join(destinationDir, 'arch');
-    if (!graphOnly) {
-        if (fs.existsSync(archSrc)) {
-            if (!fs.existsSync(archDest)) {
-                fs.mkdirSync(archDest, { recursive: true });
-            }
-            // Simple recursive copy
-            fs.cpSync(archSrc, archDest, { recursive: true });
-
-            // Convert Markdown to HTML
-            await convertAllMarkdown(archDest);
-        } else {
-            log.warn('.arch folder not found', { archSrc });
-        }
     }
 
     // 4. Generate Folder Tree (skip in graph-only mode)

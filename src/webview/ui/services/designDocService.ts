@@ -47,28 +47,6 @@ export class DesignDocService {
                 if (bundledDocs[txtKey]) return bundledDocs[txtKey].html;
             }
 
-            // PHASE 2: Fetch (Fallthrough - ONLY if bundle is empty)
-            const hasBundle = Object.keys(bundledDocs).length > 0;
-
-            if (!hasBundle) {
-                for (const key of candidates) {
-                    const extensions = ['.html', '.txt'];
-                    for (const ext of extensions) {
-                        const archUrl = `arch/${key}${ext}`;
-                        try {
-                            const res = await fetch(archUrl);
-                            if (res.ok) {
-                                return await res.text();
-                            }
-                        } catch (e) {
-                            // console.debug(`Fetch failed for ${archUrl}`);
-                        }
-                    }
-                }
-            } else {
-                // Bundle exists but file not found in it.
-            }
-
             if (currentPath === "") {
                 break;
             }
