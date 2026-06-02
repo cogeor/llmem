@@ -120,6 +120,7 @@
     "verify": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && npm ci && npm run build:all && npm test",
     "prepublishOnly": "npm test",
     "ci:local": "act -j build --container-architecture linux/amd64",
+    "smoke:pack": "node scripts/pack-smoke.js",
     "prepare": "node scripts/install-hooks.js",
     "build:webview": "npx ts-node src/scripts/build_webview.ts",
     "build": "npm run build:vscode",
