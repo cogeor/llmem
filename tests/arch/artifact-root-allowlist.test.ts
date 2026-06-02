@@ -374,6 +374,9 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     //    Functional code uses `ctx.artifactRoot` (or equivalent) but
     //    comments describe the on-disk shape for readers.
     // -----------------------------------------------------------------------
+    { file: 'src/application/migrate-docs.ts',
+      phase: 'permanent',
+      reason: 'JSDoc explains the docs migration leaves `.artifacts/` (regenerable cache) untouched; no functional callsite uses the literal.' },
     { file: 'src/artifact/path-mapper.ts',
       phase: 'permanent',
       reason: 'JSDoc describes the on-disk layout (`/.artifacts/path/to/source/file.ext/...`).' },
@@ -491,6 +494,9 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     // -----------------------------------------------------------------------
     // I. Unit tests under tests/unit/
     // -----------------------------------------------------------------------
+    { file: 'tests/unit/application/migrate-docs.test.ts',
+      phase: 'permanent',
+      reason: 'Seeds a fixture `.artifacts/` dir to assert the docs migration never mutates the regenerable cache.' },
     { file: 'tests/unit/application/scan-containment.test.ts',
       phase: 'permanent',
       reason: 'Fixture artifact dir for scan-containment unit test.' },

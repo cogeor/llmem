@@ -207,6 +207,16 @@ const WRITE_ALLOWLIST_ENTRIES: readonly WriteAllowlistEntry[] = [
       'KNOWN_WRITE_VIOLATIONS below.',
   },
   {
+    file: 'src/application/migrate-docs.ts',
+    phase: 'permanent',
+    reason:
+      'One-time docs migration moves the top-level `.arch/` dir to ' +
+      '`.llmem/docs/` via a whole-dir `fs.rename` (atomic on same volume) ' +
+      'with an EXDEV copy→verify→rm fallback. `WorkspaceIO` has no rename ' +
+      'and is for in-workspace file ops; this is a top-level dir move at ' +
+      'init on absolute paths under the workspace root, by design.',
+  },
+  {
     file: 'src/claude/cli/commands/init.ts',
     phase: 'permanent',
     reason:

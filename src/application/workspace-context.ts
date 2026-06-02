@@ -53,6 +53,7 @@ import { WorkspaceIO } from '../workspace/workspace-io';
 import type { Config } from '../core/config-types';
 import { DEFAULT_CONFIG } from '../config-defaults';
 import { getArchRoot, DOCS_DIR } from '../docs/arch-store';
+import { migrateDocs } from './migrate-docs';
 
 // ---------------------------------------------------------------------------
 // RuntimeConfig
@@ -198,6 +199,12 @@ export async function createWorkspaceContext(
             ...(input.configOverrides ?? {}),
         };
     }
+
+    // One-time, idempotent, conflict-safe docs migration (.arch -> .llmem/docs).
+    // Runs on every init but warm inits short-circuit cheaply (a single
+    // exists() check). Never crashes init — failures leave `.arch` intact +
+    // warn. See src/application/migrate-docs.ts.
+    await migrateDocs(workspaceRoot, logger);
 
     // artifactRoot / archRoot derivations.
     const artifactRootAbs = toAbs(config.artifactRoot, workspaceRoot);
