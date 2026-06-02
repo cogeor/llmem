@@ -61,66 +61,42 @@ export class ParserRegistry {
         const active: string[] = [];
         const missing: string[] = [];
 
-        // TypeScript/JavaScript (always available - uses compiler API)
-        // This is the ONLY language with call graph support
-        try {
-            const { TypeScriptAdapter } = require('./typescript/adapter');
-            const adapter: LanguageAdapter = new TypeScriptAdapter();
-            this.registerAdapter(adapter);
-            active.push(adapter.displayName);
-        } catch (error) {
-            log.error('Failed to load TypeScript adapter', {
-                error: error instanceof Error ? error.message : String(error),
-            });
-        }
+        // Register every language from the single-source-of-truth descriptor.
+        //
+        // Languages without a grammarPackage (TypeScript/JavaScript, which uses
+        // the compiler API) register eagerly — a load() failure there is a hard
+        // error worth surfacing. Languages WITH a grammarPackage go through the
+        // optional path: a missing module (MODULE_NOT_FOUND / ERR_MODULE_NOT_FOUND)
+        // is silently recorded in `missing`; any other error — i.e. the grammar
+        // IS installed but failed to import — is surfaced as a warning so it does
+        // not get hidden by the "not installed" path.
+        for (const descriptor of LANGUAGES) {
+            if (!descriptor.grammarPackage) {
+                try {
+                    const adapter = descriptor.load();
+                    this.registerAdapter(adapter);
+                    active.push(adapter.displayName);
+                } catch (error) {
+                    log.error(`Failed to load ${descriptor.displayName} adapter`, {
+                        error: error instanceof Error ? error.message : String(error),
+                    });
+                }
+                continue;
+            }
 
-        // Helper: try to load an optional tree-sitter grammar.
-        // Missing modules (MODULE_NOT_FOUND / ERR_MODULE_NOT_FOUND) are silently
-        // recorded in `missing`. Any other error - i.e. the grammar IS installed
-        // but failed to import - is surfaced as a warning so it doesn't get
-        // hidden by the "not installed" path.
-        const tryRegisterOptional = (pkg: string, load: () => LanguageAdapter): void => {
             try {
-                const adapter = load();
+                const adapter = descriptor.load();
                 this.registerAdapter(adapter);
                 active.push(adapter.displayName);
             } catch (error) {
                 const err = error as NodeJS.ErrnoException;
                 if (err?.code === 'MODULE_NOT_FOUND' || err?.code === 'ERR_MODULE_NOT_FOUND') {
-                    missing.push(pkg);
+                    missing.push(descriptor.grammarPackage);
                 } else {
-                    log.warn(`Failed to load ${pkg}: ${err?.message ?? String(error)}`);
+                    log.warn(`Failed to load ${descriptor.grammarPackage}: ${err?.message ?? String(error)}`);
                 }
             }
-        };
-
-        // Python (tree-sitter based - imports only, no call graph)
-        tryRegisterOptional('tree-sitter-python', () => {
-            require('tree-sitter-python');
-            const { PythonAdapter } = require('./python/adapter');
-            return new PythonAdapter();
-        });
-
-        // C/C++ (tree-sitter based - imports only via #include)
-        tryRegisterOptional('tree-sitter-cpp', () => {
-            require('tree-sitter-cpp');
-            const { CppAdapter } = require('./cpp/adapter');
-            return new CppAdapter();
-        });
-
-        // Rust (tree-sitter based - imports only via use statements)
-        tryRegisterOptional('tree-sitter-rust', () => {
-            require('tree-sitter-rust');
-            const { RustAdapter } = require('./rust/adapter');
-            return new RustAdapter();
-        });
-
-        // R (tree-sitter based - imports only via library/require/source)
-        tryRegisterOptional('@davisvaughan/tree-sitter-r', () => {
-            require('@davisvaughan/tree-sitter-r');
-            const { RAdapter } = require('./r/adapter');
-            return new RAdapter();
-        });
+        }
 
         let summary = `Languages active: ${active.join(', ')}.`;
         if (missing.length > 0) {
