@@ -65,22 +65,26 @@ llmem document src/parser --content-file -   # reads LLM JSON from stdin, writes
 
 ## Languages
 
-| Language | Extensions | Import graph | Call graph |
-|---|---|:---:|:---:|
-| TypeScript | `.ts`, `.tsx` | ✅ | ✅ |
-| JavaScript | `.js`, `.jsx` | ✅ | ✅ |
-| Python | `.py` | ✅ | — |
-| C/C++ | `.c`, `.h`, `.cpp`, `.hpp`, … | ✅ | — |
-| Rust | `.rs` | ✅ | — |
-| R | `.R`, `.r` | ✅ | — |
+This table is the user-facing view of the single source of truth — the `LANGUAGES` descriptor in `src/parser/languages.ts`. `npm run check:langs` asserts the rows here stay in sync with that descriptor and with the grammar peer dependencies in `package.json`.
 
-TypeScript and JavaScript work out of the box. For the others, install the matching tree-sitter grammar:
+| Language | Extensions | Grammar package | Call graph |
+|---|---|---|:---:|
+| TypeScript/JavaScript | `.ts`, `.tsx`, `.js`, `.jsx` | built-in (TS compiler API) | semantic |
+| Python | `.py` | `tree-sitter-python` | import-only |
+| C/C++ | `.c`, `.h`, `.cpp`, `.hpp`, `.cc`, `.cxx`, `.hxx` | `tree-sitter-cpp` | import-only |
+| Rust | `.rs` | `tree-sitter-rust` | import-only |
+| R | `.r`, `.R` | `@davisvaughan/tree-sitter-r` | import-only |
+
+TypeScript and JavaScript work out of the box (no grammar, no toolchain). For the others, install the matching tree-sitter grammar:
 
 ```bash
 npm install -g tree-sitter-python tree-sitter-cpp tree-sitter-rust @davisvaughan/tree-sitter-r
 ```
 
-Call graphs are TypeScript/JavaScript-only today. Everything else gets import edges.
+Call graphs are TypeScript/JavaScript-only today (the `semantic` row above). Every other language contributes import edges only.
+
+> [!NOTE]
+> The grammar packages are **optional** native dependencies. npm installs a prebuilt binary for your Node ABI when one is published; otherwise it compiles the grammar with node-gyp, which needs a C/C++ toolchain (build-essential / Xcode CLT / MSVC Build Tools). If a grammar fails to build, LLMem still runs — that language is simply skipped until the toolchain is available and you reinstall.
 
 ## Configuration
 

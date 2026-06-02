@@ -4,12 +4,12 @@ This guide explains how to add support for a new programming language to LLMem's
 
 ## Overview
 
-LLMem uses an **Adapter Pattern** to support multiple languages. Each language needs:
-1. A **tree-sitter grammar** (npm package)
-2. A **parser implementation** (extracts FileArtifact)
-3. A **language adapter** (integrates with the registry)
+LLMem uses an **Adapter Pattern** plus a **single declarative descriptor** to support multiple languages. Each language needs exactly three things:
+1. One **`LANGUAGES` entry** in `src/parser/languages.ts` (the single source of truth: id, displayName, extensions, grammarPackage, callGraph, highlightId, and a lazy `load()`)
+2. A **tree-sitter grammar** (npm package), declared as an optional peer dependency in `package.json`
+3. A **parser + adapter** under `src/parser/<language>/`
 
-All other components (MCP tools, edge lists, graph rendering) are **language-agnostic** and require no changes.
+The registry, the extension→language map, `getLanguageFromPath()`, the config extension list, and the webview highlight ids are all **derived from `LANGUAGES`**. You do NOT edit `registry.ts`, `config.ts`, or `getLanguageFromPath()` by hand — that drift is exactly what `npm run check:langs` guards against. All other components (MCP tools, edge lists, graph rendering) are language-agnostic and require no changes.
 
 ## Prerequisites
 
@@ -19,20 +19,30 @@ All other components (MCP tools, edge lists, graph rendering) are **language-agn
 
 ## Step-by-Step Guide
 
-### Step 1: Install Tree-Sitter Grammar
+### Step 1: Add the Tree-Sitter Grammar as an Optional Peer Dependency
 
-Add the tree-sitter grammar package to `package.json`:
+Grammars are **optional peer dependencies** so a plain install never requires a
+C toolchain (see the toolchain note at the bottom of this guide). Add the
+package to BOTH `peerDependencies` and `peerDependenciesMeta` (optional) in
+`package.json`:
 
-```bash
-npm install tree-sitter-<language>
+```jsonc
+"peerDependencies": {
+    "tree-sitter-<language>": "^x.y.z"
+},
+"peerDependenciesMeta": {
+    "tree-sitter-<language>": { "optional": true }
+}
 ```
+
+`npm run check:langs` asserts every grammar listed here matches a `LANGUAGES`
+`grammarPackage` (and vice versa) — they must stay in lockstep.
 
 **Examples**:
 - Python: `tree-sitter-python`
 - Rust: `tree-sitter-rust`
 - C++: `tree-sitter-cpp`
-- Go: `tree-sitter-go`
-- Java: `tree-sitter-java`
+- R: `@davisvaughan/tree-sitter-r`
 
 ### Step 2: Create Parser Directory Structure
 
@@ -237,44 +247,37 @@ export class <Language>Adapter extends TreeSitterAdapter {
 }
 ```
 
-### Step 7: Register in Parser Registry
+### Step 7: Add ONE `LANGUAGES` Descriptor (the only wiring step)
 
-Edit `src/parser/registry.ts`:
+Add a single entry to the `LANGUAGES` array in `src/parser/languages.ts`. This
+is the **only** place you register a language — the registry, the config
+extension list, `getLanguageFromPath()`, and the webview highlight ids are all
+derived from it. Do NOT edit `registry.ts` or `config.ts` by hand.
 
 ```typescript
-import { <Language>Adapter } from './<language>/adapter';
-
-private constructor() {
-    this.registerAdapter(new TypeScriptAdapter());
-    this.registerAdapter(new PythonAdapter());
-    this.registerAdapter(new <Language>Adapter());  // ADD THIS LINE
-}
+{
+    id: '<language>',
+    displayName: '<Language>',
+    extensions: ['.<ext1>', '.<ext2>'],
+    grammarPackage: 'tree-sitter-<language>',
+    callGraph: 'none',          // 'semantic' | 'heuristic' | 'none'
+    highlightId: '<language>',
+    // highlightOverrides: { '.<ext>': '<other-id>' },  // optional, per-extension
+    load: () => {
+        // Lazy: the grammar require() lives INSIDE the arrow so it only runs
+        // when a consumer actually parses this language.
+        require('tree-sitter-<language>');
+        const { <Language>Adapter } = require('./<language>/adapter');
+        return new <Language>Adapter();
+    },
+},
 ```
 
-### Step 8: Update Configuration
+After this, run `npm run check:langs` — it verifies the descriptor, the
+`package.json` grammar peer dependency, and the README Languages table all
+agree. Then add the new row to the README Languages table.
 
-Edit `src/parser/config.ts`:
-
-Add extensions to `ALL_SUPPORTED_EXTENSIONS`:
-```typescript
-export const ALL_SUPPORTED_EXTENSIONS = [
-    '.ts', '.tsx', '.js', '.jsx',
-    '.py',
-    '.<ext1>', '.<ext2>',  // ADD YOUR EXTENSIONS
-];
-```
-
-Update `getLanguageFromPath()`:
-```typescript
-export function getLanguageFromPath(filePath: string): string {
-    if (filePath.endsWith('.ts') || filePath.endsWith('.tsx')) return 'typescript';
-    if (filePath.endsWith('.py')) return 'python';
-    if (filePath.endsWith('.<ext>')) return '<language>';  // ADD THIS
-    return 'code';
-}
-```
-
-### Step 9: Export Public API
+### Step 8: Export Public API
 
 Edit `src/parser/<language>/index.ts`:
 
@@ -285,7 +288,7 @@ export { <Language>CallResolver } from './resolver';
 export { <Language>Adapter } from './adapter';
 ```
 
-### Step 10: Test
+### Step 9: Test
 
 Create test file: `test/fixtures/sample.<ext>`
 
@@ -301,7 +304,7 @@ Expected output:
 - Calls resolved (local, imported, builtin)
 - Exports identified
 
-### Step 11: Build and Verify
+### Step 10: Build and Verify
 
 ```bash
 npm run build
@@ -390,14 +393,15 @@ import . "aliased"
 
 ## Checklist
 
-- [ ] Install `tree-sitter-<language>` npm package
+- [ ] Add `tree-sitter-<language>` to `peerDependencies` + `peerDependenciesMeta` (optional) in `package.json`
 - [ ] Create `src/parser/<language>/` directory
 - [ ] Implement `extractor.ts` (ArtifactExtractor interface)
 - [ ] Implement `imports.ts` (parse import statements)
 - [ ] Implement `resolver.ts` (resolve calls)
 - [ ] Implement `adapter.ts` (TreeSitterAdapter subclass)
-- [ ] Register adapter in `src/parser/registry.ts`
-- [ ] Update `src/parser/config.ts` extensions and language map
+- [ ] Add ONE entry to `LANGUAGES` in `src/parser/languages.ts` (the only wiring step — registry/config are derived)
+- [ ] Add the new row to the README Languages table
+- [ ] Run `npm run check:langs` (descriptor / peerDep / README parity)
 - [ ] Create test file and test script
 - [ ] Run `npm run build` and verify no errors
 - [ ] Test in webview (toggle files, see graphs)
@@ -432,6 +436,22 @@ These modules are **language-agnostic** and require no changes:
 **Once the adapter is registered, everything else works automatically.**
 
 ---
+
+## Grammar Toolchain Fallback
+
+Tree-sitter grammars are native modules. They are declared as **optional**
+peer dependencies precisely so a plain `npm install` of LLMem never hard-fails
+when a grammar can't be built:
+
+- npm installs a **prebuilt binary** matching your Node ABI when the grammar
+  publishes one.
+- Otherwise npm compiles the grammar with **node-gyp**, which needs a C/C++
+  toolchain (build-essential on Linux, Xcode Command Line Tools on macOS, MSVC
+  Build Tools on Windows) for the current Node ABI.
+- If neither path works, the install still completes; LLMem just skips that
+  language at runtime until the toolchain is present and you reinstall.
+
+Keep this in mind when choosing a grammar: prefer ones that publish prebuilds.
 
 ## FAQ
 

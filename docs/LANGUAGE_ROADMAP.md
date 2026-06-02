@@ -2,19 +2,27 @@
 
 Quick reference for adding new languages to LLMem.
 
+> The authoritative list of supported languages is the `LANGUAGES` descriptor
+> in `src/parser/languages.ts`. The tables below mirror it; `npm run check:langs`
+> guards that mirror (descriptor ↔ `package.json` grammar peerDeps ↔ README).
+
 ## Currently Supported
 
-| Language | Status | Extensions | Parser Type | Package |
-|----------|--------|------------|-------------|---------|
-| TypeScript/JavaScript | ✅ Full | `.ts`, `.tsx`, `.js`, `.jsx` | Compiler API | Built-in |
-| Python | ✅ Full | `.py` | Tree-sitter | `tree-sitter-python` |
+| Language | Extensions | Parser Type | Grammar package | Call graph |
+|----------|------------|-------------|-----------------|------------|
+| TypeScript/JavaScript | `.ts`, `.tsx`, `.js`, `.jsx` | Compiler API | Built-in | semantic |
+| Python | `.py` | Tree-sitter | `tree-sitter-python` | import-only |
+| C/C++ | `.c`, `.h`, `.cpp`, `.hpp`, `.cc`, `.cxx`, `.hxx` | Tree-sitter | `tree-sitter-cpp` | import-only |
+| Rust | `.rs` | Tree-sitter | `tree-sitter-rust` | import-only |
+| R | `.r`, `.R` | Tree-sitter | `@davisvaughan/tree-sitter-r` | import-only |
+
+Call graphs are TypeScript/JavaScript-only today. Every other language
+contributes import edges only (Python call-graph support is not yet shipped).
 
 ## Planned Languages
 
 | Language | Priority | Extensions | Complexity | Package |
 |----------|----------|------------|------------|---------|
-| Rust | High | `.rs` | Medium | `tree-sitter-rust` |
-| C/C++ | High | `.c`, `.cpp`, `.h`, `.hpp`, `.cc` | High | `tree-sitter-cpp` |
 | Go | High | `.go` | Low | `tree-sitter-go` |
 | Java | Medium | `.java` | Medium | `tree-sitter-java` |
 | C# | Medium | `.cs` | Medium | `tree-sitter-c-sharp` |
@@ -43,12 +51,18 @@ src/parser/<language>/
 
 ### 2. Modify Existing Files
 
+Adding a language is a **single-descriptor** change. You only touch two files;
+the registry, the config extension list, and `getLanguageFromPath()` are all
+**derived** from `LANGUAGES` — do NOT edit them by hand.
+
 | File | What to Change | Example |
 |------|----------------|---------|
-| `package.json` | Add tree-sitter package | `"tree-sitter-rust": "^0.21.0"` |
-| `src/parser/registry.ts` | Register adapter in constructor | `this.registerAdapter(new RustAdapter());` |
-| `src/parser/config.ts` | Add to `ALL_SUPPORTED_EXTENSIONS` | `'.rs'` |
-| `src/parser/config.ts` | Add to `getLanguageFromPath()` | `if (filePath.endsWith('.rs')) return 'rust';` |
+| `package.json` | Add the grammar to `peerDependencies` + `peerDependenciesMeta` (optional) | `"tree-sitter-rust": "^0.23.0"` |
+| `src/parser/languages.ts` | Add ONE entry to the `LANGUAGES` array (id, displayName, extensions, grammarPackage, callGraph, highlightId, `load()`) | see existing entries |
+| `README.md` | Add the row to the Languages table | — |
+
+Then run `npm run check:langs` to confirm the descriptor, the grammar peerDep,
+and the README table all agree (this also runs in CI).
 
 ### 3. Create Test Files
 
@@ -273,7 +287,8 @@ To add a new language:
 Fastest way to add a new language (copy-paste template):
 
 ```bash
-# 1. Install tree-sitter package
+# 1. Add the grammar to package.json peerDependencies + peerDependenciesMeta
+#    (optional:true). Then install it locally for development:
 npm install tree-sitter-<language>
 
 # 2. Create directory
@@ -289,11 +304,11 @@ find src/parser/<language> -type f -exec sed -i 's/python/<language>/g' {} +
 # 5. Update tree-sitter import
 # Edit extractor.ts: const Language = require('tree-sitter-<language>');
 
-# 6. Register in registry.ts
-# Add: this.registerAdapter(new <Language>Adapter());
+# 6. Add ONE entry to LANGUAGES in src/parser/languages.ts
+#    (the registry + config are derived — do NOT edit them by hand)
 
-# 7. Update config.ts
-# Add extensions and language ID
+# 7. Add the new row to the README Languages table, then verify parity
+npm run check:langs
 
 # 8. Test
 npm run build

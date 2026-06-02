@@ -35,6 +35,9 @@ jobs:
     - name: Compile
       run: npm run compile
 
+    - name: Languages parity (descriptor <-> peerDeps <-> README)
+      run: npm run check:langs
+
     - name: Run Tests
       run: npm test
 
