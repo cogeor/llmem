@@ -265,9 +265,6 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     { file: '.vscodeignore',
       phase: 'permanent',
       reason: 'VSIX packaging excludes the generated artifact directory.' },
-    { file: 'package.json',
-      phase: 'permanent',
-      reason: 'Extension contributes `llmem.artifactRoot` setting; canonical default value is `.artifacts`.' },
 
     // -----------------------------------------------------------------------
     // B. Top-level documentation
@@ -352,9 +349,6 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     { file: 'src/claude/web-launcher.ts',
       phase: 'permanent',
       reason: 'Default-param assignment for the legacy back-compat path; ignored when `ctx` is supplied.' },
-    { file: 'src/config-defaults.ts',
-      phase: 'permanent',
-      reason: 'Canonical default value for `RuntimeConfig.artifactRoot`. Single source of truth; if this entry ever moves, the rest of category D must follow.' },
 
     // -----------------------------------------------------------------------
     // E. IGNORED_FOLDERS / scan-skip lists in src/
@@ -500,12 +494,6 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     { file: 'tests/unit/application/scan-containment.test.ts',
       phase: 'permanent',
       reason: 'Fixture artifact dir for scan-containment unit test.' },
-    { file: 'tests/unit/application/viewer-data.test.ts',
-      phase: 'permanent',
-      reason: 'Fixture artifact dir for viewer-data unit test.' },
-    { file: 'tests/unit/application/workspace-context.test.ts',
-      phase: 'permanent',
-      reason: 'Asserts `RuntimeConfig.artifactRoot` default value is `.artifacts`.' },
     { file: 'tests/unit/claude-server/middleware.test.ts',
       phase: 'permanent',
       reason: 'Fixture builds context with `artifactRoot: \'.artifacts\'`.' },

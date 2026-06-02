@@ -11,7 +11,7 @@ import type { Config } from './core/config-types';
  * Default configuration values shared by all LLMem modules.
  */
 export const DEFAULT_CONFIG: Config = {
-    artifactRoot: '.artifacts',
+    artifactRoot: '.llmem/graph',
     maxFilesPerFolder: 20,
     maxFileSizeKB: 512,
 };

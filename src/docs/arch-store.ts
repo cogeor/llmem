@@ -1,18 +1,15 @@
 /**
- * .arch path mapping. Single owner of the documentation-tree paths
- * across LLMem.
+ * Documentation-tree path mapping. Single owner of the docs-tree paths
+ * across LLMem. The docs tree now lives under `.llmem/docs` (was `.arch`).
  *
- * Today's call sites (before Loop 04):
- * - src/webview/design-docs.ts:29       — archRoot construction
- * - src/webview/design-docs.ts:81-86    — design-doc key mapping (.md -> .html, README preserved)
- * - src/info/folder.ts:42, :224         — getFolderArchPath inlined
- * - src/info/mcp.ts:173                 — getFileArchPath inlined
- * - src/extension/hot-reload.ts:39      — archRoot construction (NOT migrated this loop)
- * - src/claude/server/arch-watcher.ts:52 — archRoot construction (NOT migrated this loop)
+ * Call sites that derive the docs root from this owner:
+ * - src/application/workspace-context.ts — getArchRoot + DOCS_DIR (archRoot / archRootRel)
+ * - src/extension/hot-reload.ts          — reads ctx.archRoot (follows this owner automatically)
+ * - src/claude/server/arch-watcher.ts    — reads ctx.archRoot / ctx.archRootRel (follows automatically)
  *
- * Loop 04 migrates info/folder.ts, info/mcp.ts, and webview/design-docs.ts
- * (the design-doc key mapper). The two host-watcher uses (hot-reload,
- * arch-watcher) migrate in Loops 06 / 11 when those services move.
+ * Because hot-reload and arch-watcher consume the resolved `ctx.archRoot`
+ * / `ctx.archRootRel` (computed once in workspace-context from DOCS_DIR),
+ * they pick up the new prefix with no edit here.
  *
  * Behavior pinned by tests/arch/design-doc-keys.test.ts. Any change to
  * getDesignDocKey must update the behavioral table in the same commit.
@@ -23,29 +20,29 @@ import type { WorkspaceRoot, AbsPath, RelPath } from '../core/paths';
 import { asAbsPath, asRelPath } from '../core/paths';
 import type { WorkspaceIO } from '../workspace/workspace-io';
 
-export const ARCH_DIR = '.arch';
+export const DOCS_DIR = '.llmem/docs';
 
 export function getArchRoot(root: WorkspaceRoot): AbsPath {
-    return asAbsPath(path.join(root, ARCH_DIR));
+    return asAbsPath(path.join(root, DOCS_DIR));
 }
 
 export function getFileArchPath(root: WorkspaceRoot, src: RelPath): AbsPath {
-    return asAbsPath(path.join(root, ARCH_DIR, `${src}.md`));
+    return asAbsPath(path.join(root, DOCS_DIR, `${src}.md`));
 }
 
 export function getFolderArchPath(root: WorkspaceRoot, src: RelPath): AbsPath {
-    return asAbsPath(path.join(root, ARCH_DIR, src, 'README.md'));
+    return asAbsPath(path.join(root, DOCS_DIR, src, 'README.md'));
 }
 
 /**
- * Map an absolute .arch path to its design-doc key.
+ * Map an absolute docs-tree path to its design-doc key.
  *
  * Rules (pinned by tests/arch/design-doc-keys.test.ts):
- * - .arch/src/parser.md           -> src/parser.html         (.md -> .html)
- * - .arch/src/graph/README.md     -> src/graph/README.md     (README preserved, case-insensitive)
- * - .arch/README.md               -> README.md
- * - .arch/Readme.md               -> Readme.md               (case preserved in stem; basename match is case-insensitive)
- * - .arch/docs/README.MD          -> docs/README.MD
+ * - .llmem/docs/src/parser.md           -> src/parser.html         (.md -> .html)
+ * - .llmem/docs/src/graph/README.md     -> src/graph/README.md     (README preserved, case-insensitive)
+ * - .llmem/docs/README.md               -> README.md
+ * - .llmem/docs/Readme.md               -> Readme.md               (case preserved in stem; basename match is case-insensitive)
+ * - .llmem/docs/docs/README.MD          -> docs/README.MD
  *
  * Backslash paths (Windows) are normalized to forward slashes in the result.
  */
@@ -56,9 +53,9 @@ export function getDesignDocKey(archRoot: AbsPath, archPath: AbsPath): string {
 }
 
 /**
- * Reverse of the .arch tree mapping: given an absolute path inside
- * `archRoot`, return the source-relative path (no `.arch/` prefix, no
- * `.md` suffix manipulation — that's getDesignDocKey's job).
+ * Reverse of the docs-tree mapping: given an absolute path inside
+ * `archRoot`, return the source-relative path (no `.llmem/docs/` prefix,
+ * no `.md` suffix manipulation — that's getDesignDocKey's job).
  *
  * Used by future watchers / walkers; not yet consumed inside this module.
  */
@@ -72,14 +69,14 @@ export function archToSourcePath(archRoot: AbsPath, archPath: AbsPath): RelPath 
  * aggregator (Loop 10) to mark `documented: true` on `FolderNode` entries.
  *
  * Folder-path conventions match `buildFolderTree`:
- *   - `'.'` for the workspace root (`.arch/README.md` exists).
- *   - `'src/parser'` for `.arch/src/parser/README.md`.
+ *   - `'.'` for the workspace root (`.llmem/docs/README.md` exists).
+ *   - `'src/parser'` for `.llmem/docs/src/parser/README.md`.
  *
  * Backslashes never appear in the result because `WorkspaceIO.readDir`
  * returns plain entry names (no separators inside) and we concatenate
  * with literal `/`.
  *
- * Returns an empty set if `.arch/` does not exist. Uses `WorkspaceIO`
+ * Returns an empty set if `.llmem/docs/` does not exist. Uses `WorkspaceIO`
  * for realpath-strong containment; symlinks pointing outside the
  * workspace surface as `PathEscapeError`. This helper does not catch —
  * callers can decide whether to swallow or rethrow.
@@ -92,7 +89,7 @@ export function archToSourcePath(archRoot: AbsPath, archPath: AbsPath): RelPath 
  */
 export async function scanArchFolders(io: WorkspaceIO): Promise<Set<string>> {
     const out = new Set<string>();
-    if (!(await io.exists(ARCH_DIR))) return out;
+    if (!(await io.exists(DOCS_DIR))) return out;
 
     async function walk(relDir: string): Promise<void> {
         const entries = await io.readDir(relDir);
@@ -109,17 +106,19 @@ export async function scanArchFolders(io: WorkspaceIO): Promise<Set<string>> {
             }
         }
         if (hasReadme) {
-            // Strip the leading `.arch/` segment; emit `'.'` for the
-            // workspace root (where .arch/README.md lives).
-            if (relDir === ARCH_DIR) {
+            // Strip the leading `.llmem/docs/` prefix; emit `'.'` for the
+            // workspace root (where .llmem/docs/README.md lives).
+            if (relDir === DOCS_DIR) {
                 out.add('.');
             } else {
-                // relDir is e.g. ".arch/src/parser" → "src/parser"
-                out.add(relDir.slice(ARCH_DIR.length + 1));
+                // relDir is e.g. ".llmem/docs/src/parser" → "src/parser".
+                // `.length + 1` covers the whole prefix string (any number
+                // of segments) plus the trailing separator.
+                out.add(relDir.slice(DOCS_DIR.length + 1));
             }
         }
     }
 
-    await walk(ARCH_DIR);
+    await walk(DOCS_DIR);
     return out;
 }

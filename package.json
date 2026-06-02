@@ -80,8 +80,8 @@
       "properties": {
         "llmem.artifactRoot": {
           "type": "string",
-          "default": ".artifacts",
-          "description": "Root folder for artifacts (relative to workspace root)."
+          "default": ".llmem/graph",
+          "description": "Root folder for graph artifacts (relative to workspace root)."
         },
         "llmem.maxFilesPerFolder": {
           "type": "number",

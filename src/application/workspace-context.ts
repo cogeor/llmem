@@ -52,7 +52,7 @@ import { NoopLogger } from '../core/logger';
 import { WorkspaceIO } from '../workspace/workspace-io';
 import type { Config } from '../core/config-types';
 import { DEFAULT_CONFIG } from '../config-defaults';
-import { getArchRoot } from '../docs/arch-store';
+import { getArchRoot, DOCS_DIR } from '../docs/arch-store';
 
 // ---------------------------------------------------------------------------
 // RuntimeConfig
@@ -156,7 +156,7 @@ export type CreateWorkspaceContextInput =
  *
  * Then in both arities: derive `artifactRoot` from `config.artifactRoot`
  * (with containment assertion), derive `archRoot` via `getArchRoot()`
- * (single source of truth for the `.arch` prefix), and assemble.
+ * (single source of truth for the `.llmem/docs` prefix), and assemble.
  */
 export async function createWorkspaceContext(
     input: CreateWorkspaceContextInput,
@@ -202,16 +202,23 @@ export async function createWorkspaceContext(
     // artifactRoot / archRoot derivations.
     const artifactRootAbs = toAbs(config.artifactRoot, workspaceRoot);
     assertContained(artifactRootAbs, workspaceRoot);
-    const artifactRootRel = toRel(artifactRootAbs, workspaceRoot);
+    // `toRel` yields OS-native separators; normalize to forward slashes so
+    // the relpath matches `archRootRel` (derived from the forward-slash
+    // `DOCS_DIR` const) and stays stable across platforms for routes / DTOs.
+    // Matters now that the default is multi-segment (`.llmem/graph`).
+    const artifactRootRel = asRelPath(
+        toRel(artifactRootAbs, workspaceRoot).replace(/\\/g, '/'),
+    );
 
-    // `getArchRoot` is the single source of truth for the `.arch` prefix
-    // (see `src/docs/arch-store.ts`). It returns AbsPath but does NOT
-    // call `assertContained`; we do it here for parity (cheap textual
-    // check; cannot fail given `path.join` with a literal `.arch`, but
-    // explicit is better).
+    // `getArchRoot` / `DOCS_DIR` are the single source of truth for the
+    // docs-tree prefix (`.llmem/docs`; see `src/docs/arch-store.ts`). It
+    // returns AbsPath but does NOT call `assertContained`; we do it here
+    // for parity (cheap textual check; cannot fail given `path.join` with
+    // the literal `DOCS_DIR`, but explicit is better). `archRootRel` is
+    // derived from the same const so it never drifts from the abs form.
     const archRootAbs = getArchRoot(workspaceRoot);
     assertContained(archRootAbs, workspaceRoot);
-    const archRootRel = asRelPath('.arch');
+    const archRootRel = asRelPath(DOCS_DIR);
 
     return {
         workspaceRoot,
@@ -234,7 +241,7 @@ export function getArtifactRootRel(ctx: WorkspaceContext): RelPath {
     return ctx.artifactRootRel;
 }
 
-/** Workspace-relative path of the `.arch` root (for design-doc keys). */
+/** Workspace-relative path of the docs root (`.llmem/docs`; for design-doc keys). */
 export function getArchRootRel(ctx: WorkspaceContext): RelPath {
     return ctx.archRootRel;
 }
