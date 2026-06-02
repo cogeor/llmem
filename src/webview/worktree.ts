@@ -1,5 +1,6 @@
 import * as path from 'path';
 import { ParserRegistry } from '../parser/registry';
+import { IGNORED_FOLDERS } from '../parser/config';
 import { createLogger } from '../common/logger';
 import { WorkspaceIO } from '../workspace/workspace-io';
 
@@ -44,14 +45,12 @@ export interface ITreeNode {
     callGraph?: 'semantic' | 'heuristic' | 'none';
 }
 
-// Always ignored folders (regardless of .gitignore)
-const ALWAYS_IGNORED = new Set([
-    'node_modules',
-    '.git',
-    '.artifacts',
-    '.vscode',
-    '.DS_Store'
-]);
+// PH-07: the scanner (parser/config IGNORED_FOLDERS) is the single source of
+// truth for folder ignores. The explorer previously kept a divergent
+// ALWAYS_IGNORED set that omitted venvs/target/dist/build/.arch, so the tree
+// rendered large vendored trees the scanner skipped. shouldIgnore now checks
+// IGNORED_FOLDERS by entry name (it is called per-entry before stat, so the
+// folded-in .DS_Store file name is matched too).
 
 /**
  * Parse .gitignore and return a set of patterns.
@@ -95,8 +94,8 @@ async function parseGitignore(io: WorkspaceIO): Promise<Set<string>> {
  * Simple implementation - matches exact names and basic glob patterns.
  */
 function shouldIgnore(name: string, relativePath: string, patterns: Set<string>): boolean {
-    // Check always ignored
-    if (ALWAYS_IGNORED.has(name)) return true;
+    // Check always ignored (shared scanner ignore list — PH-07)
+    if (IGNORED_FOLDERS.has(name)) return true;
 
     // Skip problematic file extensions that can cause issues (like Electron .asar archives, large CSVs)
     const SKIP_EXTENSIONS = [

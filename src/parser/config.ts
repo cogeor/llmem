@@ -119,9 +119,14 @@ export const IGNORED_FOLDERS = new Set([
     '.svn',
     '.idea',
     '.vscode',
-    // LLMem's own artifacts
+    // OS cruft (a file name, not a folder; matched per-entry by name — PH-07
+    // folded it here from the explorer's old ALWAYS_IGNORED set)
+    '.DS_Store',
+    // LLMem's own artifacts (.llmem is the centralized root; one folder name
+    // ignores the whole .llmem/ tree in the explorer walk — PH-07)
     '.artifacts',
     '.arch',
+    '.llmem',
     // JS / TS
     'node_modules',
     'dist',
