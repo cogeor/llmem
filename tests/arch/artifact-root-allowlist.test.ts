@@ -395,6 +395,9 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     // -----------------------------------------------------------------------
     // G. Architecture tests' own skip-directory lists
     // -----------------------------------------------------------------------
+    { file: 'tests/arch/arch-root-literals.test.ts',
+      phase: 'permanent',
+      reason: 'VS-B5 sibling guard for the `.arch` storage-root literal; its SKIP_DIRS set and scoping doc name `.artifacts` by design.' },
     { file: 'tests/arch/artifact-root-allowlist.test.ts',
       phase: 'permanent',
       reason: 'This file IS the allowlist test — its banner, regex, scan, ALLOWLIST entries, and assertion messages all mention the literal by design. Self-reference is permanent.' },
