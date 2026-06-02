@@ -46,6 +46,14 @@ import { computeAllFolderStatuses } from '../webview/graph-status';
 import { WatchService } from '../graph/worktree-state';
 import type { WorkspaceIO } from '../workspace/workspace-io';
 import type { WorkspaceContext } from './workspace-context';
+import { ensureGitignored } from './ensure-gitignored';
+
+/**
+ * Once-per-process guard so `ensureGitignored` does not re-read `.gitignore`
+ * on every viewer-data call. Keyed by workspace root so a process that serves
+ * multiple workspaces still ensures each one exactly once.
+ */
+const gitignoreEnsured = new Set<string>();
 
 /**
  * Shape of the data the viewer renders. Note: `designDocs` is RAW markdown.
@@ -89,6 +97,20 @@ export async function collectViewerData(
     // walks up to the nearest existing ancestor and asserts containment.
     const artifactRel = toWorkspaceRel(workspaceRoot, artifactRoot);
     await io.mkdirRecursive(artifactRel);
+
+    // First creation of the `.llmem/` dot-folder is our cue to ensure a single
+    // blanket `.llmem/` line in the repo's .gitignore (append-only, idempotent;
+    // see ensure-gitignored.ts). Once per workspace per process.
+    if (!gitignoreEnsured.has(workspaceRoot)) {
+        gitignoreEnsured.add(workspaceRoot);
+        try {
+            await ensureGitignored(workspaceRoot, io, undefined, logger);
+        } catch (e) {
+            logger.error(
+                `[WebviewDataService] ensureGitignored failed: ${e instanceof Error ? e.message : String(e)}`,
+            );
+        }
+    }
 
     // Load or generate split edge lists
     const importStore = new ImportEdgeListStore(artifactRoot, io);
