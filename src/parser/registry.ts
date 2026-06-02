@@ -9,8 +9,34 @@ import * as path from 'path';
 import { LanguageAdapter } from './adapter';
 import { ArtifactExtractor } from './interfaces';
 import { createLogger } from '../common/logger';
+import { isSupportedFile } from './config';
+import { LANGUAGES, CallGraphCapability } from './languages';
 
 const log = createLogger('parser-registry');
+
+/**
+ * Reconciled support facts for a single file, combining the RUNTIME registry
+ * (is a parser actually registered?) with the STATIC language descriptors
+ * (is this a known source extension, which grammar package enables it, and
+ * what call-graph capability does it have?).
+ *
+ * Computed Node-side and baked into the worktree payload so the browser UI can
+ * render a true 3-state affordance (live toggle / needs-grammar marker / plain)
+ * without ever importing the registry.
+ */
+export interface FileSupport {
+    /** A parser is actually registered for this extension at runtime. */
+    parsable: boolean;
+    /** Call-graph capability declared for this language ('none' if unknown). */
+    callGraph: CallGraphCapability;
+    /**
+     * Statically a known source extension but no runtime parser — the
+     * tree-sitter grammar is missing and must be installed to analyze.
+     */
+    needsGrammar: boolean;
+    /** NPM grammar package to install (from the language descriptor). */
+    installHint?: string;
+}
 
 /**
  * Singleton registry for language parsers
@@ -218,6 +244,34 @@ export class ParserRegistry {
     public isSupported(filePath: string): boolean {
         const ext = path.extname(filePath).toLowerCase();
         return this.extensionMap.has(ext);
+    }
+
+    /**
+     * Reconcile static vs runtime support for a file.
+     *
+     * Fixes the "toggle-noop": a known source extension whose grammar is not
+     * installed must NOT advertise a live watch toggle (it would silently do
+     * nothing). `getSupport` returns `parsable: false, needsGrammar: true` for
+     * such files so the UI can render a muted install hint instead.
+     *
+     * @param filePath File name or path (a bare basename works too)
+     */
+    public getSupport(filePath: string): FileSupport {
+        const ext = path.extname(filePath).toLowerCase();
+        const parsable = this.extensionMap.has(ext);
+        const needsGrammar = !parsable && isSupportedFile(filePath);
+
+        // Look up the language descriptor whose extensions include this ext.
+        const descriptor = LANGUAGES.find(lang =>
+            lang.extensions.some(e => e.toLowerCase() === ext)
+        );
+
+        return {
+            parsable,
+            callGraph: descriptor ? descriptor.callGraph : 'none',
+            needsGrammar,
+            installHint: descriptor?.grammarPackage,
+        };
     }
 
     /**

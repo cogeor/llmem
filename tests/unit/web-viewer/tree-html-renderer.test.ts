@@ -25,6 +25,7 @@ const { TreeHtmlRenderer } = require(
         render(node: unknown): string;
         isParsableFile(node: unknown): boolean;
         hasAnyParsableFiles(node: unknown): boolean;
+        needsGrammar(node: unknown): boolean;
     };
 };
 
@@ -125,6 +126,37 @@ test('tree-html-renderer.isParsableFile: true iff isSupported === true', () => {
     assert.equal(renderer.isParsableFile({ isSupported: true } as unknown as never), true);
     assert.equal(renderer.isParsableFile({ isSupported: false } as unknown as never), false);
     assert.equal(renderer.isParsableFile({} as unknown as never), false);
+});
+
+test('tree-html-renderer: needs-grammar file renders a muted marker, not a status-btn toggle', () => {
+    const renderer = new TreeHtmlRenderer();
+    const html = renderer.render({
+        type: 'file',
+        path: 'src/app.py',
+        name: 'app.py',
+        lineCount: 1,
+        isSupported: false,
+        needsGrammar: true,
+        installHint: 'tree-sitter-python',
+    });
+    const doc = parseTree(html);
+    const node = doc.querySelector('[data-path="src/app.py"]');
+    assert.ok(node, 'file node rendered');
+    assert.equal(node!.querySelector('.status-btn'), null, 'needs-grammar file has no live toggle');
+    const marker = node!.querySelector('.needs-grammar');
+    assert.ok(marker, 'needs-grammar file gets a muted marker');
+    assert.equal(
+        marker!.getAttribute('title'),
+        'Install tree-sitter-python to analyze this file',
+        'hover explains why the file is not analyzable',
+    );
+});
+
+test('tree-html-renderer.needsGrammar: true iff needsGrammar === true', () => {
+    const renderer = new TreeHtmlRenderer();
+    assert.equal(renderer.needsGrammar({ needsGrammar: true } as unknown as never), true);
+    assert.equal(renderer.needsGrammar({ needsGrammar: false } as unknown as never), false);
+    assert.equal(renderer.needsGrammar({} as unknown as never), false);
 });
 
 test('tree-html-renderer.hasAnyParsableFiles: true iff any descendant is parsable', () => {

@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { isSupportedFile } from '../parser/config';
+import { ParserRegistry } from '../parser/registry';
 import { createLogger } from '../common/logger';
 import { WorkspaceIO } from '../workspace/workspace-io';
 
@@ -32,6 +32,16 @@ export interface ITreeNode {
     // older serialized tree blobs still parse — the browser defaults to
     // false (file is rendered, just not toggleable for watching).
     isSupported?: boolean;
+
+    // PH-04: a statically-known source extension whose tree-sitter grammar is
+    // NOT installed at runtime. Such files must render a muted "install hint"
+    // marker instead of a live toggle (the toggle would be a silent no-op).
+    needsGrammar?: boolean;
+    // PH-04: NPM grammar package to install to make this file parsable.
+    installHint?: string;
+    // PH-04: call-graph capability for this file's language (carried into the
+    // vis payload; python-callgraph's badge consumes it later).
+    callGraph?: 'semantic' | 'heuristic' | 'none';
 }
 
 // Always ignored folders (regardless of .gitignore)
@@ -192,13 +202,18 @@ export async function generateWorkTree(
             }
         }
 
+        const support = ParserRegistry.getInstance().getSupport(name);
+
         return {
             name,
             path: relativePath,
             type: 'file',
             size,
             lineCount,
-            isSupported: isSupportedFile(name)
+            isSupported: support.parsable,
+            needsGrammar: support.needsGrammar,
+            installHint: support.installHint,
+            callGraph: support.callGraph
         };
     } else if (stats.isDirectory()) {
         const children: ITreeNode[] = [];

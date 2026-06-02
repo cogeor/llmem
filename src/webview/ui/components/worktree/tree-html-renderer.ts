@@ -36,6 +36,15 @@ export class TreeHtmlRenderer {
         return (node as FileNode & { isSupported?: boolean }).isSupported === true;
     }
 
+    /**
+     * PH-04: a file whose extension is a known source type but whose
+     * tree-sitter grammar is not installed at runtime. Such files render a
+     * muted install-hint marker instead of a live (no-op) watch toggle.
+     */
+    needsGrammar(node: FileNode): boolean {
+        return (node as FileNode & { needsGrammar?: boolean }).needsGrammar === true;
+    }
+
     /** Check if a directory contains any parsable files (recursively). */
     hasAnyParsableFiles(dirNode: WorkTreeNode): boolean {
         if (dirNode.type === 'file') {
@@ -76,6 +85,15 @@ export class TreeHtmlRenderer {
         const safePath = escape(node.path);
         const safeName = escape(node.name);
 
+        // PH-04: 3rd state — a known source file whose grammar is missing.
+        // Distinct muted marker (NOT a live toggle), shown only when the file
+        // is not toggleable so the existing toggle path stays unchanged.
+        const showNeedsGrammar = !showToggle && !isDir && this.needsGrammar(node as FileNode);
+        const installHint = showNeedsGrammar
+            ? (node as FileNode & { installHint?: string }).installHint ?? 'the grammar'
+            : '';
+        const needsGrammarTitle = `Install ${installHint} to analyze this file`;
+
         let html = `
             <li class="tree-node" data-path="${safePath}" data-type="${node.type}">
                 <div class="tree-item" style="padding-left: ${depth * 12 + 12}px">
@@ -95,6 +113,19 @@ export class TreeHtmlRenderer {
                         cursor: pointer;
                         flex-shrink: 0;
                     "></button>` : ''}
+                    ${showNeedsGrammar ? `<span class="needs-grammar" title="${escape(needsGrammarTitle)}" style="
+                        width: 12px;
+                        height: 12px;
+                        min-width: 12px;
+                        min-height: 12px;
+                        box-sizing: border-box;
+                        border-radius: 50%;
+                        border: 1px dashed #999;
+                        background-color: transparent;
+                        margin-left: auto;
+                        opacity: 0.5;
+                        flex-shrink: 0;
+                    "></span>` : ''}
                 </div>
         `;
 

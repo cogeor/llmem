@@ -50,6 +50,16 @@ export interface FileNode {
      * to `false` if missing.
      */
     isSupported?: boolean;
+    /**
+     * PH-04: statically a known source extension but its tree-sitter grammar
+     * is not installed at runtime. The renderer shows a muted install hint
+     * marker (not a live toggle) for these files.
+     */
+    needsGrammar?: boolean;
+    /** PH-04: NPM grammar package to install to make this file parsable. */
+    installHint?: string;
+    /** PH-04: call-graph capability for this file's language (badge consumes it). */
+    callGraph?: 'semantic' | 'heuristic' | 'none';
 }
 
 export interface DirectoryNode {
