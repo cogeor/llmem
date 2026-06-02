@@ -256,15 +256,8 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     { file: '.env.example',
       phase: 'permanent',
       reason: 'Example env file documents `ARTIFACT_ROOT=.artifacts` as the default.' },
-    { file: '.eslintrc.json',
-      phase: 'permanent',
-      reason: 'ESLint ignore pattern for the generated artifact directory.' },
-    { file: '.gitignore',
-      phase: 'permanent',
-      reason: 'git-ignore for the generated artifact directory.' },
-    { file: '.vscodeignore',
-      phase: 'permanent',
-      reason: 'VSIX packaging excludes the generated artifact directory.' },
+    // VS-B4: .gitignore / .eslintrc.json / .vscodeignore now ignore the
+    // centralized `.llmem/` tree (blanket), not `.artifacts` — rows removed.
 
     // -----------------------------------------------------------------------
     // B. Top-level documentation

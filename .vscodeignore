@@ -10,8 +10,7 @@ plan/**
 .env
 .env.example
 scripts/**
-.artifacts/**
-.arch/**
+.llmem/**
 
 # Source files (we include dist/ instead)
 src/**
