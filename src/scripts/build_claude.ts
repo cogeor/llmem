@@ -32,10 +32,12 @@ async function build() {
     // first-party TypeScript only; npm deps are resolved at runtime.
     const pkg = fs.readJsonSync(path.join(root, 'package.json')) as {
         dependencies?: Record<string, string>;
+        optionalDependencies?: Record<string, string>;
         peerDependencies?: Record<string, string>;
     };
     const external = [
         ...Object.keys(pkg.dependencies ?? {}),
+        ...Object.keys(pkg.optionalDependencies ?? {}),
         ...Object.keys(pkg.peerDependencies ?? {}),
         // Node built-ins are external by default in platform: 'node', but
         // the `vscode` ambient module is referenced behind type-only imports

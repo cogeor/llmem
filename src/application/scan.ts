@@ -200,7 +200,32 @@ export async function scanFile(
 
     // Get parser from registry (language-agnostic)
     const registry = ParserRegistry.getInstance();
-    const parser = registry.getParser(filePath, workspaceRoot);
+    // getParser instantiates the language extractor, which lazily require()s
+    // the tree-sitter native core inside its constructor. If that native
+    // addon failed to build/install, the constructor throws — surface it as a
+    // ScanResult error entry (not an unhandled crash) with an actionable hint.
+    let parser;
+    try {
+        parser = registry.getParser(filePath, workspaceRoot);
+    } catch (e: any) {
+        const fileExt = path.extname(filePath).toLowerCase();
+        logger.warn(`[GenerateEdges] Failed to initialize parser for ${filePath}: ${e?.message ?? String(e)}`);
+        return {
+            filesProcessed: 0,
+            filesSkipped: 1,
+            errors: [{
+                filePath,
+                message:
+                    `Failed to initialize parser for ${fileExt} (${filePath}): ${e?.message ?? String(e)}. ` +
+                    `The tree-sitter native module may be missing or failed to build — ` +
+                    `install build tools or a prebuilt binary for your Node version and reinstall.`,
+                cause: e,
+            }],
+            newEdges: 0,
+            totalEdges: callStore.getStats().edges,
+            unsupportedSourceLikeCounts: {},
+        };
+    }
 
     if (!parser) {
         const fileExt = path.extname(filePath).toLowerCase();
@@ -348,7 +373,27 @@ export async function scanFolder(
 
     for (const absoluteFilePath of sourceFiles) {
         const relativePath = path.relative(workspaceRoot, absoluteFilePath).replace(/\\/g, '/');
-        const parser = registry.getParser(absoluteFilePath, workspaceRoot);
+
+        // getParser instantiates the language extractor, which lazily
+        // require()s the tree-sitter native core inside its constructor. If
+        // that native addon failed to build/install, the constructor throws —
+        // surface it as a per-file ScanError (not an unhandled crash) with an
+        // actionable hint, then skip the file.
+        let parser;
+        try {
+            parser = registry.getParser(absoluteFilePath, workspaceRoot);
+        } catch (e: any) {
+            errors.push({
+                filePath: relativePath,
+                message:
+                    `Failed to initialize parser for ${relativePath}: ${e?.message ?? String(e)}. ` +
+                    `The tree-sitter native module may be missing or failed to build — ` +
+                    `install build tools or a prebuilt binary for your Node version and reinstall.`,
+                cause: e,
+            });
+            skippedCount++;
+            continue;
+        }
 
         if (!parser) {
             errors.push({
