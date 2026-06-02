@@ -12,7 +12,10 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [20.x, 22.x]
+        # 20.19.0 is the declared engines.node floor (PH-01): chokidar 5 is
+        # ESM-only and require()ing it throws ERR_REQUIRE_ESM below 20.19.0,
+        # so CI must exercise the exact floor, not a floating 20.x.
+        node-version: ['20.19.0', 22.x]
 
     steps:
     - uses: actions/checkout@v4
