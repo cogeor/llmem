@@ -60,11 +60,10 @@ export class Router {
         // Parent-grouped visibility toggle.
         //
         // Routes that share a DOM parent SWAP based on currentView (one
-        // visible, one hidden). Today: #graph-view, #package-view, and
-        // #folder-structure-view all live inside #graph-pane's content
-        // area and are siblings; the active one is shown, the others are
-        // hidden. #design-view is solo in #design-pane and is left alone
-        // by this toggle.
+        // visible, one hidden). Today: #graph-view and
+        // #folder-structure-view both live inside #graph-pane's content
+        // area and are siblings; the active one is shown, the other is
+        // hidden.
         const groups = new Map<Element, Array<{ name: string; el: HTMLElement }>>();
         for (const [name, comp] of Object.entries(this.routes)) {
             if (comp.el === undefined || comp.el === null) continue;
@@ -84,18 +83,6 @@ export class Router {
                 }
             }
         }
-
-        // Pane-level visibility for the solo 'design' route. With the
-        // parent-grouped toggle above unable to give it a visible
-        // response, hide the right-side graph pane when 'design' is
-        // active so the design pane fills the remaining width:
-        //   - currentView='design'              → hide #graph-pane + splitter-2.
-        //   - currentView='graph'/'packages'/'folders' → show #graph-pane + splitter-2.
-        const graphPane = document.getElementById('graph-pane');
-        const splitter2 = document.getElementById('splitter-2');
-        const showGraphPane = viewName !== 'design';
-        if (graphPane) graphPane.style.display = showGraphPane ? '' : 'none';
-        if (splitter2) splitter2.style.display = showGraphPane ? '' : 'none';
     }
 
     unmount() {

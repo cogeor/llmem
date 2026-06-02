@@ -12,9 +12,9 @@ export class ThemeManager {
 
     private init(): void {
         const storedTheme = localStorage.getItem(ThemeManager.STORAGE_KEY);
-        // Default to dark if not stored, or respect system preference if we wanted to get fancy
-        // For now, default dark matches current behavior
-        const theme = storedTheme || ThemeManager.DARK_THEME;
+        // Default to light when no preference is stored — light reads better
+        // for the graph/folder views. A stored choice (either direction) wins.
+        const theme = storedTheme || ThemeManager.LIGHT_THEME;
         this.applyTheme(theme);
     }
 

@@ -46,10 +46,8 @@ test('shell renderer emits all required mount points (static mode)', () => {
         );
     }
 
-    // Loop 01 closed gaps: explicit IDs the VS Code shell was missing.
+    // Explicit IDs that must survive the 2-pane layout refactor.
     assert.ok(html.includes('id="view-toggle"'));
-    assert.ok(html.includes('id="design-mode-toggle"'));
-    assert.ok(html.includes('id="package-view"'));
     assert.ok(html.includes('id="folder-structure-view"'));
 
     // The folder-structure stylesheet must be referenced.

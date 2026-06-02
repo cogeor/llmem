@@ -6,11 +6,13 @@
  *
  * Routes:
  *   - 'graph'    → #graph-view
- *   - 'design'   → #design-view (solo in #design-pane; router hides
- *                  #graph-pane when this route is active so design
- *                  fills the remaining width)
- *   - 'packages' → #package-view
  *   - 'folders'  → #folder-structure-view (orthogonal folder graph)
+ *
+ * The legacy 'design' and 'packages' routes were retired — the design
+ * pane was removed (2-pane Explorer | Graph layout) and folder-level
+ * package arcs folded into the Folders view. The AppState union still
+ * carries those literals for now so the dormant PackageView/DesignTextView
+ * modules keep type-checking; the toggle simply no longer surfaces them.
  *
  * The component intentionally calls `state.set({ currentView })` rather
  * than `router.setRoute(...)` — Router has no `setRoute` method; the
@@ -60,8 +62,6 @@ export class ViewToggle {
 
     private render(active: ViewName): void {
         const isGraph = active === 'graph';
-        const isDesign = active === 'design';
-        const isPackages = active === 'packages';
         const isFolders = active === 'folders';
         // safe: structural template; class names and labels are
         // author-controlled literals; `active` is the AppState union
@@ -69,8 +69,6 @@ export class ViewToggle {
         this.el.innerHTML = `
             <div class="view-toggle" role="tablist">
                 <button class="view-toggle-btn ${isGraph ? 'active' : ''}" data-view="graph" type="button" role="tab" aria-selected="${isGraph}">Graph</button>
-                <button class="view-toggle-btn ${isDesign ? 'active' : ''}" data-view="design" type="button" role="tab" aria-selected="${isDesign}">Design</button>
-                <button class="view-toggle-btn ${isPackages ? 'active' : ''}" data-view="packages" type="button" role="tab" aria-selected="${isPackages}">Packages</button>
                 <button class="view-toggle-btn ${isFolders ? 'active' : ''}" data-view="folders" type="button" role="tab" aria-selected="${isFolders}">Folders</button>
             </div>
         `;
@@ -81,7 +79,7 @@ export class ViewToggle {
             const target = (ev.target as HTMLElement).closest('.view-toggle-btn');
             if (target === null) return;
             const view = (target as HTMLElement).dataset.view;
-            if (view !== 'graph' && view !== 'design' && view !== 'packages' && view !== 'folders') return;
+            if (view !== 'graph' && view !== 'folders') return;
             this.state.set({ currentView: view });
         });
     }
