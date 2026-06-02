@@ -24,38 +24,33 @@ import { CallEdgeListStore, ImportEdgeListStore, SchemaMismatchError } from '../
 import { artifactToEdgeList } from '../graph/artifact-converter';
 import { countFolderLines } from '../parser/line-counter';
 import { IGNORED_FOLDERS } from '../parser/config';
+import { LANGUAGES } from '../parser/languages';
 import { ParserRegistry } from '../parser/registry';
 import type { Logger } from '../core/logger';
 import type { WorkspaceContext } from './workspace-context';
 
 /**
- * Hardcoded source-like extension → install-hint package(s).
+ * Source-like extension → install-hint package, derived from the `LANGUAGES`
+ * descriptor: every language that declares a `grammarPackage` (i.e. needs a
+ * tree-sitter grammar to parse) contributes its extensions, each mapped to
+ * that grammar package. TypeScript/JavaScript has no grammarPackage and so
+ * is excluded — it is always parsable via the compiler API and never needs a
+ * hint.
  *
- * Intentionally NOT derived from `ParserRegistry` state — the whole point
- * of this map is to nudge users toward grammars they have not installed
- * yet. Deriving it from registry state would silently shrink the hint
- * surface to languages already loaded, defeating the purpose.
+ * This is the install-hint surface, NOT runtime registry state: it nudges
+ * users toward grammars they have not installed yet, so it must list every
+ * known source-like extension regardless of what is currently loaded.
  *
  * All C/C++ family extensions (`.c`, `.h`, `.cpp`, `.hpp`, `.cc`, `.cxx`,
- * `.hxx`) collapse to a single `tree-sitter-cpp` hint at format time —
- * they share one grammar package. The `.r`/`.R` extensions collapse to
- * one line naming both candidate packages.
- *
- * Keys are lowercased extensions with a leading dot (matching the output
- * of `path.extname().toLowerCase()`).
+ * `.hxx`) share the `tree-sitter-cpp` package and collapse to a single hint
+ * at format time. Keys are lowercased extensions with a leading dot (matching
+ * the output of `path.extname().toLowerCase()`).
  */
-const SOURCE_LIKE_INSTALL_HINTS: ReadonlyMap<string, string> = new Map([
-    ['.py', 'tree-sitter-python'],
-    ['.rs', 'tree-sitter-rust'],
-    ['.c', 'tree-sitter-cpp'],
-    ['.h', 'tree-sitter-cpp'],
-    ['.cpp', 'tree-sitter-cpp'],
-    ['.hpp', 'tree-sitter-cpp'],
-    ['.cc', 'tree-sitter-cpp'],
-    ['.cxx', 'tree-sitter-cpp'],
-    ['.hxx', 'tree-sitter-cpp'],
-    ['.r', 'tree-sitter-r or @davisvaughan/tree-sitter-r'],
-]);
+const SOURCE_LIKE_INSTALL_HINTS: ReadonlyMap<string, string> = new Map(
+    LANGUAGES.filter((l) => l.grammarPackage).flatMap((l) =>
+        l.extensions.map((e): [string, string] => [e.toLowerCase(), l.grammarPackage!]),
+    ),
+);
 
 /** Lowercased C/C++ family extensions — collapse to a single hint line. */
 const CPP_FAMILY_EXTS: ReadonlySet<string> = new Set([
