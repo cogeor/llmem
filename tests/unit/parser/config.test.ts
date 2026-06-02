@@ -80,6 +80,10 @@ test('getLanguageFromPath returns "code" (not "go") for .go files', () => {
     assert.equal(getLanguageFromPath('main.go'), 'code');
 });
 
+test('getLanguageFromPath returns "code" (not "dart") for .dart files (ghost removed)', () => {
+    assert.equal(getLanguageFromPath('Foo.dart'), 'code');
+});
+
 test('getLanguageFromPath still returns real language IDs for supported files', () => {
     assert.equal(getLanguageFromPath('foo.ts'), 'typescript');
     assert.equal(getLanguageFromPath('foo.py'), 'python');
