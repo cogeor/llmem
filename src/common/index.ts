@@ -3,7 +3,7 @@
  */
 
 export {
-    Logger,
+    StructuredLogger,
     LogLevel,
     LogEntry,
     LoggerConfig,

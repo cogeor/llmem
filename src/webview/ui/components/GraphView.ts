@@ -9,14 +9,19 @@
 import { GraphRenderer } from "../graph/GraphRenderer";
 import { DataProvider } from "../services/dataProvider";
 import { State } from "../state";
-import { AppState, GraphData, WorkTreeNode, DirectoryNode } from "../types";
-import { parseGraphId } from "../../../core/ids";
+import { AppState, GraphData, WorkTreeNode } from "../types";
 import { escape } from "../utils/escape";
 import { WebviewLogger, createWebviewLogger } from "../services/webview-logger";
 import {
     EMPTY_STATE_MESSAGE,
     shouldShowGraphEmptyState,
 } from "./graph-empty-state";
+import { findNode, collectSubtreeFiles } from "./graphViewWorktree";
+import {
+    nodeClickSelection,
+    folderClickSelection,
+    fileClickSelection,
+} from "./graphViewSelection";
 
 interface Props {
     el: HTMLElement;
@@ -216,46 +221,19 @@ export class GraphView {
         }
     }
 
-    /**
-     * Handle node click from graph.
-     *
-     * Loop 03 bugfix: this previously searched the node ID for a '#'
-     * fragment, but node IDs use the canonical separator owned by
-     * src/core/ids.ts, so that branch never fired and entity clicks sent
-     * the full entity ID as `selectedPath`. The contract refactor now parses
-     * node IDs correctly and selects the entity's containing file.
-     */
+    /** Handle node click from graph (selection logic in graphViewSelection). */
     private handleNodeClick(nodeId: string): void {
-        const parsed = parseGraphId(nodeId);
-        const filePath = parsed.kind === 'entity' ? parsed.fileId : nodeId;
-
-        this.state.set({
-            selectedPath: filePath,
-            selectedType: 'file',
-            selectionSource: 'graph'
-        });
+        this.state.set(nodeClickSelection(nodeId));
     }
 
-    /**
-     * Handle folder click from graph.
-     */
+    /** Handle folder click from graph. */
     private handleFolderClick(folderPath: string): void {
-        this.state.set({
-            selectedPath: folderPath,
-            selectedType: 'directory',
-            selectionSource: 'graph'
-        });
+        this.state.set(folderClickSelection(folderPath));
     }
 
-    /**
-     * Handle file click from graph.
-     */
+    /** Handle file click from graph. */
     private handleFileClick(filePath: string): void {
-        this.state.set({
-            selectedPath: filePath,
-            selectedType: 'file',
-            selectionSource: 'graph'
-        });
+        this.state.set(fileClickSelection(filePath));
     }
 
     /**
@@ -309,32 +287,11 @@ export class GraphView {
 
     getNode(path: string): WorkTreeNode | undefined {
         if (!this.worktree) return undefined;
-        return this.findNode(this.worktree, path);
-    }
-
-    private findNode(node: WorkTreeNode, path: string): WorkTreeNode | undefined {
-        if (node.path === path) return node;
-        if (node.type === 'directory' && (node as DirectoryNode).children) {
-            for (const child of (node as DirectoryNode).children) {
-                const found = this.findNode(child, path);
-                if (found) return found;
-            }
-        }
-        return undefined;
+        return findNode(this.worktree, path);
     }
 
     collectSubtreeFiles(dirNode: WorkTreeNode): Set<string> {
-        const files = new Set<string>();
-        const walk = (node: WorkTreeNode) => {
-            if (!node) return;
-            if (node.type === "file") {
-                files.add(node.path);
-            } else if (node.type === "directory" && (node as DirectoryNode).children) {
-                (node as DirectoryNode).children.forEach(walk);
-            }
-        };
-        walk(dirNode);
-        return files;
+        return collectSubtreeFiles(dirNode);
     }
 
     // --- Resize Handling ---

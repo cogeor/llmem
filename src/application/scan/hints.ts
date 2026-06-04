@@ -6,11 +6,12 @@
  * `formatUnsupportedSourceHints`.
  */
 
-import { LANGUAGES } from '../../parser/languages';
+import { LANGUAGE_DESCRIPTORS } from '../../parser/language-descriptors';
 
 /**
- * Source-like extension → install-hint package, derived from the `LANGUAGES`
- * descriptor: every language that declares a `grammarPackage` (i.e. needs a
+ * Source-like extension → install-hint package, derived from the
+ * `LANGUAGE_DESCRIPTORS` static metadata: every language that declares a
+ * `grammarPackage` (i.e. needs a
  * tree-sitter grammar to parse) contributes its extensions, each mapped to
  * that grammar package. TypeScript/JavaScript has no grammarPackage and so
  * is excluded — it is always parsable via the compiler API and never needs a
@@ -26,7 +27,7 @@ import { LANGUAGES } from '../../parser/languages';
  * the output of `path.extname().toLowerCase()`).
  */
 export const SOURCE_LIKE_INSTALL_HINTS: ReadonlyMap<string, string> = new Map(
-    LANGUAGES.filter((l) => l.grammarPackage).flatMap((l) =>
+    LANGUAGE_DESCRIPTORS.filter((l) => l.grammarPackage).flatMap((l) =>
         l.extensions.map((e): [string, string] => [e.toLowerCase(), l.grammarPackage!]),
     ),
 );

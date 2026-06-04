@@ -8,43 +8,33 @@
  * - watchedFiles: string[] (relative file paths)
  * - fileHashes: Record<string, string> (path -> hash for change detection)
  *
- * Loop 08 deleted the last preserved free helper (`unsafeLegacyListParsableFiles`);
- * the only remaining listing helper is `listParsableFilesIO`, which is realpath-strong.
+ * B7 split: the persisted-state types/constants live in
+ * `worktree-state/types.ts` and the parsable-file helpers in
+ * `worktree-state/parsable-files.ts`. This module re-exports the public
+ * symbols so importers are unchanged.
  */
 
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { createLogger } from '../common/logger';
 import { WorkspaceIO } from '../workspace/workspace-io';
+import {
+    WatchStateV1,
+    WatchStateV2,
+    STATE_VERSION,
+    STATE_FILENAME,
+} from './worktree-state/types';
+import {
+    PARSABLE_EXTS,
+    isParsableFile,
+    listParsableFilesIO,
+} from './worktree-state/parsable-files';
+
+// Re-export the public types/utilities so existing importers of
+// `graph/worktree-state` keep working unchanged.
+export { WatchStateV2, isParsableFile, listParsableFilesIO, PARSABLE_EXTS };
 
 const log = createLogger('watch-service');
-
-// ============================================================================
-// Types
-// ============================================================================
-
-/** V2 state format - file-only */
-export interface WatchStateV2 {
-    version: string;
-    timestamp: string;
-    watchedFiles: string[];                    // Only file paths, no directories
-    fileHashes: Record<string, string>;        // path -> SHA-256 hash
-}
-
-/** Legacy V1 format for migration */
-interface WatchStateV1 {
-    version: string;
-    watchedPaths: { path: string; type: 'file' | 'directory'; hash: string }[];
-    fileHashes: Record<string, string>;
-}
-
-// ============================================================================
-// Constants
-// ============================================================================
-
-const STATE_VERSION = '2.0.0';
-const STATE_FILENAME = 'worktree-state.json';
-const PARSABLE_EXTS = ['.ts', '.tsx', '.js', '.jsx', '.py', '.java', '.go', '.rs', '.c', '.cpp', '.h', '.hpp'];
 
 // ============================================================================
 // WatchService Class
@@ -315,60 +305,4 @@ export class WatchService {
 
         return changed;
     }
-}
-
-// ============================================================================
-// Utility Functions
-// ============================================================================
-
-/**
- * Check if a file is parsable based on extension.
- */
-export function isParsableFile(filename: string): boolean {
-    const ext = path.extname(filename).toLowerCase();
-    return PARSABLE_EXTS.includes(ext);
-}
-
-/**
- * L23: realpath-strong variant of `listParsableFiles`. Walks the
- * workspace-relative `startRel` via `WorkspaceIO.readDir` + `lstat`,
- * returning absolute paths (anchored on `io.getRealRoot()`). Symlinks
- * are deliberately skipped via `lstat` to avoid double-counting and to
- * stop the walk at symlink boundaries; targets pointing outside the
- * workspace would be rejected by `readDir`'s realpath check anyway.
- */
-export async function listParsableFilesIO(
-    io: WorkspaceIO,
-    startRel: string,
-): Promise<string[]> {
-    const files: string[] = [];
-    const root = io.getRealRoot();
-
-    async function walkDir(rel: string) {
-        let entries: string[];
-        try {
-            entries = await io.readDir(rel);
-        } catch {
-            return;
-        }
-        for (const name of entries) {
-            if (name.startsWith('.') || name === 'node_modules') continue;
-            const childRel = rel === '' || rel === '.' ? name : path.join(rel, name);
-            let st;
-            try {
-                st = await io.lstat(childRel);
-            } catch {
-                continue;
-            }
-            if (st.isSymbolicLink()) continue;
-            if (st.isDirectory()) {
-                await walkDir(childRel);
-            } else if (st.isFile() && isParsableFile(name)) {
-                files.push(path.join(root, childRel));
-            }
-        }
-    }
-
-    await walkDir(startRel);
-    return files.sort();
 }

@@ -15,6 +15,11 @@
  */
 
 import { createLogger } from '../common/logger';
+import { redact, summarize } from './observer-format';
+
+// Re-export the pure formatting helpers so the public surface is
+// unchanged for importers of `./observer` (Loop 21 split).
+export { redact, summarize } from './observer-format';
 
 // ============================================================================
 // Types
@@ -55,90 +60,6 @@ export interface Observer {
 
     /** Called when a request fails */
     onError: (ctx: ObserverContext, err: unknown) => void;
-}
-
-// ============================================================================
-// Redaction and Summarization
-// ============================================================================
-
-/**
- * Sensitive field names that should be redacted from logs
- */
-const SENSITIVE_FIELDS = new Set([
-    'token',
-    'apikey',
-    'password',
-    'secret',
-    'authorization',
-    'credential',
-    'private',
-    'privatekey',
-]);
-
-/**
- * Redact sensitive fields from parameters
- * Preserves structure but removes secrets
- */
-export function redact(params: unknown): unknown {
-    if (!params || typeof params !== 'object') {
-        return params;
-    }
-
-    if (Array.isArray(params)) {
-        return params.map(item => redact(item));
-    }
-
-    const out: Record<string, unknown> = {};
-
-    for (const [key, value] of Object.entries(params)) {
-        const lowerKey = key.toLowerCase();
-
-        if (SENSITIVE_FIELDS.has(lowerKey)) {
-            out[key] = '[REDACTED]';
-        } else if (typeof value === 'object' && value !== null) {
-            out[key] = redact(value);
-        } else {
-            out[key] = value;
-        }
-    }
-
-    return out;
-}
-
-/**
- * Summarize result without dumping full content
- * Useful for large responses
- */
-export function summarize(result: unknown): unknown {
-    if (result == null) {
-        return null;
-    }
-
-    if (typeof result === 'string') {
-        return {
-            type: 'string',
-            length: result.length,
-            preview: result.length > 100 ? result.slice(0, 100) + '...' : result,
-        };
-    }
-
-    if (Array.isArray(result)) {
-        return {
-            type: 'array',
-            length: result.length,
-        };
-    }
-
-    if (typeof result === 'object') {
-        return {
-            type: 'object',
-            keys: Object.keys(result).slice(0, 25),
-        };
-    }
-
-    return {
-        type: typeof result,
-    };
 }
 
 // ============================================================================

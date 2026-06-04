@@ -15,6 +15,8 @@
  *   log.debug('Processing request', { tool: 'file_info' });
  */
 
+import type { Logger } from '../core/logger';
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -177,7 +179,19 @@ function formatJson(entry: LogEntry): string {
 // Logger Class
 // ============================================================================
 
-export class Logger {
+/**
+ * Concrete structured logger implementation.
+ *
+ * Structurally satisfies the `core/logger.ts` boundary `Logger` interface
+ * (info/warn/error) and extends it with leveled/scoped logging (debug,
+ * child, time, timeSync). The `implements Logger` clause makes the
+ * relationship explicit: this class IS a valid boundary logger, plus more.
+ *
+ * Ownership note: the NAME `Logger` belongs to the boundary TYPE in
+ * `core/logger.ts`. This concrete implementation lives under the distinct
+ * name `StructuredLogger` so the two concepts never collide.
+ */
+export class StructuredLogger implements Logger {
     constructor(private scope: string = '') {}
 
     private shouldLog(level: LogLevel): boolean {
@@ -221,9 +235,9 @@ export class Logger {
     /**
      * Create a child logger with additional scope
      */
-    child(childScope: string): Logger {
+    child(childScope: string): StructuredLogger {
         const newScope = this.scope ? `${this.scope}:${childScope}` : childScope;
-        return new Logger(newScope);
+        return new StructuredLogger(newScope);
     }
 
     /**
@@ -284,14 +298,14 @@ export class Logger {
 /**
  * Create a scoped logger
  */
-export function createLogger(scope: string): Logger {
-    return new Logger(scope);
+export function createLogger(scope: string): StructuredLogger {
+    return new StructuredLogger(scope);
 }
 
 /**
  * Default global logger (no scope)
  */
-export const logger = new Logger();
+export const logger = new StructuredLogger();
 
 // ============================================================================
 // Convenience Exports

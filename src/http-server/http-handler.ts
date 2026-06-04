@@ -13,27 +13,10 @@
  */
 
 import * as http from 'http';
-import * as fs from 'fs';
-import * as path from 'path';
 import { createLogger } from '../common/logger';
+import { serveStatic } from './http-static';
 
 const log = createLogger('http-handler');
-
-/**
- * MIME types for common file extensions
- */
-const MIME_TYPES: Record<string, string> = {
-    '.html': 'text/html',
-    '.js': 'application/javascript',
-    '.css': 'text/css',
-    '.json': 'application/json',
-    '.png': 'image/png',
-    '.jpg': 'image/jpeg',
-    '.gif': 'image/gif',
-    '.svg': 'image/svg+xml',
-    '.ico': 'image/x-icon',
-    '.map': 'application/json',
-};
 
 export interface HttpHandlerConfig {
     webviewDir: string;
@@ -162,85 +145,10 @@ export class HttpRequestHandler {
             }
         }
 
-        // Serve static files
-        this.serveStatic(url, res);
-    }
-
-    /**
-     * Serve static files from webview directory.
-     *
-     * Containment: after `path.join(webviewDir, filePath)`, the result MUST
-     * be inside `webviewDir`. `path.normalize` alone does NOT guarantee this
-     * (it strips a leading `..` but `foo/../../etc/passwd` still escapes
-     * after the join). The post-join `path.relative` check is the actual
-     * defense — see Loop 11 plan task 11.2.
-     */
-    private serveStatic(url: string, res: http.ServerResponse): void {
-        // Default to index.html for root
-        let filePath = url === '/' ? '/index.html' : url;
-
-        // Remove query string
-        filePath = filePath.split('?')[0];
-
-        // Best-effort pre-clean: strip leading parent traversals before the join.
-        filePath = path.normalize(filePath).replace(/^(\.\.[/\\])+/, '');
-
-        const fullPath = path.join(this.config.webviewDir, filePath);
-
-        // Strict containment: the resolved path must stay under webviewDir.
-        // path.relative returns '..' or an absolute path when fullPath escapes.
-        const baseDir = path.resolve(this.config.webviewDir);
-        const resolvedFull = path.resolve(fullPath);
-        const rel = path.relative(baseDir, resolvedFull);
-        if (rel.startsWith('..') || path.isAbsolute(rel)) {
-            this.sendError(res, 403, '403 Forbidden');
-            return;
-        }
-
-        // Check if file exists
-        if (!fs.existsSync(resolvedFull)) {
-            this.sendError(res, 404, '404 Not Found');
-            return;
-        }
-
-        // Check if it's a file (not a directory)
-        const stat = fs.statSync(resolvedFull);
-        if (!stat.isFile()) {
-            this.sendError(res, 403, '403 Forbidden');
-            return;
-        }
-
-        // Determine MIME type
-        const ext = path.extname(resolvedFull).toLowerCase();
-        const mimeType = MIME_TYPES[ext] || 'application/octet-stream';
-
-        // Determine cache headers
-        // Disable caching for .js and .json files (graph data may change)
-        // Allow caching for static assets (CSS, images)
-        const headers: Record<string, string> = {
-            'Content-Type': mimeType
-        };
-
-        if (ext === '.js' || ext === '.json') {
-            // No caching for JavaScript and JSON - always fetch latest
-            headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
-            headers['Pragma'] = 'no-cache';
-            headers['Expires'] = '0';
-        } else {
-            // Allow short caching for other static assets
-            headers['Cache-Control'] = 'public, max-age=300'; // 5 minutes
-        }
-
-        // Read and serve file
-        fs.readFile(resolvedFull, (error, content) => {
-            if (error) {
-                this.sendError(res, 500, '500 Internal Server Error');
-                return;
-            }
-
-            res.writeHead(200, headers);
-            res.end(content);
-        });
+        // Serve static files. Containment + content-type + cache policy live
+        // in the sibling `http-static` module; `sendError` is threaded in so
+        // error responses keep going through this handler's single path.
+        serveStatic(this.config.webviewDir, url, res, this.sendError.bind(this));
     }
 
     /**

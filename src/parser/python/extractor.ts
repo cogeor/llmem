@@ -16,6 +16,11 @@ import * as path from 'path';
 import { ArtifactExtractor } from '../interfaces';
 import { FileArtifact, Entity, Loc, EntityKind, ExportSpec, CallSite } from '../types';
 import { PythonImportParser } from './imports';
+import {
+    extractCalls as extractCallsFree,
+    isSameFileClassInstantiation as isSameFileClassInstantiationFree,
+    getLoc as getLocFree,
+} from './call-extractor';
 
 // Type-only references to the tree-sitter native core. Written as inline
 // `import(...)` type queries (never `import type` statements) so that ts-node /
@@ -210,116 +215,29 @@ export class PythonExtractor implements ArtifactExtractor {
     }
 
     /**
-     * Extract call sites from a function/method body subtree.
-     *
-     * One pass over the body collecting tree-sitter `call` nodes, emitting a
-     * CallSite for each. The walk STOPS at nested function_definition /
-     * class_definition (mirroring the classContext gate in extractEntities) so
-     * a nested def's calls are not attributed to the enclosing entity.
-     *
-     * calleeName is always the FINAL identifier (never a dotted path):
-     *   - `function` field is an `identifier`        -> that identifier's text  (kind 'function')
-     *   - `function` field is an `attribute`         -> the attribute's final
-     *     name (right-hand `attribute` field), e.g. self.parse -> 'parse',
-     *     mod.func -> 'func', obj.method -> 'method'                (kind 'method')
-     *   - any other callee shape (e.g. getattr(...)() ) -> skipped
-     *
-     * resolvedDefinition is left UNDEFINED: the language-agnostic resolver in
-     * artifact-converter.ts falls through to its import/local tiers, and any
-     * unresolved (dangling) edge is dropped at graph-build (index.ts).
+     * Extract call sites from a function/method body subtree. Delegates to the
+     * free helper in `call-extractor.ts` (class-shell split); the public method
+     * is retained for the existing call-graph test surface.
      *
      * @param classContext - present when walking a method body; threaded through
-     *   for parity with extractEntities (call resolution is name-based, so this
-     *   is not used to alter calleeName, but kept for signature symmetry).
+     *   for parity with extractEntities (call resolution is name-based).
      * @param classNames - PC-06: set of same-file class names. An `identifier`
      *   callee that matches one is tagged kind:'new' (class instantiation).
      */
-    public extractCalls(bodyNode: SyntaxNode, _classContext?: string, classNames?: Set<string>): CallSite[] {
-        const calls: CallSite[] = [];
-
-        const visit = (node: SyntaxNode) => {
-            // Scope boundary: do NOT descend into nested defs — those entities
-            // get their own extractCalls pass.
-            if (node.type === 'function_definition' || node.type === 'class_definition') {
-                return;
-            }
-
-            if (node.type === 'call') {
-                const callSite = this.callSiteFromCallNode(node, classNames);
-                if (callSite) {
-                    calls.push(callSite);
-                }
-                // Continue descending into the call node's arguments so that
-                // calls nested in argument lists (e.g. f(g())) are captured.
-            }
-
-            for (const child of node.children) {
-                visit(child);
-            }
-        };
-
-        visit(bodyNode);
-        return calls;
-    }
-
-    /**
-     * Build a CallSite from a tree-sitter `call` node, or null if the callee
-     * shape is not a plain identifier or attribute access.
-     *
-     * @param classNames - PC-06: same-file class names; an identifier callee in
-     *   this set is a class instantiation (kind:'new').
-     */
-    private callSiteFromCallNode(callNode: SyntaxNode, classNames?: Set<string>): CallSite | null {
-        const fnNode = callNode.childForFieldName('function');
-        if (!fnNode) return null;
-
-        let calleeName: string | undefined;
-        let kind: CallSite['kind'] | undefined;
-
-        if (fnNode.type === 'identifier') {
-            // e.g. b(), Thing()
-            calleeName = fnNode.text;
-            // PC-06: a bare identifier that names a same-file class is an
-            // instantiation -> kind:'new'. Otherwise a plain function call.
-            // The edge target is unchanged either way (still calleeName).
-            kind = PythonExtractor.isSameFileClassInstantiation(calleeName, classNames)
-                ? 'new'
-                : 'function';
-        } else if (fnNode.type === 'attribute') {
-            // e.g. self.parse(), mod.func(), obj.method().
-            // The FINAL identifier is the attribute's `attribute` field (the
-            // right-hand identifier), NOT the whole dotted attribute.text.
-            const attrNode = fnNode.childForFieldName('attribute');
-            if (attrNode) {
-                calleeName = attrNode.text;
-                kind = 'method';
-            }
-        }
-
-        if (!calleeName || !kind) {
-            // Other callee shapes (e.g. getattr(o,'x')() — a call whose
-            // function is itself a call). Skip: emit no spurious CallSite.
-            return null;
-        }
-
-        return {
-            callSiteId: `${calleeName}@${callNode.startIndex}`,
-            kind,
-            calleeName,
-            loc: this.getLoc(callNode)
-        };
+    public extractCalls(bodyNode: SyntaxNode, classContext?: string, classNames?: Set<string>): CallSite[] {
+        return extractCallsFree(bodyNode, classContext, classNames);
     }
 
     /**
      * PC-06 decision helper (pure): is `calleeName` a bare identifier naming a
-     * class defined in the SAME file? Extracted so it can be unit-tested
-     * without the tree-sitter grammar. Returns false when the set is absent.
+     * class defined in the SAME file? Delegates to the free helper; retained as
+     * a static so the existing unit test surface is unchanged.
      */
     public static isSameFileClassInstantiation(
         calleeName: string,
         classNames?: Set<string>
     ): boolean {
-        return !!classNames && classNames.has(calleeName);
+        return isSameFileClassInstantiationFree(calleeName, classNames);
     }
 
     /**
@@ -366,13 +284,6 @@ export class PythonExtractor implements ArtifactExtractor {
     }
 
     private getLoc(node: SyntaxNode): Loc {
-        return {
-            startLine: node.startPosition.row + 1,
-            endLine: node.endPosition.row + 1,
-            startColumn: node.startPosition.column,
-            endColumn: node.endPosition.column,
-            startByte: node.startIndex,
-            endByte: node.endIndex
-        };
+        return getLocFree(node);
     }
 }

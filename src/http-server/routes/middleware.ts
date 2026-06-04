@@ -199,13 +199,9 @@ export async function readJsonBody<T = unknown>(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Private helpers (lifted verbatim from `regenerate.ts`, Loop 18).
-//
-// Loop 05 leaves the originals in `regenerate.ts` in place to keep this
-// loop pure-additive; Loop 06 deletes them when migrating that route to
-// `requireSameOrigin`.
-// ---------------------------------------------------------------------------
+// Private helpers (lifted verbatim from `regenerate.ts`, Loop 18; the
+// Loop 05 originals there were deleted in Loop 06 when that route migrated
+// onto `requireSameOrigin`).
 
 /**
  * Returns true when `originHeader`'s host:port matches the request's

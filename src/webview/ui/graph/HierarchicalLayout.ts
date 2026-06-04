@@ -29,6 +29,7 @@ import {
     findParent,
 } from './folder-tree';
 import { WebviewLogger, createWebviewLogger } from '../services/webview-logger';
+import { extractResults } from './hierarchical-extract';
 
 const PADDING = 12;
 const LABEL_HEIGHT = 16;
@@ -98,7 +99,7 @@ export class HierarchicalLayout {
         const nodePositions = new Map<string, { x: number; y: number }>();
         const folders: FolderRegion[] = [];
         const fileRegions: FileRegion[] = [];
-        this.extractResults(this.folderTree, nodePositions, folders, fileRegions);
+        extractResults(this.folderTree, this.measured, nodePositions, folders, fileRegions);
 
         // Diagnostic: missing positions. (Loop 14: no sample dump.)
         let missing = 0;
@@ -281,57 +282,6 @@ export class HierarchicalLayout {
         return maxY;
     }
 
-    private extractResults(
-        folder: FolderNode,
-        nodePositions: Map<string, { x: number; y: number }>,
-        folders: FolderRegion[],
-        fileRegions: FileRegion[]
-    ): void {
-        if (folder.path) {
-            folders.push({
-                path: folder.path, label: folder.name,
-                x0: folder.x, y0: folder.y,
-                x1: folder.x + folder.width, y1: folder.y + folder.height,
-                depth: folder.depth, nodeCount: folder.nodes.length,
-                children: [],
-            });
-        }
-
-        // File regions: bucket by file then build a region per file.
-        const nodesByFile = groupNodesByFile(folder.nodes);
-        for (const [filePath, fileNodes] of nodesByFile) {
-            const positions: { x: number; y: number }[] = [];
-            for (const node of fileNodes) {
-                const m = this.measured.get(node.id);
-                if (m && m.finalized) positions.push({ x: m.x, y: m.y });
-            }
-            if (positions.length === 0) continue;
-
-            const minX = Math.min(...positions.map(p => p.x)) - 15;
-            const maxX = Math.max(...positions.map(p => p.x)) + 15;
-            const minY = Math.min(...positions.map(p => p.y)) - 12;
-            const maxY = Math.max(...positions.map(p => p.y)) + 18;
-            const fileName = filePath.split('/').pop() || filePath;
-            fileRegions.push({
-                path: filePath, label: fileName,
-                x0: minX, y0: minY, x1: maxX, y1: maxY,
-                nodeCount: fileNodes.length,
-            });
-        }
-
-        // Node positions: keep original folder.nodes iteration order
-        // so the resulting Map's insertion order is identical to the
-        // pre-loop-16 output.
-        for (const node of folder.nodes) {
-            const m = this.measured.get(node.id);
-            if (m && m.finalized) nodePositions.set(node.id, { x: m.x, y: m.y });
-        }
-
-        for (const child of folder.children.values()) {
-            this.extractResults(child, nodePositions, folders, fileRegions);
-        }
-    }
-
     // ========================================================================
     // Incremental Layout Methods
     // ========================================================================
@@ -366,7 +316,7 @@ export class HierarchicalLayout {
         const nodePositions = new Map<string, { x: number; y: number }>();
         const folders: FolderRegion[] = [];
         const fileRegions: FileRegion[] = [];
-        this.extractResults(this.folderTree, nodePositions, folders, fileRegions);
+        extractResults(this.folderTree, this.measured, nodePositions, folders, fileRegions);
 
         this.logger.log(`[HierarchicalLayout] Incremental add: ${newNodes.length} nodes to ${targetFolderPath}`);
         return { folders, fileRegions, nodePositions };

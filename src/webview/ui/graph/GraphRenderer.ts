@@ -21,6 +21,7 @@ import {
     foldersBounds,
     nodePositionsBounds,
 } from './graphRendererQueries';
+import { highlightContainerNodes } from './graphRendererHighlight';
 
 export class GraphRenderer {
     private container: HTMLElement;
@@ -240,9 +241,7 @@ export class GraphRenderer {
         this.logger.log(`[GraphRenderer] Incremental update complete: ${layoutResult.nodePositions.size} total nodes`);
     }
 
-    /**
-     * Highlight neighbors.
-     */
+    /** Highlight a single node and its neighbors. */
     highlightNeighbors(nodeId: string): void {
         this.clearHighlight();
         const neighbors = this.edgeRenderer.getNeighbors(nodeId, this.currentEdges);
@@ -250,44 +249,34 @@ export class GraphRenderer {
         this.edgeRenderer.highlightEdgesForNode(nodeId);
     }
 
-    /**
-     * Clear highlights.
-     */
+    /** Clear highlights. */
     clearHighlight(): void {
         this.nodeRenderer.clearHighlight();
         this.edgeRenderer.clearHighlight();
         this.groupRenderer.clearHighlight();
     }
 
-    /**
-     * Destroy.
-     */
+    /** Destroy. */
     destroy(): void {
         this.svg.remove();
     }
 
     private handleNodeClick(nodeId: string): void {
-        // Only focus/highlight if it wasn't a drag
-        if (!this.cameraController.wasDrag()) {
-            this.highlightNeighbors(nodeId);
-            this.onNodeClick?.(nodeId);
-        }
+        if (this.cameraController.wasDrag()) return; // ignore drags
+        this.highlightNeighbors(nodeId);
+        this.onNodeClick?.(nodeId);
     }
 
     private handleFolderClick(folderPath: string): void {
-        // Only focus if it wasn't a drag
-        if (!this.cameraController.wasDrag()) {
-            this.highlightFolder(folderPath);
-            this.onFolderClick?.(folderPath);
-        }
+        if (this.cameraController.wasDrag()) return; // ignore drags
+        this.highlightFolder(folderPath);
+        this.onFolderClick?.(folderPath);
     }
 
     private handleFileClick(filePath: string): void {
-        // Only focus if it wasn't a drag
-        if (!this.cameraController.wasDrag()) {
-            this.highlightFile(filePath);
-            this.onFileClick?.(filePath);
-        }
+        if (this.cameraController.wasDrag()) return; // ignore drags
+        this.highlightFile(filePath);
+        this.onFileClick?.(filePath);
     }
 
     /**
@@ -324,25 +313,12 @@ export class GraphRenderer {
         this.clearHighlight();
         this.groupRenderer.highlightFolder(folderPath);
 
-        // Get IDs of nodes in this folder
+        // Get IDs of nodes in this folder, then highlight them + neighbors.
         const nodesInFolder = getNodesInFolder(this.nodesGroup, folderPath);
-
-        // Collect all direct neighbors
-        const neighbors = new Set<string>();
-        for (const nodeId of nodesInFolder) {
-            const nodeNeighbors = this.edgeRenderer.getNeighbors(nodeId, this.currentEdges);
-            for (const n of nodeNeighbors) {
-                if (!nodesInFolder.has(n)) {
-                    neighbors.add(n);
-                }
-            }
-        }
-
-        // Highlight nodes in folder and their neighbors
-        this.nodeRenderer.highlightNodesInFolderWithNeighbors(folderPath, neighbors);
-
-        // Highlight edges connected to nodes in folder
-        this.edgeRenderer.highlightEdgesForNodes(nodesInFolder);
+        highlightContainerNodes(
+            folderPath, nodesInFolder, this.currentEdges,
+            this.nodeRenderer, this.edgeRenderer,
+        );
     }
 
     /**
@@ -352,25 +328,12 @@ export class GraphRenderer {
         this.clearHighlight();
         this.groupRenderer.highlightFile(filePath);
 
-        // Get IDs of nodes in this file
+        // Get IDs of nodes in this file, then highlight them + neighbors.
         const nodesInFile = getNodesInFile(this.nodesGroup, filePath);
-
-        // Collect all direct neighbors
-        const neighbors = new Set<string>();
-        for (const nodeId of nodesInFile) {
-            const nodeNeighbors = this.edgeRenderer.getNeighbors(nodeId, this.currentEdges);
-            for (const n of nodeNeighbors) {
-                if (!nodesInFile.has(n)) {
-                    neighbors.add(n);
-                }
-            }
-        }
-
-        // Highlight nodes in file and their neighbors
-        this.nodeRenderer.highlightNodesInFolderWithNeighbors(filePath, neighbors);
-
-        // Highlight edges connected to nodes in file
-        this.edgeRenderer.highlightEdgesForNodes(nodesInFile);
+        highlightContainerNodes(
+            filePath, nodesInFile, this.currentEdges,
+            this.nodeRenderer, this.edgeRenderer,
+        );
     }
 
 }

@@ -8,7 +8,7 @@
  */
 
 import { WorkspaceIO } from '../../workspace/workspace-io';
-import { type Logger } from '../../common/logger';
+import { type StructuredLogger } from '../../common/logger';
 import { BaseEdgeListStore } from './base-store';
 
 const IMPORT_EDGELIST_FILENAME = 'import-edgelist.json';
@@ -29,7 +29,7 @@ const CALL_EDGELIST_FILENAME = 'call-edgelist.json';
  * ```
  */
 export class ImportEdgeListStore extends BaseEdgeListStore {
-    constructor(artifactRoot: string, io: WorkspaceIO, logger?: Logger) {
+    constructor(artifactRoot: string, io: WorkspaceIO, logger?: StructuredLogger) {
         super(artifactRoot, IMPORT_EDGELIST_FILENAME, 'import', io, logger);
     }
 }
@@ -57,7 +57,7 @@ export class ImportEdgeListStore extends BaseEdgeListStore {
  * ```
  */
 export class CallEdgeListStore extends BaseEdgeListStore {
-    constructor(artifactRoot: string, io: WorkspaceIO, logger?: Logger) {
+    constructor(artifactRoot: string, io: WorkspaceIO, logger?: StructuredLogger) {
         super(artifactRoot, CALL_EDGELIST_FILENAME, 'call', io, logger);
     }
 }
