@@ -197,15 +197,16 @@ export async function removeWatchedPath(
     // second (mandatory) constructor arg; the boundary `Logger` interface
     // here differs from the edge-list store's `common/logger` shape, so
     // we omit it.
+    // Loop K2: wrap the per-store load→mutate→save under ONE write-lock hold
+    // (withTransaction) so a concurrent writer (file-watcher / refresh) on the
+    // same edge-list file can't load the old state, mutate, and clobber this
+    // removal. Each store writes a DISTINCT file (import vs call edgelist), so
+    // the two transactions take independent locks and stay concurrent.
     const importStore = new ImportEdgeListStore(artifactRoot, io);
-    await importStore.load();
-    importStore.removeByFolder(targetPath);
-    await importStore.save();
+    await importStore.withTransaction(() => importStore.removeByFolder(targetPath));
 
     const callStore = new CallEdgeListStore(artifactRoot, io);
-    await callStore.load();
-    callStore.removeByFolder(targetPath);
-    await callStore.save();
+    await callStore.withTransaction(() => callStore.removeByFolder(targetPath));
 
     await watchService.save();
 

@@ -7,7 +7,7 @@
 
 import * as path from 'path';
 
-import { LANGUAGES, type CallGraphCapability } from './languages';
+import { LANGUAGE_DESCRIPTORS, type CallGraphCapability } from './language-descriptors';
 
 // ============================================================================
 // Line Count Thresholds
@@ -52,7 +52,7 @@ export const TYPESCRIPT_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx'];
  * Other languages (Python, C/C++, Rust, R) support import graphs only.
  */
 export const ALL_SUPPORTED_EXTENSIONS: readonly string[] =
-    LANGUAGES.flatMap((l) => l.extensions);
+    LANGUAGE_DESCRIPTORS.flatMap((l) => l.extensions);
 
 /**
  * Set version for efficient O(1) lookups
@@ -90,7 +90,7 @@ export function getLanguageFromPath(filePath: string): string {
     if (dot < 0) return 'code';
     const ext = filePath.slice(dot).toLowerCase();
 
-    for (const lang of LANGUAGES) {
+    for (const lang of LANGUAGE_DESCRIPTORS) {
         for (const e of lang.extensions) {
             if (e.toLowerCase() === ext) {
                 return lang.highlightOverrides?.[ext] ?? lang.highlightId;
@@ -112,7 +112,7 @@ export function getCallGraphCapability(filePath: string): CallGraphCapability {
     if (dot < 0) return 'none';
     const ext = filePath.slice(dot).toLowerCase();
 
-    for (const lang of LANGUAGES) {
+    for (const lang of LANGUAGE_DESCRIPTORS) {
         for (const e of lang.extensions) {
             if (e.toLowerCase() === ext) {
                 return lang.callGraph;

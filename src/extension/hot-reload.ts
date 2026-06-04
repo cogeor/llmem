@@ -1,28 +1,17 @@
 
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { collectViewerData } from '../application/viewer-data';
 import { ParserRegistry } from '../parser/registry';
 import { scanFile } from '../application/scan';
 import type { WorkspaceContext } from '../application/workspace-context';
 import { createLogger } from '../common/logger';
-import type { DesignDoc } from '../webview/design-docs';
-import { renderMarkdown } from '../webview/markdown-renderer';
-import type { WebviewGraphData } from '../graph/webview-data';
-import type { ITreeNode } from '../application/viewer/worktree';
+import { collectWebviewData, type WebviewData } from './hot-reload-render';
+
+// Re-export the rendered-data shape so importers of `../hot-reload` keep
+// the same surface after the Loop 21 split.
+export type { WebviewData } from './hot-reload-render';
 
 const log = createLogger('hot-reload');
-
-/**
- * The rendered shape that hot-reload pushes to the panel. Identical to
- * the pre-Loop-06 `WebviewData` interface (markdown rendered to HTML),
- * preserved here so the panel-side callback contract does not change.
- */
-export interface WebviewData {
-    graphData: WebviewGraphData;
-    workTree: ITreeNode;
-    designDocs: Record<string, DesignDoc>;
-}
 
 /**
  * Service to handle hot reloading of the webview data.
@@ -152,25 +141,19 @@ export class HotReloadService {
         log.info('Watchers stopped');
     }
 
-    /**
-     * Add a path to the watched set.
-     */
+    /** Add a path to the watched set. */
     public addWatchedPath(relativePath: string) {
         this.watchedPaths.add(relativePath);
         log.debug('Added to watch', { relativePath });
     }
 
-    /**
-     * Remove a path from the watched set.
-     */
+    /** Remove a path from the watched set. */
     public removeWatchedPath(relativePath: string) {
         this.watchedPaths.delete(relativePath);
         log.debug('Removed from watch', { relativePath });
     }
 
-    /**
-     * Check if a file is in the watched set (exact match).
-     */
+    /** Check if a file is in the watched set (exact match). */
     private isInWatchedPath(relativePath: string): boolean {
         return this.watchedPaths.has(relativePath);
     }
@@ -212,7 +195,6 @@ export class HotReloadService {
 
     private queueArchConvert() {
         if (this.debounceTimers.arch) clearTimeout(this.debounceTimers.arch);
-
         this.debounceTimers.arch = setTimeout(async () => {
             log.debug('Arch changed - refreshing design docs...');
             try {
@@ -227,7 +209,6 @@ export class HotReloadService {
 
     private queueTreeRefresh() {
         if (this.debounceTimers.tree) clearTimeout(this.debounceTimers.tree);
-
         this.debounceTimers.tree = setTimeout(async () => {
             log.debug('File system changed - refreshing tree...');
             try {
@@ -242,7 +223,6 @@ export class HotReloadService {
 
     private queueEdgelistRefresh() {
         if (this.debounceTimers.edgelist) clearTimeout(this.debounceTimers.edgelist);
-
         this.debounceTimers.edgelist = setTimeout(async () => {
             log.debug('Edge list changed - refreshing graphs...');
             try {
@@ -257,13 +237,7 @@ export class HotReloadService {
 
     public async sendUpdate() {
         try {
-            const raw = await collectViewerData(this.ctx);
-            const designDocs = await renderRawDesignDocs(raw.designDocs);
-            const data: WebviewData = {
-                graphData: raw.graphData,
-                workTree: raw.workTree,
-                designDocs,
-            };
+            const data = await collectWebviewData(this.ctx);
             this.onUpdate(data);
             log.debug('Update sent');
         } catch (e) {
@@ -272,25 +246,4 @@ export class HotReloadService {
             });
         }
     }
-}
-
-/**
- * Render raw markdown into `DesignDoc` shape. Mirrors the panel-side
- * helper in `panel.ts`. Loop 19 routes both helpers through the
- * centralized `renderMarkdown` (`src/webview/markdown-renderer.ts`).
- */
-async function renderRawDesignDocs(raw: Record<string, string>): Promise<Record<string, DesignDoc>> {
-    const out: Record<string, DesignDoc> = {};
-    for (const [key, markdown] of Object.entries(raw)) {
-        try {
-            const html = await renderMarkdown(markdown);
-            out[key] = { markdown, html };
-        } catch (e) {
-            log.error('Failed to render design doc', {
-                key,
-                error: e instanceof Error ? e.message : String(e),
-            });
-        }
-    }
-    return out;
 }

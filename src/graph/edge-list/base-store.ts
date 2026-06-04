@@ -24,10 +24,11 @@ import {
     EDGELIST_SCHEMA_VERSION,
     EDGELIST_RESOLVER_VERSION,
 } from '../edgelist-schema';
-import { createLogger, type Logger } from '../../common/logger';
+import { createLogger, type StructuredLogger } from '../../common/logger';
 import { WorkspaceIO } from '../../workspace/workspace-io';
 import { writeFileAtomic } from './atomic-write';
 import { withWriteLock } from './lock';
+import { runEdgeStoreTransaction } from './transaction';
 import * as mutations from './mutations';
 
 export abstract class BaseEdgeListStore {
@@ -35,7 +36,7 @@ export abstract class BaseEdgeListStore {
     protected filePath: string;
     protected dirty: boolean = false;
     protected readonly edgeKind: 'import' | 'call';
-    protected readonly log: Logger;
+    protected readonly log: StructuredLogger;
     /**
      * Loop 07: required realpath-strong I/O surface. All persistence
      * routes through it; the legacy direct-`fs.*` fallback was removed.
@@ -49,7 +50,7 @@ export abstract class BaseEdgeListStore {
         filename: string,
         edgeKind: 'import' | 'call',
         io: WorkspaceIO,
-        logger?: Logger,
+        logger?: StructuredLogger,
     ) {
         this.filePath = path.join(artifactRoot, filename);
         this.edgeKind = edgeKind;
@@ -130,8 +131,38 @@ export abstract class BaseEdgeListStore {
         // writing this file (across instances) shares one queue. Only the
         // top-level save() acquires the lock — nested helpers must not, or
         // they would deadlock (the queue is non-reentrant).
-        const lockKey = this.io.resolve(this.relPath);
-        return withWriteLock(lockKey, () => this.saveLocked());
+        return withWriteLock(this.lockKey(), () => this.saveLocked());
+    }
+
+    /**
+     * Canonical per-file lock key — every store instance writing the SAME
+     * target file in this process shares one `withWriteLock` queue.
+     */
+    private lockKey(): string {
+        return this.io.resolve(this.relPath);
+    }
+
+    /**
+     * Atomic `load → mutate → save` transaction (Loop K2).
+     *
+     * Acquires the per-file write lock ONCE and, inside the held section,
+     * runs `load()` (a pure read — it never re-acquires the lock), then the
+     * caller's `fn` (which mutates via this store's mutation methods), then
+     * `saveLocked()` to publish (the NON-locking body — calling the public
+     * `save()` here would re-acquire the key and DEADLOCK). Two concurrent
+     * transactions on the same file serialize: the second sees the first's
+     * published state, so neither's mutation is lost (the hazard the bare
+     * `save()` lock could not cover, since callers did `load(); mutate();
+     * save()` with the load OUTSIDE the lock). The primitive lives in
+     * `./transaction`; see its REENTRANCY CONTRACT note.
+     */
+    async withTransaction<T>(fn: () => T | Promise<T>): Promise<T> {
+        return runEdgeStoreTransaction(
+            this.lockKey(),
+            () => this.load(),
+            () => this.saveLocked(),
+            fn,
+        );
     }
 
     /**
