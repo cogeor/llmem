@@ -200,12 +200,6 @@ export async function createWorkspaceContext(
         };
     }
 
-    // One-time, idempotent, conflict-safe docs migration (.arch -> .llmem/docs).
-    // Runs on every init but warm inits short-circuit cheaply (a single
-    // exists() check). Never crashes init — failures leave `.arch` intact +
-    // warn. See src/application/migrate-docs.ts.
-    await migrateDocs(workspaceRoot, logger);
-
     // artifactRoot / archRoot derivations.
     const artifactRootAbs = toAbs(config.artifactRoot, workspaceRoot);
     assertContained(artifactRootAbs, workspaceRoot);
@@ -237,6 +231,33 @@ export async function createWorkspaceContext(
         config,
         logger,
     };
+}
+
+/**
+ * Host-startup factory: build a `WorkspaceContext` AND run the one-time docs
+ * migration (`.arch` → `.llmem/docs`).
+ *
+ * This is the entry every *host* should use at startup (CLI command,
+ * HTTP/graph server, MCP server, VS Code panel). It is `createWorkspaceContext`
+ * plus an explicit, idempotent, conflict-safe migration side effect — kept
+ * separate from the pure factory so that "construct a context" and "mutate the
+ * workspace on disk" are never silently the same call (the regrade's issue #5).
+ *
+ * The migration runs on every init but warm inits short-circuit cheaply (a
+ * single `exists()` check) and it never crashes startup — failures leave
+ * `.arch` intact and warn. See `src/application/migrate-docs.ts`.
+ *
+ * Non-host, one-off context builders (the static webview generator fallback,
+ * dev scripts, test fixtures) call the pure `createWorkspaceContext` directly:
+ * they operate on a workspace a host has already initialized, so re-running the
+ * migration there is unnecessary.
+ */
+export async function initWorkspaceContext(
+    input: CreateWorkspaceContextInput,
+): Promise<WorkspaceContext> {
+    const ctx = await createWorkspaceContext(input);
+    await migrateDocs(ctx.workspaceRoot, ctx.logger);
+    return ctx;
 }
 
 // ---------------------------------------------------------------------------

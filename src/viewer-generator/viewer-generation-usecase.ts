@@ -21,7 +21,7 @@ import { WatchService } from '../graph/worktree-state';
 import { createLogger } from '../common/logger';
 import { buildAndSaveFolderArtifacts } from '../application/folder-artifacts';
 import { rescanAfterSchemaMismatch } from '../application/scan';
-import { createWorkspaceContext, type WorkspaceContext } from '../application/workspace-context';
+import { initWorkspaceContext, type WorkspaceContext } from '../application/workspace-context';
 import { resolveAssetRoot } from './asset-root-resolver';
 
 const log = createLogger('web-launcher');
@@ -122,7 +122,10 @@ export async function generateGraph(
         if (!fs.existsSync(options.workspaceRoot)) {
             throw new Error(`Workspace root does not exist: ${options.workspaceRoot}`);
         }
-        ctx = await createWorkspaceContext({
+        // Standalone invocation (no host-supplied ctx): this usecase reads
+        // design docs, so when it builds its own context it acts as the host
+        // entry and must run the one-time `.arch` -> `.llmem/docs` migration.
+        ctx = await initWorkspaceContext({
             workspaceRoot: options.workspaceRoot,
             configOverrides: options.artifactRoot
                 ? { artifactRoot: options.artifactRoot }

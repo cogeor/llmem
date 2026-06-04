@@ -5,7 +5,8 @@ import * as path from 'path';
 import { generateWorkTree } from '../application/viewer/worktree';
 import { loadDesignDocs } from './design-docs';
 import { createLogger } from '../common/logger';
-import { createWorkspaceContext, type WorkspaceContext } from '../application/workspace-context';
+import { initWorkspaceContext, type WorkspaceContext } from '../application/workspace-context';
+import type { GraphData } from '../contracts/webview-payloads';
 import { FolderTreeStore } from '../graph/folder-tree-store';
 import { FolderEdgelistStore } from '../graph/folder-edges-store';
 import { renderShell, type ShellHostHooks } from './shell';
@@ -53,7 +54,7 @@ export async function generateStaticWebview(
     destinationDir: string,
     extensionRoot: string,
     workspaceRoot: string,
-    graphData: any,
+    graphData: GraphData,
     options: GeneratorOptions = {},
     watchedFiles?: string[],
     ctx?: WorkspaceContext,
@@ -62,11 +63,13 @@ export async function generateStaticWebview(
     const { graphOnly = false } = options;
 
     // Loop 04: prefer the caller-supplied context (the launcher / panel
-    // already paid the realpath cost); fall back to a fresh
-    // `createWorkspaceContext` call for static-only callers (one-off CLI
-    // tests). The `WorkspaceIO` is only used for read-side calls
-    // (`generateWorkTree`, `loadDesignDocs`); writes go through `fs-extra`.
-    const resolvedCtx = ctx ?? (await createWorkspaceContext({ workspaceRoot }));
+    // already paid the realpath cost); fall back to a fresh context for
+    // static-only callers (one-off CLI / scripts). This reads design docs
+    // (`loadDesignDocs`), so the standalone fallback uses the host-startup
+    // factory and runs the one-time `.arch` -> `.llmem/docs` migration; a
+    // caller-supplied ctx is already migrated. The `WorkspaceIO` is only used
+    // for read-side calls; writes go through `fs-extra`.
+    const resolvedCtx = ctx ?? (await initWorkspaceContext({ workspaceRoot }));
     const io = resolvedCtx.io;
 
     // Ensure destination exists

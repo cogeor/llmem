@@ -12,7 +12,7 @@
  */
 
 import {
-    createWorkspaceContext,
+    initWorkspaceContext,
     type RuntimeConfig,
     type WorkspaceContext,
 } from '../application/workspace-context';
@@ -29,9 +29,10 @@ export interface CliContext {
      * command. CLI commands typically pass `detectWorkspace(args.workspace)`
      * as the root.
      *
-     * `configOverrides` flows through to `createWorkspaceContext` (e.g.
-     * to set a non-default `artifactRoot`). The returned context's
-     * `logger` bridges the CLI `log` / `error` hooks.
+     * `configOverrides` flows through to `initWorkspaceContext` (e.g.
+     * to set a non-default `artifactRoot`). The CLI is a host, so this
+     * uses the host-startup factory (construct + one-time docs migration).
+     * The returned context's `logger` bridges the CLI `log` / `error` hooks.
      */
     createWorkspace: (
         workspaceRoot: string,
@@ -60,7 +61,7 @@ export function createCliContext(): CliContext {
         log,
         error,
         createWorkspace: (workspaceRoot, configOverrides) =>
-            createWorkspaceContext({
+            initWorkspaceContext({
                 workspaceRoot,
                 configOverrides,
                 logger: cliLogger,

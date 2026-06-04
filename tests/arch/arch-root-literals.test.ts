@@ -258,12 +258,9 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     //    `package.json`, `.llmem` as back-compat markers so an existing
     //    project documented under the old layout is still recognised.
     // -----------------------------------------------------------------------
-    { file: 'src/cli/commands/generate.ts',
-      phase: 'permanent',
-      reason: 'Workspace-marker walker (`[\'.git\', \'package.json\', \'.llmem\', \'.arch\', \'.artifacts\']`); `.arch` is a legacy back-compat root marker.' },
-    { file: 'src/cli/commands/stats.ts',
-      phase: 'permanent',
-      reason: 'Workspace-marker walker; `.arch` kept as a legacy back-compat root marker.' },
+    // A-grade #2: generate.ts / stats.ts dropped their duplicate local
+    // `detectWorkspace` copies (with the `.arch` marker) for the shared
+    // `src/workspace/detect.ts` walker — rows removed.
     { file: 'src/mcp/main.ts',
       phase: 'permanent',
       reason: 'detectWorkspaceRoot() marker list; `.arch` kept as a legacy back-compat root marker.' },

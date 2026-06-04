@@ -20,7 +20,7 @@ import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import type { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { Config } from '../../core/config-types';
 import {
-    createWorkspaceContext,
+    initWorkspaceContext,
     type WorkspaceContext,
 } from '../../application/workspace-context';
 
@@ -101,7 +101,7 @@ export function getStoredWorkspaceRoot(): string {
  */
 export async function getStoredContext(): Promise<WorkspaceContext> {
     if (!storedContext) {
-        storedContext = await createWorkspaceContext({
+        storedContext = await initWorkspaceContext({
             workspaceRoot: getStoredWorkspaceRoot(),
             configOverrides: { ...getStoredConfig() },
         });

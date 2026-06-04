@@ -46,6 +46,7 @@ import {
 import { asRelPath } from '../../core/paths';
 import { detectWorkspace } from '../../workspace';
 import type { CommandSpec } from '../registry';
+import { CliError } from '../errors';
 
 // ============================================================================
 // Wire-level report payload schemas
@@ -127,8 +128,7 @@ export const documentCommand: CommandSpec<typeof documentArgs> = {
         // ----- Step 6.1: resolve target path -----
         const targetPath = args.path ?? (args._ && args._[0]);
         if (!targetPath) {
-            console.error('Error: a path argument is required (positional or --path).');
-            process.exit(1);
+            throw new CliError('Error: a path argument is required (positional or --path).', 1);
         }
 
         // ----- Step 6.2: detect workspace + build context -----
@@ -178,11 +178,11 @@ export const documentCommand: CommandSpec<typeof documentArgs> = {
 
         // ----- Step 6.6: helpful no-op -----
         if (payload === null) {
-            console.error(
+            throw new CliError(
                 'Pass --prompt-only to get the prompt, then pipe the LLM output back via ' +
                 '--content-file -. (Direct LLM invocation is post-v1.)',
+                1,
             );
-            process.exit(1);
         }
 
         // ----- Step 6.7: parse payload + dispatch -----
@@ -190,11 +190,11 @@ export const documentCommand: CommandSpec<typeof documentArgs> = {
         try {
             parsed = JSON.parse(payload);
         } catch (err) {
-            console.error(
+            throw new CliError(
                 `Error: --content / --content-file payload is not valid JSON: ` +
                 `${(err as Error).message}`,
+                1,
             );
-            process.exit(1);
         }
 
         if (isDirectory) {

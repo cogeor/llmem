@@ -7,37 +7,21 @@
 import { buildGraphsFromSplitEdgeLists } from './index';
 import { ColorGenerator } from './utils';
 import { EdgeListData } from './edgelist';
+import type { ImportGraph, CallGraph } from './types';
+import type { VisNode, VisEdge, GraphData } from '../contracts/webview-payloads';
 
-export interface VisNode {
-    id: string;
-    label: string;
-    group: string;
-    title?: string;
-    color?: string;
-    fileId?: string;
-    /**
-     * PC-04: call-graph capability of a call-graph node's source language,
-     * forwarded from the EntityNode. The browser NodeRenderer badges
-     * 'heuristic' nodes; 'semantic'/'none'/absent render normally.
-     */
-    callGraph?: 'semantic' | 'heuristic' | 'none';
-}
+// A-grade #4: the injected viewer payload DTOs (`VisNode` / `VisEdge` /
+// `GraphData`) have a single home in `src/contracts/webview-payloads.ts`.
+// This module no longer declares its own copies; it re-exports the contract
+// types so existing `WebviewGraphData` importers keep compiling.
+export type { VisNode, VisEdge } from '../contracts/webview-payloads';
 
-export interface VisEdge {
-    from: string;
-    to: string;
-    arrows?: string;
-}
-
-export interface VisData {
-    nodes: VisNode[];
-    edges: VisEdge[];
-}
-
-export interface WebviewGraphData {
-    importGraph: VisData;
-    callGraph: VisData;
-}
+/**
+ * The server-prepared graph payload injected as `window.GRAPH_DATA`. Alias of
+ * the contract `GraphData` so the producer and the browser consumer share one
+ * shape.
+ */
+export type WebviewGraphData = GraphData;
 
 /**
  * Prepare webview data from split edge lists (new architecture).
@@ -58,7 +42,7 @@ export function prepareWebviewDataFromSplitEdgeLists(
 /**
  * Transform internal graph structures to visualization format.
  */
-function transformGraphsToVisData(importGraph: any, callGraph: any): WebviewGraphData {
+function transformGraphsToVisData(importGraph: ImportGraph, callGraph: CallGraph): WebviewGraphData {
     const colorGen = new ColorGenerator();
 
     // Prepare Import Graph
@@ -70,7 +54,7 @@ function transformGraphsToVisData(importGraph: any, callGraph: any): WebviewGrap
     // coincidentally rendered them as 'file'. After Loop 16 they get
     // group: 'external' here. Visual styling is intentionally left to a
     // follow-up loop; the webview already styles 'file' but not 'external'.
-    const importNodes: VisNode[] = importNodesRaw.map((n: any) => ({
+    const importNodes: VisNode[] = importNodesRaw.map((n) => ({
         id: n.id,
         label: n.label,
         group: n.kind || 'default',
@@ -78,7 +62,7 @@ function transformGraphsToVisData(importGraph: any, callGraph: any): WebviewGrap
         color: importColors.get(n.id)
     }));
 
-    const importEdges: VisEdge[] = importGraph.edges.map((e: any) => ({
+    const importEdges: VisEdge[] = importGraph.edges.map((e) => ({
         from: e.source,
         to: e.target
     }));
@@ -87,7 +71,7 @@ function transformGraphsToVisData(importGraph: any, callGraph: any): WebviewGrap
     const callNodesRaw = Array.from(callGraph.nodes.values());
     const callColors = colorGen.generateColors(callNodesRaw);
 
-    const callNodes: VisNode[] = callNodesRaw.map((n: any) => ({
+    const callNodes: VisNode[] = callNodesRaw.map((n) => ({
         id: n.id,
         label: n.label || n.id,
         group: 'function',
@@ -99,7 +83,7 @@ function transformGraphsToVisData(importGraph: any, callGraph: any): WebviewGrap
         callGraph: n.callGraph
     }));
 
-    const callEdges: VisEdge[] = callGraph.edges.map((e: any) => ({
+    const callEdges: VisEdge[] = callGraph.edges.map((e) => ({
         from: e.source,
         to: e.target
     }));

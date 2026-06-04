@@ -16,6 +16,7 @@
 import { z } from 'zod';
 
 import { REGISTRY, type CommandSpec } from './registry';
+import { CliError } from './errors';
 
 /**
  * Trivial argv → flag-map parser. ~50 lines, no external dep.
@@ -110,9 +111,10 @@ export function parseArgv(argv: string[]): ParsedArgv {
             const long = SHORT_ALIASES[short];
             if (long === 'help') { helpRequested = true; continue; }
             if (long === undefined) {
-                console.error(`Unknown option: ${arg}`);
-                console.error('Use --help for usage information');
-                process.exit(1);
+                throw new CliError(
+                    `Unknown option: ${arg}\nUse --help for usage information`,
+                    1,
+                );
             }
             const next = argv[i + 1];
             if (next !== undefined && (next === '-' || !next.startsWith('-'))) {

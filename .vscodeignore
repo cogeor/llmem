@@ -24,9 +24,13 @@ src/**
 # Exclude all node_modules (not needed in VSIX; vsce bundles deps)
 node_modules/**
 
-# Standalone CLI + MCP server bundles (npm package only; not needed inside VSIX)
+# Standalone CLI esbuild bundle (npm package only; the VS Code extension never
+# imports src/cli, so its dist tree is not needed inside the VSIX).
 dist/cli/**
-dist/mcp/**
+# NOTE: dist/mcp/** is intentionally NOT excluded. The extension entry
+# (dist/extension/extension.js, package.json#main) requires dist/mcp/server.js
+# and the rest of the MCP server's dist tree at activation; excluding it
+# shipped a broken VSIX (the regrade's package-identity issue #1).
 
 # Delegate work folder
 .delegate/**

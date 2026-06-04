@@ -32,6 +32,7 @@ import { ADAPTERS } from '../../install';
 import { buildPayload } from '../../install/registration';
 import type { ClientAdapter, ClientId, Payload, ApplyOpts } from '../../install/types';
 import type { CommandSpec } from '../registry';
+import { CliError } from '../errors';
 
 // ============================================================================
 // Known clients
@@ -108,8 +109,9 @@ export const installCommand: CommandSpec<typeof installArgs> = {
 
         // ----- Resolve workspace (only auto-detect/validate when pinned) -----
         // When --workspace is passed we resolve+validate it (detectWorkspace
-        // exits 1 on a missing explicit path); otherwise we leave it unset so
-        // the payload carries no LLMEM_WORKSPACE.
+        // throws WorkspaceNotFoundError on a missing explicit path, which
+        // main() turns into exit 1); otherwise we leave it unset so the
+        // payload carries no LLMEM_WORKSPACE.
         const workspace = args.workspace ? detectWorkspace(args.workspace) : undefined;
         const workspaceDisplay = workspace ? workspace.replaceAll('\\', '/') : undefined;
 
@@ -125,11 +127,11 @@ export const installCommand: CommandSpec<typeof installArgs> = {
             // never silently "succeeds" under --print/--dry-run).
             const unknown = positionals.filter((p) => !KNOWN_CLIENTS.includes(p as ClientId));
             if (unknown.length > 0) {
-                console.error(
+                throw new CliError(
                     `Error: unknown client(s): ${unknown.join(', ')}. ` +
                     `Valid clients: ${KNOWN_CLIENTS.join(', ')}.`,
+                    1,
                 );
-                process.exit(1);
             }
             const wanted = new Set(positionals);
             targets = ADAPTERS.filter((a) => wanted.has(a.id));
@@ -156,7 +158,7 @@ export const installCommand: CommandSpec<typeof installArgs> = {
                 ? targets.map((a) => `# ${a.label}\n${a.snippet(payload)}`).join('\n\n')
                 : renderManualSnippets(workspaceDisplay);
             process.stdout.write(out + '\n');
-            process.exit(0);
+            return; // exit 0 — write-free
         }
 
         // ----- Write-free short-circuit: --dry-run -----
@@ -174,7 +176,7 @@ export const installCommand: CommandSpec<typeof installArgs> = {
                     console.log(adapter.snippet(payload));
                 }
             }
-            process.exit(0);
+            return; // exit 0 — write-free
         }
 
         // ----- No target clients (auto-detect found nothing) -----
@@ -188,7 +190,7 @@ export const installCommand: CommandSpec<typeof installArgs> = {
             }
             console.log('');
             console.log(renderManualSnippets(workspaceDisplay));
-            process.exit(0);
+            return; // exit 0 — nothing to install
         }
 
         // ----- Apply to each target adapter -----
@@ -226,6 +228,7 @@ export const installCommand: CommandSpec<typeof installArgs> = {
         console.log('');
         console.log('Restart your agent to load llmem.');
 
-        if (anyError) process.exit(1);
+        // Per-adapter errors were already printed (✗ lines); signal exit 1.
+        if (anyError) throw new CliError('', 1);
     },
 };

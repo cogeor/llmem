@@ -15,21 +15,23 @@
  * any `CliContext` shape: workspace detection is a pre-context concern
  * (callers need a root before constructing IO).
  *
- * Side-effect note: when an explicit path is supplied that does not exist,
- * this function calls `process.exit(1)` after writing an error to stderr.
- * Callers (`serve`, `scan`, `document`, and the install adapters) all rely
- * on that behavior; a non-exiting variant can land later if a caller needs
- * the `Result` shape.
+ * Error contract: when an explicit path is supplied that does not exist, this
+ * function THROWS `WorkspaceNotFoundError` (from `src/core/errors`) rather than
+ * calling `process.exit`. It is a lower layer than the CLI, so it must not own
+ * process termination: the CLI's `main()` catches the error and exits 1, and
+ * the install adapters let it propagate to their host. This keeps the detector
+ * composable / in-process testable (A-grade #2).
  */
 
 import * as path from 'path';
 import * as fs from 'fs';
+import { WorkspaceNotFoundError } from '../core/errors';
 
 /**
  * Detect workspace root.
  *
  * - When `explicit` is supplied: resolves the path. If it does not exist,
- *   prints an error and exits with code 1.
+ *   throws `WorkspaceNotFoundError` (the caller owns process termination).
  * - Otherwise: walks up from `process.cwd()` looking for one of the
  *   marker files/dirs (`.git`, `package.json`, `.llmem`, `.arch`,
  *   `.artifacts`). Returns the first match.
@@ -38,9 +40,7 @@ import * as fs from 'fs';
 export function detectWorkspace(explicit?: string): string {
     if (explicit) {
         if (!fs.existsSync(explicit)) {
-            // eslint-disable-next-line no-console
-            console.error(`Error: Workspace not found: ${explicit}`);
-            process.exit(1);
+            throw new WorkspaceNotFoundError(explicit);
         }
         return path.resolve(explicit);
     }

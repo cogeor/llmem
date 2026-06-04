@@ -45,7 +45,7 @@
   "activationEvents": [
     "onStartupFinished"
   ],
-  "main": "./dist/mcp/main.js",
+  "main": "./dist/extension/extension.js",
   "exports": {
     ".": "./dist/mcp/main.js"
   },

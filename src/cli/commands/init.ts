@@ -23,6 +23,7 @@ import { z } from 'zod';
 import { detectWorkspace } from '../../workspace';
 import { DEFAULT_PORT } from '../../config-defaults';
 import type { CommandSpec } from '../registry';
+import { CliError } from '../errors';
 
 /**
  * Literal stub written by `llmem init`. Byte-exact with the spec block at
@@ -72,10 +73,10 @@ export const initCommand: CommandSpec<typeof initArgs> = {
         // `document.ts`). Avoids `existsSync` on the hot path.
         const exists = await fs.stat(configPath).then(() => true, () => false);
         if (exists && !args.force) {
-            console.error(
+            throw new CliError(
                 `Error: ${displayPath} already exists. Use --force to overwrite.`,
+                1,
             );
-            process.exit(1);
         }
 
         await fs.mkdir(dir, { recursive: true });

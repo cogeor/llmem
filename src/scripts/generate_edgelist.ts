@@ -23,9 +23,12 @@ async function main() {
 
     // Loop 07: build a per-script WorkspaceContext so the edge-list stores
     // get a real `WorkspaceIO` (mandatory after this loop).
+    //
+    // No `artifactRoot` override: the script writes to the product default
+    // (`DEFAULT_CONFIG.artifactRoot`, i.e. `.llmem/graph`) so dev runs agree
+    // with `bin/llmem scan` instead of drifting to the legacy storage root.
     const ctx = await createWorkspaceContext({
         workspaceRoot: process.cwd(),
-        configOverrides: { artifactRoot: '.artifacts' },
     });
     const root = ctx.workspaceRoot;
     const artifactDir = ctx.artifactRoot;
