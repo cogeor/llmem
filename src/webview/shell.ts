@@ -137,6 +137,10 @@ export function renderShell(opts: ShellOptions): string {
                 <!-- FolderStructureView mount point (orthogonal folder graph;
                      folders expand to reveal their files inline). -->
                 <div id="folder-structure-view" style="display: none; width: 100%; height: 100%; overflow: auto;"></div>
+                <!-- Folder summary panel — collapsible bottom strip of the
+                     graph pane. Hidden until VS-A3 wires its content; display:none
+                     keeps it out of flow so it steals no height while collapsed. -->
+                <div id="folder-summary-panel" class="folder-summary-panel" style="display:none;"></div>
             </div>
         </div>
     </div>

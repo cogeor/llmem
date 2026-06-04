@@ -4,16 +4,14 @@ import { asWorkspaceRoot, asAbsPath, type WorkspaceRoot } from '../core/paths';
 import { renderMarkdown } from './markdown-renderer';
 import { createLogger } from '../common/logger';
 import { WorkspaceIO } from '../workspace/workspace-io';
+// Loop 08 (H1): single source of truth for the DesignDoc DTO lives in the
+// browser-safe contracts module. Type-only import keeps this Node module's
+// existing `export { DesignDoc }` surface intact for downstream consumers.
+import type { DesignDoc } from '../contracts/webview-payloads';
 
 const log = createLogger('design-doc-manager');
 
-/**
- * Design document with both markdown source and rendered HTML
- */
-export interface DesignDoc {
-    markdown: string;
-    html: string;
-}
+export type { DesignDoc };
 
 /**
  * Load all design docs for a given project root.

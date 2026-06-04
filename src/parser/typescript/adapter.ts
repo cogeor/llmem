@@ -42,4 +42,15 @@ export class TypeScriptAdapter implements LanguageAdapter {
         }
         return new TypeScriptExtractor(() => tsService!.getProgram(), workspaceRoot);
     }
+
+    /**
+     * Drop the cached `TypeScriptService` (and its built `ts.Program`) for
+     * `workspaceRoot`, so the next `createExtractor` constructs a fresh service
+     * that re-reads the current files. Called by the on-demand refresh after a
+     * manifest diff detects edits — without this, a long-lived process keeps
+     * serving the first-scan Program and never sees post-scan edits.
+     */
+    public invalidateCache(workspaceRoot: string): void {
+        this.servicesByRoot.delete(workspaceRoot);
+    }
 }

@@ -16,7 +16,7 @@ import * as os from 'os';
 import { ImportEdgeListStore, CallEdgeListStore } from '../../src/graph/edgelist';
 import { buildGraphsFromSplitEdgeLists } from '../../src/graph/index';
 import { prepareWebviewDataFromSplitEdgeLists } from '../../src/graph/webview-data';
-import { artifactToEdgeList } from '../../src/graph/artifact-converter';
+import { artifactToEdgeList } from '../../src/application/artifact-converter';
 import { TypeScriptService } from '../../src/parser/ts-service';
 import { TypeScriptExtractor } from '../../src/parser/ts-extractor';
 import { WorkspaceIO } from '../../src/workspace/workspace-io';
@@ -412,7 +412,7 @@ describe('Graph Building with Watched Files Filter', () => {
     test('filters nodes and edges by watched files', () => {
         // Create test data
         const importData = {
-            schemaVersion: 2 as const,
+            schemaVersion: 3 as const,
             resolverVersion: 'ts-resolveModuleName-v1' as const,
             timestamp: new Date().toISOString(),
             nodes: [
@@ -428,13 +428,16 @@ describe('Graph Building with Watched Files Filter', () => {
         };
 
         const callData = {
-            schemaVersion: 2 as const,
+            schemaVersion: 3 as const,
             resolverVersion: 'ts-resolveModuleName-v1' as const,
             timestamp: new Date().toISOString(),
             nodes: [
-                { id: 'src/a.ts::fnA', name: 'fnA', kind: 'function' as const, fileId: 'src/a.ts' },
-                { id: 'src/b.ts::fnB', name: 'fnB', kind: 'function' as const, fileId: 'src/b.ts' },
-                { id: 'src/c.ts::fnC', name: 'fnC', kind: 'function' as const, fileId: 'src/c.ts' },
+                // Loop 12: the graph builder now reads the persisted node.callGraph
+                // capability instead of re-deriving it from parser/config. Manual
+                // .ts call nodes must carry 'semantic' to participate in the call graph.
+                { id: 'src/a.ts::fnA', name: 'fnA', kind: 'function' as const, fileId: 'src/a.ts', callGraph: 'semantic' as const },
+                { id: 'src/b.ts::fnB', name: 'fnB', kind: 'function' as const, fileId: 'src/b.ts', callGraph: 'semantic' as const },
+                { id: 'src/c.ts::fnC', name: 'fnC', kind: 'function' as const, fileId: 'src/c.ts', callGraph: 'semantic' as const },
             ],
             edges: [
                 { source: 'src/a.ts::fnA', target: 'src/b.ts::fnB', kind: 'call' as const },
@@ -473,7 +476,7 @@ describe('Graph Building with Watched Files Filter', () => {
 
     test('includes external module targets in import graph', () => {
         const importData = {
-            schemaVersion: 2 as const,
+            schemaVersion: 3 as const,
             resolverVersion: 'ts-resolveModuleName-v1' as const,
             timestamp: new Date().toISOString(),
             nodes: [
@@ -485,7 +488,7 @@ describe('Graph Building with Watched Files Filter', () => {
             ],
         };
 
-        const callData = { schemaVersion: 2 as const, resolverVersion: 'ts-resolveModuleName-v1' as const, timestamp: '', nodes: [], edges: [] };
+        const callData = { schemaVersion: 3 as const, resolverVersion: 'ts-resolveModuleName-v1' as const, timestamp: '', nodes: [], edges: [] };
 
         const watchedFiles = new Set(['src/main.ts']);
 
@@ -505,7 +508,7 @@ describe('Graph Building with Watched Files Filter', () => {
 describe('Graph Building Edge Cases', () => {
     test('handles empty edge lists', () => {
         const emptyData = {
-            schemaVersion: 2 as const,
+            schemaVersion: 3 as const,
             resolverVersion: 'ts-resolveModuleName-v1' as const,
             timestamp: new Date().toISOString(),
             nodes: [],
@@ -522,7 +525,7 @@ describe('Graph Building Edge Cases', () => {
 
     test('handles nodes without edges', () => {
         const importData = {
-            schemaVersion: 2 as const,
+            schemaVersion: 3 as const,
             resolverVersion: 'ts-resolveModuleName-v1' as const,
             timestamp: new Date().toISOString(),
             nodes: [
@@ -531,7 +534,7 @@ describe('Graph Building Edge Cases', () => {
             edges: [],
         };
 
-        const callData = { schemaVersion: 2 as const, resolverVersion: 'ts-resolveModuleName-v1' as const, timestamp: '', nodes: [], edges: [] };
+        const callData = { schemaVersion: 3 as const, resolverVersion: 'ts-resolveModuleName-v1' as const, timestamp: '', nodes: [], edges: [] };
 
         const { importGraph } = buildGraphsFromSplitEdgeLists(importData, callData);
 
@@ -543,7 +546,7 @@ describe('Graph Building Edge Cases', () => {
         const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-dedup-'));
         try {
             const importData = {
-                schemaVersion: 2 as const,
+                schemaVersion: 3 as const,
                 resolverVersion: 'ts-resolveModuleName-v1' as const,
                 timestamp: new Date().toISOString(),
                 nodes: [

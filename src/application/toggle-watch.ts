@@ -3,7 +3,7 @@
  * to the watched set" / "remove this path from the watched set" — the
  * single workflow used by both the VS Code panel
  * (`extension/panel.ts::_handleToggleWatch`) and the HTTP server
- * (`claude/server/index.ts` `/api/watch`).
+ * (`http-server/index.ts` `/api/watch`).
  *
  * Loop 09 lifts the duplicated workflow:
  *   - Panel had inline `WatchService` instantiation, edge regeneration via

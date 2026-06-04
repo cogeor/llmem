@@ -301,79 +301,9 @@ export function getServerConfig(): Config | null {
     return serverConfig;
 }
 
-// ============================================================================
-// Standalone Entry Point
-// ============================================================================
-
-/**
- * Main entry point for standalone execution (when run via `node dist/mcp/server.js`)
- *
- * IMPORTANT: Requires LLMEM_WORKSPACE environment variable to be set.
- * This ensures the MCP server always has an explicit workspace context.
- *
- * Usage:
- *   LLMEM_WORKSPACE=/path/to/workspace node dist/mcp/server.js
- *
- * The workspace root is NEVER inferred from cwd to prevent accidentally
- * operating on the wrong directory (e.g., extension installation path).
- */
-async function main(): Promise<void> {
-    // Default config for standalone mode
-    const defaultConfig: Config = { ...DEFAULT_CONFIG };
-
-    // REQUIRE workspace root from environment variable
-    const workspaceRoot = process.env.LLMEM_WORKSPACE;
-
-    if (!workspaceRoot) {
-        // fatal-bootstrap: process exits before any structured handler runs;
-        // emit plainly to stderr so the message survives even if the logger
-        // module never finishes initializing.
-        // eslint-disable-next-line no-console
-        console.error('[MCP] ERROR: LLMEM_WORKSPACE environment variable is required.');
-        // eslint-disable-next-line no-console
-        console.error('[MCP] Usage: LLMEM_WORKSPACE=/path/to/workspace node dist/mcp/server.js');
-        // eslint-disable-next-line no-console
-        console.error('[MCP] The workspace root must be explicitly provided - never inferred.');
-        process.exit(1);
-    }
-
-    log.info('Standalone mode', { workspaceRoot });
-
-    try {
-        await startServer(defaultConfig, workspaceRoot);
-
-        // Graceful shutdown handler
-        const shutdown = async (signal: string) => {
-            log.info('Received signal, shutting down gracefully', { signal });
-            try {
-                await stopServer();
-            } catch (err) {
-                log.error('Error during shutdown', {
-                    error: err instanceof Error ? err.message : String(err),
-                });
-            }
-            process.exit(0);
-        };
-
-        process.once('SIGTERM', () => shutdown('SIGTERM'));
-        process.once('SIGINT', () => shutdown('SIGINT'));
-
-        process.on('unhandledRejection', (reason) => {
-            log.error('Unhandled rejection', {
-                reason: reason instanceof Error ? reason.message : String(reason),
-            });
-        });
-    } catch (error) {
-        // fatal-bootstrap: startServer threw before normal logging is wired.
-        // eslint-disable-next-line no-console
-        console.error('[MCP] Failed to start MCP server:', error);
-        process.exit(1);
-    }
-}
-
-// Run main() when executed directly (not imported as module)
-// Check if this file is the main module being run
-const isMainModule = require.main === module;
-if (isMainModule) {
-    main();
-}
+// NOTE: This module is a pure library — `startServer`/`stopServer` are the
+// public surface. The standalone stdio entry point is `src/mcp/main.ts`
+// (built to `dist/mcp/main.js`); the CLI `mcp` subcommand also delegates to
+// it. A previous `if (require.main === module) main()` self-exec here caused
+// a double-bootstrap ("MCP server is already running") once `main.ts` was
+// bundled with this file, so the redundant standalone bootstrap was removed.

@@ -45,17 +45,17 @@
   "activationEvents": [
     "onStartupFinished"
   ],
-  "main": "./dist/claude/index.js",
+  "main": "./dist/mcp/main.js",
   "exports": {
-    ".": "./dist/claude/index.js"
+    ".": "./dist/mcp/main.js"
   },
   "bin": {
     "llmem": "bin/llmem"
   },
   "files": [
     "bin/",
-    "dist/claude/cli/main.js",
-    "dist/claude/index.js",
+    "dist/cli/main.js",
+    "dist/mcp/main.js",
     "dist/webview/*.js",
     "dist/webview/*.html",
     "dist/webview/libs/**",
@@ -80,8 +80,8 @@
       "properties": {
         "llmem.artifactRoot": {
           "type": "string",
-          "default": ".artifacts",
-          "description": "Root folder for artifacts (relative to workspace root)."
+          "default": ".llmem/graph",
+          "description": "Root folder for graph artifacts (relative to workspace root)."
         },
         "llmem.maxFilesPerFolder": {
           "type": "number",
@@ -96,6 +96,13 @@
           "minimum": 1,
           "maximum": 10240,
           "description": "Maximum file size in KB to include in context."
+        },
+        "llmem.maxFileLines": {
+          "type": "number",
+          "default": 2000,
+          "minimum": 1,
+          "maximum": 100000,
+          "description": "Skip files with more than this many lines when scanning."
         }
       }
     }
@@ -107,17 +114,19 @@
     "compile": "npm run compile:vscode && npm run compile:webview-types",
     "compile:vscode": "tsc -p ./tsconfig.vscode.json",
     "compile:webview-types": "tsc --noEmit -p ./src/webview/ui/tsconfig.json",
-    "compile:claude": "tsc -p ./tsconfig.claude.json",
-    "compile:all": "npm run compile:vscode && npm run compile:webview-types && npm run compile:claude",
+    "compile:all": "npm run compile:vscode && npm run compile:webview-types",
     "watch": "tsc -watch -p ./tsconfig.vscode.json",
     "watch:vscode": "tsc -watch -p ./tsconfig.vscode.json",
-    "watch:claude": "tsc -watch -p ./tsconfig.claude.json",
     "lint": "eslint src --ext ts",
     "test": "npm run test:unit && npm run test:arch && npm run test:integration",
     "test:unit": "node scripts/run-tests.cjs tests/unit tests/contracts",
     "test:arch": "node scripts/run-tests.cjs tests/arch",
     "test:integration": "node scripts/run-tests.cjs --test-concurrency=1 tests/integration",
     "verify": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && npm ci && npm run build:all && npm test",
+    "clean": "node scripts/clean-src-emit.js",
+    "clean:dist": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true});require('fs').rmSync('.artifacts',{recursive:true,force:true})\"",
+    "clean:all": "npm run clean && npm run clean:dist",
+    "smoke:webview": "node scripts/smoke-webview.js",
     "prepublishOnly": "npm test",
     "ci:local": "act -j build --container-architecture linux/amd64",
     "smoke:pack": "node scripts/pack-smoke.js",
@@ -126,23 +135,23 @@
     "build:webview": "npx ts-node src/scripts/build_webview.ts",
     "build": "npm run build:vscode",
     "build:vscode": "npm run compile:vscode && npm run compile:webview-types && npm run build:webview",
-    "build:claude": "npx ts-node src/scripts/build_claude.ts",
+    "build:entrypoints": "npx ts-node src/scripts/build_entrypoints.ts",
     "build:all": "npm run compile:all && npm run build:webview",
-    "pretest": "npm run compile && npm run build:webview && npm run build:claude",
+    "pretest": "npm run compile && npm run build:webview && npm run build:entrypoints",
     "prepackage": "npm run compile:production && npm run build:webview",
     "compile:production": "tsc -p ./tsconfig.production.json",
     "scan": "node ./bin/llmem scan",
     "view": "npx ts-node src/scripts/generate_webview.ts",
     "view:graph": "npx ts-node src/scripts/generate_webview.ts --graph-only",
-    "file-info": "npx ts-node src/info/cli.ts",
-    "file-info:sig": "npx ts-node src/info/cli.ts --signatures",
-    "file-info:semantic": "npx ts-node src/info/cli.ts --semantic",
-    "serve": "npm run build:claude && npm run build:webview && node ./bin/llmem serve",
-    "serve:dev": "npx ts-node src/claude/cli/main.ts serve",
+    "file-info": "npx ts-node src/scripts/file-info-cli.ts",
+    "file-info:sig": "npx ts-node src/scripts/file-info-cli.ts --signatures",
+    "file-info:semantic": "npx ts-node src/scripts/file-info-cli.ts --semantic",
+    "serve": "npm run build:entrypoints && npm run build:webview && node ./bin/llmem serve",
+    "serve:dev": "npx ts-node src/cli/main.ts serve",
     "graph": "node ./bin/llmem generate",
     "graph:stats": "node ./bin/llmem stats",
     "package": "vsce package",
-    "package:claude": "echo 'Claude package - copy dist/claude/* to deployment location'"
+    "package:dist": "echo 'Dist package - copy dist/* to deployment location'"
   },
   "devDependencies": {
     "@types/fs-extra": "^11.0.4",
@@ -165,6 +174,7 @@
     "fs-extra": "^11.3.2",
     "jsdom": "^25.0.1",
     "marked": "^17.0.1",
+    "smol-toml": "^1.6.1",
     "vscode-jsonrpc": "^8.2.1",
     "vscode-uri": "^3.1.0",
     "ws": "^8.18.3",
@@ -175,10 +185,10 @@
     "tree-sitter": "^0.22.4"
   },
   "peerDependencies": {
-    "tree-sitter-python": "^0.23.0",
+    "@davisvaughan/tree-sitter-r": "^1.2.0",
     "tree-sitter-cpp": "^0.22.0",
-    "tree-sitter-rust": "^0.23.0",
-    "@davisvaughan/tree-sitter-r": "^1.2.0"
+    "tree-sitter-python": "^0.23.0",
+    "tree-sitter-rust": "^0.23.0"
   },
   "peerDependenciesMeta": {
     "tree-sitter-python": {

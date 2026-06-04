@@ -72,8 +72,9 @@ All code must pass linting before submission. Fix lint errors before opening a p
 | Directory | What's inside |
 |---|---|
 | `src/extension` | VS Code / Antigravity extension entry points |
-| `src/claude` | CLI plugin, graph HTTP server, MCP entrypoint |
-| `src/mcp` | MCP tool handlers (`file_info`, `report_*`, `open_window`, …) |
+| `src/cli` | CLI command surface (`scan`, `serve`, `generate`, `stats`, `mcp`, …) |
+| `src/http-server` | Graph HTTP / webview server |
+| `src/mcp` | MCP stdio entrypoint + tool handlers (`file_info`, `report_*`, `open_window`, …) |
 | `src/application` | Pipeline glue used by both CLI and MCP |
 | `src/parser` | TypeScript Compiler API + tree-sitter adapters |
 | `src/graph` | Edge-list stores for imports and calls |

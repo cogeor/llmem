@@ -5,7 +5,9 @@
  * This is the SINGLE SOURCE OF TRUTH for supported file extensions.
  */
 
-import { LANGUAGES } from './languages';
+import * as path from 'path';
+
+import { LANGUAGES, type CallGraphCapability } from './languages';
 
 // ============================================================================
 // Line Count Thresholds
@@ -96,6 +98,77 @@ export function getLanguageFromPath(filePath: string): string {
         }
     }
     return 'code';
+}
+
+/**
+ * Call-graph capability for a file, derived from the LANGUAGES descriptor:
+ * 'semantic' (TS/JS), 'heuristic' (Python — name-matched), or 'none'
+ * (C/C++/Rust/R and unknown extensions). Used by the graph builder to decide
+ * which files' call entities become call-graph nodes (the call graph is no
+ * longer TS-only — heuristic languages participate too, marked in the viewer).
+ */
+export function getCallGraphCapability(filePath: string): CallGraphCapability {
+    const dot = filePath.lastIndexOf('.');
+    if (dot < 0) return 'none';
+    const ext = filePath.slice(dot).toLowerCase();
+
+    for (const lang of LANGUAGES) {
+        for (const e of lang.extensions) {
+            if (e.toLowerCase() === ext) {
+                return lang.callGraph;
+            }
+        }
+    }
+    return 'none';
+}
+
+// ============================================================================
+// Generated / derived file denylist
+// ============================================================================
+
+/**
+ * Filename patterns for machine-generated / derived files that should be
+ * skipped when scanning a codebase.
+ *
+ * Each entry matches on a *segment boundary* (a leading dot) so it never
+ * fires on substrings: `*.min.*` matches `foo.min.js` but not `terminal.ts`
+ * (no spurious 'min' substring hit). Patterns are anchored against the file
+ * basename only (no path/directory matching) and run case-insensitively,
+ * mirroring this file's existing extension-lowercasing convention.
+ *
+ * NOTE: `\.d\.ts$` is opinionated and on-by-default — TypeScript declaration
+ * files are derived artifacts, but a `.d.ts` is also a perfectly valid `.ts`
+ * file, so this is intentionally a *distinct* denylist gate rather than an
+ * extension filter. It is a single entry users can drop if they want to scan
+ * their declaration files.
+ *
+ * This constant + {@link isGeneratedFile} are self-contained: no scan code
+ * consumes them yet (a later loop wires them into the walker), so source and
+ * tests share exactly one matcher.
+ */
+export const GENERATED_DENYLIST: readonly RegExp[] = [
+    /\.min\./i,
+    /\.bundle\./i,
+    /\.generated\./i,
+    /\.d\.ts$/i,
+];
+
+/**
+ * Return `true` if `filename` looks like a machine-generated / derived file
+ * per {@link GENERATED_DENYLIST}. Name-only (no I/O): matches the basename
+ * case-insensitively.
+ *
+ * @example
+ * isGeneratedFile('foo.min.js')    // true
+ * isGeneratedFile('a.bundle.css')  // true
+ * isGeneratedFile('x.generated.ts')// true
+ * isGeneratedFile('types.d.ts')    // true
+ * isGeneratedFile('extractor.ts')  // false
+ * isGeneratedFile('index.js')      // false
+ */
+export function isGeneratedFile(filename: string): boolean {
+    const base = path.basename(filename);
+    return GENERATED_DENYLIST.some((pattern) => pattern.test(base));
 }
 
 // ============================================================================

@@ -7,9 +7,9 @@
  * the loop-09 stores.
  *
  * Two call sites share this helper:
- *   - `src/claude/server/regenerator.ts:regenerateWebview` — runs on every
+ *   - `src/http-server/regenerator.ts:regenerateWebview` — runs on every
  *     static-webview regeneration event.
- *   - `src/claude/cli/commands/scan.ts` — runs after `scanFolderRecursive`
+ *   - `src/cli/commands/scan.ts` — runs after `scanFolderRecursive`
  *     to keep the user-facing CLI emitting all four artifacts.
  *
  * The helper does NOT modify the import or call edge lists; it only

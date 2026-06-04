@@ -31,6 +31,7 @@ import { FolderEdgelistSchema } from '../../../src/graph/folder-edges';
 import { scanFolderRecursive } from '../../../src/application/scan';
 import { buildAndSaveFolderArtifacts } from '../../../src/application/folder-artifacts';
 import { createWorkspaceContext } from '../../../src/application/workspace-context';
+import { DEFAULT_CONFIG } from '../../../src/config-defaults';
 
 /**
  * Build a fixture workspace with two files in different folders so the
@@ -68,7 +69,7 @@ test('GET /api/folder-tree + /api/folder-edges: happy path returns 200 + Zod-val
     await populateArtifacts(tmp);
 
     await withServer(
-        { config: { workspaceRoot: tmp } },
+        { config: { workspaceRoot: tmp, artifactRoot: DEFAULT_CONFIG.artifactRoot } },
         async (request) => {
             const treeRes = await request({ path: '/api/folder-tree' });
             assert.equal(treeRes.status, 200);
@@ -98,7 +99,7 @@ test('GET /api/folder-tree + /api/folder-edges: missing artifacts return 404 + s
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-folder-routes-empty-'));
 
     await withServer(
-        { config: { workspaceRoot: tmp } },
+        { config: { workspaceRoot: tmp, artifactRoot: DEFAULT_CONFIG.artifactRoot } },
         async (request) => {
             const treeRes = await request({ path: '/api/folder-tree' });
             assert.equal(treeRes.status, 404);

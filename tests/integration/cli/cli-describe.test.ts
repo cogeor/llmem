@@ -36,17 +36,17 @@ import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { z } from 'zod';
 
-import { REGISTRY } from '../../../src/claude/cli/registry';
-import { buildDescribeOutput } from '../../../src/claude/cli/commands/describe';
+import { REGISTRY } from '../../../src/cli/registry';
+import { buildDescribeOutput } from '../../../src/cli/commands/describe';
 
 const REPO_ROOT = path.join(__dirname, '..', '..', '..');
 const BIN = path.join(REPO_ROOT, 'bin', 'llmem');
-const DIST_MAIN = path.join(REPO_ROOT, 'dist', 'claude', 'cli', 'main.js');
+const DIST_MAIN = path.join(REPO_ROOT, 'dist', 'cli', 'main.js');
 
 function ensureBuilt(): void {
     if (!fs.existsSync(DIST_MAIN)) {
         throw new Error(
-            `Expected ${DIST_MAIN} to exist. Run \`npm run build:claude\` before \`npm run test:integration\`.`,
+            `Expected ${DIST_MAIN} to exist. Run \`npm run build:entrypoints\` before \`npm run test:integration\`.`,
         );
     }
 }
@@ -210,14 +210,14 @@ test('generate and stats remain callable despite being hidden', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-hidden-'));
     try {
         fs.writeFileSync(path.join(tmp, 'package.json'), '{}', 'utf8');
-        const artifactDir = path.join(tmp, '.artifacts');
+        const artifactDir = path.join(tmp, '.llmem', 'graph');
         fs.mkdirSync(artifactDir, { recursive: true });
-        // Edge-list shape is the v2 wire shape from `edgelist-schema.ts`
-        // (schemaVersion: 2 + resolverVersion + nodes/edges arrays +
+        // Edge-list shape is the current wire shape from `edgelist-schema.ts`
+        // (schemaVersion: 3 + resolverVersion + nodes/edges arrays +
         // timestamp). An empty edge list parses cleanly — `generate` will
         // render an empty webview, `stats` will report all zeros.
         const emptyEdgelist = JSON.stringify({
-            schemaVersion: 2,
+            schemaVersion: 3,
             resolverVersion: 'ts-resolveModuleName-v1',
             timestamp: new Date().toISOString(),
             nodes: [],

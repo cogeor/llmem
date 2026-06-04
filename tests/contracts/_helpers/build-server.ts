@@ -19,10 +19,10 @@ import * as http from 'node:http';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { HttpRequestHandler } from '../../../src/claude/server/http-handler';
-import { registerRoutes } from '../../../src/claude/server/routes';
-import type { ServerContext } from '../../../src/claude/server/routes';
-import type { ServerConfig } from '../../../src/claude/server';
+import { HttpRequestHandler } from '../../../src/http-server/http-handler';
+import { registerRoutes } from '../../../src/http-server/routes';
+import type { ServerContext } from '../../../src/http-server/routes';
+import type { ServerConfig } from '../../../src/http-server';
 import { NoopLogger } from '../../../src/core/logger';
 import { createWorkspaceContext } from '../../../src/application/workspace-context';
 

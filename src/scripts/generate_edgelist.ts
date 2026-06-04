@@ -12,7 +12,7 @@ import * as path from 'path';
 import { ImportEdgeListStore, CallEdgeListStore } from '../graph/edgelist';
 import { TypeScriptService } from '../parser/ts-service';
 import { TypeScriptExtractor } from '../parser/ts-extractor';
-import { artifactToEdgeList } from '../graph/artifact-converter';
+import { artifactToEdgeList } from '../application/artifact-converter';
 import { LAZY_CODEBASE_LINE_THRESHOLD } from '../parser/config';
 import { createWorkspaceContext } from '../application/workspace-context';
 

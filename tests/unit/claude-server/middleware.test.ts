@@ -1,6 +1,6 @@
 /**
  * Loop 05 — unit tests for the four shared route-middleware helpers in
- * `src/claude/server/routes/middleware.ts`.
+ * `src/http-server/routes/middleware.ts`.
  *
  * These tests exercise the helpers in isolation, without spinning up a
  * real `http.Server` or going through `registerRoutes`. The integration
@@ -28,10 +28,10 @@ import {
     requireSameOrigin,
     requireApiToken,
     readJsonBody,
-} from '../../../src/claude/server/routes/middleware';
-import type { ServerContext } from '../../../src/claude/server/routes/types';
-import type { HttpRequestHandler } from '../../../src/claude/server/http-handler';
-import type { ServerConfig } from '../../../src/claude/server';
+} from '../../../src/http-server/routes/middleware';
+import type { ServerContext } from '../../../src/http-server/routes/types';
+import type { HttpRequestHandler } from '../../../src/http-server/http-handler';
+import type { ServerConfig } from '../../../src/http-server';
 import { NoopLogger } from '../../../src/core/logger';
 
 // ---------------------------------------------------------------------------

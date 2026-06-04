@@ -21,7 +21,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { regenerateWebview } from '../../../src/claude/server/regenerator';
+import { regenerateWebview } from '../../../src/http-server/regenerator';
 import { scanFolderRecursive } from '../../../src/application/scan';
 import { createWorkspaceContext } from '../../../src/application/workspace-context';
 import {
@@ -33,7 +33,7 @@ import {
     FOLDER_EDGELIST_FILENAME,
 } from '../../../src/graph/folder-edges-store';
 import { NoopLogger } from '../../../src/core/logger';
-import type { WebSocketService } from '../../../src/claude/server/websocket';
+import type { WebSocketService } from '../../../src/http-server/websocket';
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..', '..');
 const DIST_WEBVIEW_INDEX = path.join(REPO_ROOT, 'dist', 'webview', 'index.html');

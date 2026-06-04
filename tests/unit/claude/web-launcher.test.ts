@@ -3,7 +3,7 @@
 // Loop 21 — pin the new asset-resolution chain in `web-launcher.ts`.
 // Before Loop 21 the launcher computed its asset directory from
 // `__dirname`, which broke under ts-node because `__dirname` for
-// `src/claude/web-launcher.ts` resolves to `<repo-parent>/dist/webview`
+// the launcher's compiled module resolved to `<repo-parent>/dist/webview`
 // — one level above the repo root, where nothing exists. Loop 21
 // replaced that with an injected `assetRoot` option plus a discovery
 // chain (workspaceRoot → cwd-walk-up to find `package.json` with
@@ -37,7 +37,7 @@ import {
     findRepoRoot,
     findInstalledPackageRoot,
     __testHooks,
-} from '../../../src/claude/web-launcher';
+} from '../../../src/viewer-generator';
 
 /** Create a tmp dir and return its absolute path. */
 function mkTmp(): string {

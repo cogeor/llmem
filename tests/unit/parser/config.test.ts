@@ -18,6 +18,8 @@ import {
     ALL_SUPPORTED_EXTENSIONS,
     isSupportedFile,
     getLanguageFromPath,
+    isGeneratedFile,
+    getCallGraphCapability,
 } from '../../../src/parser/config';
 
 test('ALL_SUPPORTED_EXTENSIONS does not advertise unsupported languages (.java, .go)', () => {
@@ -90,4 +92,56 @@ test('getLanguageFromPath still returns real language IDs for supported files', 
     assert.equal(getLanguageFromPath('foo.rs'), 'rust');
     assert.equal(getLanguageFromPath('foo.cpp'), 'cpp');
     assert.equal(getLanguageFromPath('foo.R'), 'r');
+});
+
+// ----------------------------------------------------------------------------
+// isGeneratedFile (LS-02): name-only denylist for machine-generated files.
+// ----------------------------------------------------------------------------
+
+test('isGeneratedFile matches the four denylist patterns', () => {
+    assert.equal(isGeneratedFile('foo.min.js'), true);
+    assert.equal(isGeneratedFile('a.bundle.css'), true);
+    assert.equal(isGeneratedFile('x.generated.ts'), true);
+    assert.equal(isGeneratedFile('types.d.ts'), true);
+});
+
+test('isGeneratedFile does not fire on plain source files', () => {
+    assert.equal(isGeneratedFile('extractor.ts'), false);
+    assert.equal(isGeneratedFile('index.js'), false);
+    // Substring 'min' inside a name must NOT count as ".min." (segment-anchored).
+    assert.equal(isGeneratedFile('terminal.ts'), false);
+});
+
+test('isGeneratedFile is case-insensitive and basename-only', () => {
+    assert.equal(isGeneratedFile('Foo.MIN.JS'), true);
+    assert.equal(isGeneratedFile('Types.D.TS'), true);
+    // Directory segments must be ignored — only the basename is matched.
+    assert.equal(isGeneratedFile('src/generated/extractor.ts'), false);
+    assert.equal(isGeneratedFile('a/b/c.min.js'), true);
+});
+
+// PC-02: per-file call-graph capability derived from the LANGUAGES descriptor.
+// 'semantic' (TS/JS), 'heuristic' (Python), 'none' (C/C++/Rust/R, unknown).
+test('getCallGraphCapability: TS/JS are semantic', () => {
+    assert.equal(getCallGraphCapability('src/a.ts'), 'semantic');
+    assert.equal(getCallGraphCapability('src/a.tsx'), 'semantic');
+    assert.equal(getCallGraphCapability('src/a.js'), 'semantic');
+    assert.equal(getCallGraphCapability('src/a.jsx'), 'semantic');
+});
+
+test('getCallGraphCapability: Python is heuristic', () => {
+    assert.equal(getCallGraphCapability('pkg/mod.py'), 'heuristic');
+});
+
+test('getCallGraphCapability: C/C++/Rust/R are none', () => {
+    assert.equal(getCallGraphCapability('src/a.c'), 'none');
+    assert.equal(getCallGraphCapability('src/a.cpp'), 'none');
+    assert.equal(getCallGraphCapability('src/a.rs'), 'none');
+    assert.equal(getCallGraphCapability('src/a.R'), 'none');
+    assert.equal(getCallGraphCapability('src/a.r'), 'none');
+});
+
+test('getCallGraphCapability: unknown / no extension is none', () => {
+    assert.equal(getCallGraphCapability('Foo.java'), 'none');
+    assert.equal(getCallGraphCapability('Makefile'), 'none');
 });

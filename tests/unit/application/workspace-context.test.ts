@@ -47,7 +47,7 @@ test('createWorkspaceContext (loose): builds a context with default config', asy
         const root = path.join(parent, 'workspace');
         fs.mkdirSync(root);
         const ctx = await createWorkspaceContext({ workspaceRoot: root });
-        assert.equal(ctx.config.artifactRoot, '.artifacts');
+        assert.equal(ctx.config.artifactRoot, '.llmem/graph');
         assert.equal(ctx.config.maxFilesPerFolder, 20);
         assert.equal(ctx.config.maxFileSizeKB, 512);
         assert.equal(ctx.workspaceRoot, fs.realpathSync(root));
@@ -117,7 +117,7 @@ test('createWorkspaceContext: artifactRoot is contained under workspaceRoot', as
     }
 });
 
-test('createWorkspaceContext: archRoot is contained under workspaceRoot and archRootRel === ".arch"', async () => {
+test('createWorkspaceContext: archRoot is contained under workspaceRoot and archRootRel === ".llmem/docs"', async () => {
     const parent = mkTmp('llmem-ctx-');
     try {
         const root = path.join(parent, 'workspace');
@@ -128,7 +128,7 @@ test('createWorkspaceContext: archRoot is contained under workspaceRoot and arch
             !rel.startsWith('..') && !path.isAbsolute(rel),
             `expected archRoot under workspaceRoot, got rel='${rel}'`,
         );
-        assert.equal(ctx.archRootRel, '.arch');
+        assert.equal(ctx.archRootRel, '.llmem/docs');
     } finally {
         rm(parent);
     }
@@ -145,20 +145,20 @@ test('getArtifactRootRel returns ctx.artifactRootRel', async () => {
         fs.mkdirSync(root);
         const ctx = await createWorkspaceContext({ workspaceRoot: root });
         assert.equal(getArtifactRootRel(ctx), ctx.artifactRootRel);
-        // Default: '.artifacts'.
-        assert.equal(getArtifactRootRel(ctx), '.artifacts');
+        // Default: '.llmem/graph'.
+        assert.equal(getArtifactRootRel(ctx), '.llmem/graph');
     } finally {
         rm(parent);
     }
 });
 
-test('getArchRootRel returns ".arch"', async () => {
+test('getArchRootRel returns ".llmem/docs"', async () => {
     const parent = mkTmp('llmem-ctx-');
     try {
         const root = path.join(parent, 'workspace');
         fs.mkdirSync(root);
         const ctx = await createWorkspaceContext({ workspaceRoot: root });
-        assert.equal(getArchRootRel(ctx), '.arch');
+        assert.equal(getArchRootRel(ctx), '.llmem/docs');
     } finally {
         rm(parent);
     }
@@ -296,8 +296,9 @@ test('createWorkspaceContext (loose): symlink workspaceRoot gets normalized to r
 
 test('defaultRuntimeConfig matches DEFAULT_CONFIG shape', () => {
     assert.deepEqual(defaultRuntimeConfig(), {
-        artifactRoot: '.artifacts',
+        artifactRoot: '.llmem/graph',
         maxFilesPerFolder: 20,
         maxFileSizeKB: 512,
+        maxFileLines: 2000,
     });
 });

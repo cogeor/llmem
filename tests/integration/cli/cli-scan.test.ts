@@ -5,7 +5,7 @@
  *   1. Happy path — fresh workspace with two TS files (one importing the other)
  *      → exit 0, stdout shows the workspace banner and the
  *      "Indexed N files (M skipped, 0 errors)." summary, and the
- *      `.artifacts/import-edgelist.json` + `call-edgelist.json` files exist.
+ *      `.llmem/graph/import-edgelist.json` + `call-edgelist.json` files exist.
  *   2. Parse-error path — at least one file the ts-extractor cannot parse
  *      → exit 1 (process.exit(1) on errors), summary still printed with a
  *      non-zero error count, and the import-edgelist.json is STILL written
@@ -43,12 +43,12 @@ import * as fs from 'node:fs';
 
 const REPO_ROOT = path.join(__dirname, '..', '..', '..');
 const BIN = path.join(REPO_ROOT, 'bin', 'llmem');
-const DIST_MAIN = path.join(REPO_ROOT, 'dist', 'claude', 'cli', 'main.js');
+const DIST_MAIN = path.join(REPO_ROOT, 'dist', 'cli', 'main.js');
 
 function ensureBuilt(): void {
     if (!fs.existsSync(DIST_MAIN)) {
         throw new Error(
-            `Expected ${DIST_MAIN} to exist. Run \`npm run build:claude\` before \`npm run test:integration\`.`,
+            `Expected ${DIST_MAIN} to exist. Run \`npm run build:entrypoints\` before \`npm run test:integration\`.`,
         );
     }
 }
@@ -119,8 +119,8 @@ test('scan: writes edge lists and exits 0 on a clean workspace', async () => {
             `expected zero-error summary line, got:\n${output}`,
         );
 
-        const importEdgeList = path.join(tmp, '.artifacts', 'import-edgelist.json');
-        const callEdgeList = path.join(tmp, '.artifacts', 'call-edgelist.json');
+        const importEdgeList = path.join(tmp, '.llmem', 'graph', 'import-edgelist.json');
+        const callEdgeList = path.join(tmp, '.llmem', 'graph', 'call-edgelist.json');
         assert.ok(
             fs.existsSync(importEdgeList),
             `expected ${importEdgeList} to exist after scan`,
@@ -172,7 +172,7 @@ test('scan: exits non-zero when a file fails to parse', async () => {
 
         // Partial-success: edge lists for the good file should still be
         // persisted — only the exit code signals failure.
-        const importEdgeList = path.join(tmp, '.artifacts', 'import-edgelist.json');
+        const importEdgeList = path.join(tmp, '.llmem', 'graph', 'import-edgelist.json');
         assert.ok(
             fs.existsSync(importEdgeList),
             `expected ${importEdgeList} to exist after partial-success scan`,

@@ -49,6 +49,7 @@ test('shell renderer emits all required mount points (static mode)', () => {
     // Explicit IDs that must survive the 2-pane layout refactor.
     assert.ok(html.includes('id="view-toggle"'));
     assert.ok(html.includes('id="folder-structure-view"'));
+    assert.ok(html.includes('id="folder-summary-panel"'));
 
     // The folder-structure stylesheet must be referenced.
     assert.ok(

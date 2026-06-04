@@ -5,7 +5,8 @@
  * Uses tree-sitter-cpp for fast AST parsing.
  * 
  * Note: Only import extraction is supported (via #include).
- * Call graph is NOT available for C/C++ (TypeScript/JavaScript only).
+ * Call graph is NOT available for C/C++ (call graphs are TS/JS — semantic —
+ * and Python — heuristic — only).
  */
 
 import { TreeSitterAdapter } from '../adapter';

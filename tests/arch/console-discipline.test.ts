@@ -10,11 +10,9 @@
 //   - src/core/logger.ts                            // boundary interface + consoleLogger
 //   - src/webview/ui/services/webview-logger.ts     // browser logger sink (Loop 14)
 //   - src/webview/live-reload.ts                    // browser WebSocket client
-//   - src/claude/cli/**                             // CLI user-facing output (loop 01 split)
-//   - src/info/cli.ts                               // CLI user-facing output
-//   - src/info/cli_folder.ts                        // CLI user-facing output
-//   - src/scripts/**                                // dev script entrypoints
-//   - src/claude/server/open-browser.ts             // user-facing fallback
+//   - src/cli/**                                    // CLI user-facing output (loop 01 split, moved to top-level in J1)
+//   - src/scripts/**                                // dev script entrypoints (incl. file-info / folder-info CLIs)
+//   - src/http-server/open-browser.ts               // user-facing fallback
 //                                                      ("Please open ${url} manually")
 //
 // Removed in Loop 14:
@@ -48,7 +46,7 @@
 //   - For non-allow-listed files, we still skip a call site if the line
 //     ABOVE it carries `// eslint-disable-next-line no-console`. This
 //     covers the documented fatal-bootstrap exemptions in
-//     `src/mcp/server.ts` and `src/claude/index.ts`.
+//     `src/mcp/server.ts` and `src/mcp/main.ts`.
 //   - Paths are forward-slash and relative to repo root.
 
 import test from 'node:test';
@@ -73,7 +71,7 @@ interface KnownViolation {
 
 // Loop 20 lands with a clean migration. Documented exemptions live as
 // `// eslint-disable-next-line no-console` directives on the line above
-// the call (see `src/mcp/server.ts` and `src/claude/index.ts`); those
+// the call (see `src/mcp/server.ts` and `src/mcp/main.ts`); those
 // are skipped at the AST-collection layer below, NOT through this list.
 // This list is reserved for future loops that need a transitional
 // path-and-line entry.
@@ -130,10 +128,8 @@ function isAllowedPath(rel: string): boolean {
         rel === 'src/core/logger.ts' ||
         rel === 'src/webview/live-reload.ts' ||
         rel === 'src/webview/ui/services/webview-logger.ts' ||
-        rel === 'src/info/cli.ts' ||
-        rel === 'src/info/cli_folder.ts' ||
-        rel === 'src/claude/server/open-browser.ts' ||
-        rel.startsWith('src/claude/cli/') ||
+        rel === 'src/http-server/open-browser.ts' ||
+        rel.startsWith('src/cli/') ||
         rel.startsWith('src/scripts/')
     );
 }

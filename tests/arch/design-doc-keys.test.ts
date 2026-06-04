@@ -40,49 +40,49 @@ interface MappingCase {
 
 // archRoot is constant; filePath varies (use forward slashes — path.relative
 // normalizes on each OS, and we replace backslashes downstream).
-const ARCH_ROOT = '/repo/.arch';
+const ARCH_ROOT = '/repo/.llmem/docs';
 
 const CASES: readonly MappingCase[] = [
   {
     description: 'leaf .md under a subdirectory becomes .html',
     archRoot: ARCH_ROOT,
-    filePath: '/repo/.arch/src/parser.md',
+    filePath: '/repo/.llmem/docs/src/parser.md',
     expectedKey: 'src/parser.html',
   },
   {
     description: 'deeper leaf .md becomes .html',
     archRoot: ARCH_ROOT,
-    filePath: '/repo/.arch/src/graph/edgelist.md',
+    filePath: '/repo/.llmem/docs/src/graph/edgelist.md',
     expectedKey: 'src/graph/edgelist.html',
   },
   {
     description: 'README.md in a subfolder is preserved (folder doc)',
     archRoot: ARCH_ROOT,
-    filePath: '/repo/.arch/src/graph/README.md',
+    filePath: '/repo/.llmem/docs/src/graph/README.md',
     expectedKey: 'src/graph/README.md',
   },
   {
     description: 'top-level README.md is preserved',
     archRoot: ARCH_ROOT,
-    filePath: '/repo/.arch/README.md',
+    filePath: '/repo/.llmem/docs/README.md',
     expectedKey: 'README.md',
   },
   {
     description: 'uppercase non-README .md becomes .html (case-preserved in stem)',
     archRoot: ARCH_ROOT,
-    filePath: '/repo/.arch/src/PARSER.md',
+    filePath: '/repo/.llmem/docs/src/PARSER.md',
     expectedKey: 'src/PARSER.html',
   },
   {
     description: 'mixed-case Readme.md is preserved (basename match is case-insensitive)',
     archRoot: ARCH_ROOT,
-    filePath: '/repo/.arch/src/Readme.md',
+    filePath: '/repo/.llmem/docs/src/Readme.md',
     expectedKey: 'src/Readme.md',
   },
   {
     description: 'all-caps README.MD is preserved (basename match is case-insensitive)',
     archRoot: ARCH_ROOT,
-    filePath: '/repo/.arch/docs/README.MD',
+    filePath: '/repo/.llmem/docs/docs/README.MD',
     expectedKey: 'docs/README.MD',
   },
 ];
@@ -117,8 +117,8 @@ test('design-doc key mapping: Windows-style backslash paths normalize correctly'
   // (Windows), the resulting key uses forward slashes. We can't construct a
   // Windows-style absolute filePath portably, so we exercise the post-relative
   // normalization directly.
-  const archRootWin = 'C:\\repo\\.arch';
-  const filePathWin = 'C:\\repo\\.arch\\src\\graph\\README.md';
+  const archRootWin = 'C:\\repo\\.llmem\\docs';
+  const filePathWin = 'C:\\repo\\.llmem\\docs\\src\\graph\\README.md';
   // path.relative on Linux would yield the whole thing as one chunk; we
   // assert the normalize-on-output property by simulating the slice + replace.
   const relRaw = path.relative(archRootWin, filePathWin);

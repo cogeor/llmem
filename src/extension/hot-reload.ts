@@ -9,7 +9,7 @@ import { createLogger } from '../common/logger';
 import type { DesignDoc } from '../webview/design-docs';
 import { renderMarkdown } from '../webview/markdown-renderer';
 import type { WebviewGraphData } from '../graph/webview-data';
-import type { ITreeNode } from '../webview/worktree';
+import type { ITreeNode } from '../application/viewer/worktree';
 
 const log = createLogger('hot-reload');
 

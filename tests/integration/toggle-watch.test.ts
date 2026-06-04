@@ -59,7 +59,7 @@ function seedWorkspace(root: string): string {
         'utf-8',
     );
     // The artifact root must exist for the edge-list stores to write into.
-    fs.mkdirSync(path.join(root, '.artifacts'), { recursive: true });
+    fs.mkdirSync(path.join(root, '.llmem', 'graph'), { recursive: true });
     return 'src';
 }
 
@@ -92,7 +92,7 @@ function readWatchState(artifactDir: string): string[] {
 
 test('addWatchedPath populates edge lists and watch state for a folder', async () => {
     const tmpRoot = makeTmp('llmem-toggle-watch-add-');
-    const artifactDir = path.join(tmpRoot, '.artifacts');
+    const artifactDir = path.join(tmpRoot, '.llmem', 'graph');
     try {
         const folder = seedWorkspace(tmpRoot);
 
@@ -135,7 +135,7 @@ test('addWatchedPath populates edge lists and watch state for a folder', async (
 
 test('removeWatchedPath clears edge lists and watch state for the same folder', async () => {
     const tmpRoot = makeTmp('llmem-toggle-watch-cycle-');
-    const artifactDir = path.join(tmpRoot, '.artifacts');
+    const artifactDir = path.join(tmpRoot, '.llmem', 'graph');
     try {
         const folder = seedWorkspace(tmpRoot);
         const ctx = await createWorkspaceContext({ workspaceRoot: tmpRoot });
@@ -180,7 +180,7 @@ test('removeWatchedPath clears edge lists and watch state for the same folder', 
 
 test('addWatchedPath on a single file watches just that file', async () => {
     const tmpRoot = makeTmp('llmem-toggle-watch-file-');
-    const artifactDir = path.join(tmpRoot, '.artifacts');
+    const artifactDir = path.join(tmpRoot, '.llmem', 'graph');
     try {
         seedWorkspace(tmpRoot);
 
@@ -201,7 +201,7 @@ test('addWatchedPath on a single file watches just that file', async () => {
 
 test('addWatchedPath rejects path-escape via PathEscapeError', async () => {
     const tmpRoot = makeTmp('llmem-toggle-watch-escape-');
-    const artifactDir = path.join(tmpRoot, '.artifacts');
+    const artifactDir = path.join(tmpRoot, '.llmem', 'graph');
     try {
         fs.mkdirSync(artifactDir, { recursive: true });
         const ctx = await createWorkspaceContext({ workspaceRoot: tmpRoot });

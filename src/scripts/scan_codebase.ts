@@ -8,7 +8,7 @@ import * as path from 'path';
 import { ImportEdgeListStore, CallEdgeListStore, SchemaMismatchError } from '../graph/edgelist';
 import { TypeScriptExtractor } from '../parser/ts-extractor';
 import { TypeScriptService } from '../parser/ts-service';
-import { artifactToEdgeList } from '../graph/artifact-converter';
+import { artifactToEdgeList } from '../application/artifact-converter';
 import { loadConfig, getConfig } from '../runtime/config';
 import { createWorkspaceContext } from '../application/workspace-context';
 

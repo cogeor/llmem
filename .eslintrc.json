@@ -19,6 +19,6 @@
     "out/",
     "node_modules/",
     "**/*.js",
-    ".artifacts/"
+    ".llmem/"
   ]
 }

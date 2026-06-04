@@ -41,6 +41,22 @@ export interface LanguageAdapter {
     createExtractor(workspaceRoot: string): ArtifactExtractor;
 
     /**
+     * Optional: drop any cached per-workspace parser state so the NEXT
+     * `createExtractor` re-reads the current files from disk.
+     *
+     * The TypeScript adapter caches one `ts.Program` per workspace root for
+     * O(N) (not O(N²)) scans; that Program is built once and never refreshes,
+     * so an in-process re-scan after a file edit would otherwise see STALE
+     * source. The on-demand refresh (LS-06) calls this when its manifest diff
+     * detects changes, forcing a fresh Program. Adapters with no such cache
+     * (the tree-sitter parsers re-read the file on every `extract`) may omit
+     * this — it is a no-op for them.
+     *
+     * @param workspaceRoot Absolute path to workspace root directory
+     */
+    invalidateCache?(workspaceRoot: string): void;
+
+    /**
      * Optional: NPM package name for tree-sitter grammar
      * Used for documentation and dependency tracking
      * Examples: 'tree-sitter-python', 'tree-sitter-rust'

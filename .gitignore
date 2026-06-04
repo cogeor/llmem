@@ -28,9 +28,11 @@ src/**/*.d.ts.map
 .DS_Store
 Thumbs.db
 
-# MCP
-.arch
-.artifacts
+# MCP — generated, local-only (docs + graph + webview all under .llmem)
+.llmem/
+
+# Generated edge-list / webview cache (legacy + dev-script default root)
+.artifacts/
 
 .claude
 

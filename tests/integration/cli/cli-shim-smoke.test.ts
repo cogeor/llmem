@@ -1,5 +1,5 @@
 /**
- * Smoke test for the bin/llmem shim → src/claude/cli/main.ts dispatcher.
+ * Smoke test for the bin/llmem shim → src/cli/main.ts dispatcher.
  *
  * Loop 01 originally pinned "lists the four commands" against the old
  * hardcoded help. Loop 07 made `printHelp` registry-driven and hid
@@ -26,15 +26,15 @@ import * as path from 'node:path';
 import * as fs from 'node:fs';
 
 const BIN = path.join(__dirname, '..', '..', '..', 'bin', 'llmem');
-const DIST_MAIN = path.join(__dirname, '..', '..', '..', 'dist', 'claude', 'cli', 'main.js');
+const DIST_MAIN = path.join(__dirname, '..', '..', '..', 'dist', 'cli', 'main.js');
 
 function ensureBuilt(): void {
     if (!fs.existsSync(DIST_MAIN)) {
-        // The shim require()s dist/claude/cli/main.js. If the integration
-        // test runs without `npm run build:claude` first, surface a clear
+        // The shim require()s dist/cli/main.js. If the integration
+        // test runs without `npm run build:entrypoints` first, surface a clear
         // failure rather than the cryptic "Cannot find module" from require().
         throw new Error(
-            `Expected ${DIST_MAIN} to exist. Run \`npm run build:claude\` before \`npm run test:integration\`.`,
+            `Expected ${DIST_MAIN} to exist. Run \`npm run build:entrypoints\` before \`npm run test:integration\`.`,
         );
     }
 }

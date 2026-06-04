@@ -44,34 +44,21 @@ function createTestWorkspace(): TestWorkspace {
 }
 
 /**
- * Get the CLI path - handles both vscode and claude build output structures
+ * Get the CLI bundle path. The `bin/llmem` shim and the package `exports`
+ * both resolve to the esbuild bundles under dist/. The CLI entry (which
+ * carries the `mcp` subcommand) lives at dist/cli/main.js.
  *
- * Build structures:
- * - vscode build: dist/mcp/, cli at dist/claude/claude/cli.js
- * - claude build: dist/claude/mcp/, cli at dist/claude/claude/cli.js
- *
- * After Loop 17, this test lives at tests/integration/mcp-server.test.ts so
- * we resolve the dist tree relative to the repo root (two levels up from
+ * We resolve the dist tree relative to the repo root (two levels up from
  * __dirname when run via ts-node).
  */
 function getCliPath(): string | null {
     const repoRoot = path.resolve(__dirname, '..', '..');
-    const candidates = [
-        path.join(repoRoot, 'dist', 'claude', 'claude', 'cli.js'),
-        path.join(repoRoot, 'dist', 'claude', 'cli.js'),
-    ];
-
-    for (const candidate of candidates) {
-        if (fs.existsSync(candidate)) {
-            return candidate;
-        }
-    }
-
-    return null;
+    const candidate = path.join(repoRoot, 'dist', 'cli', 'main.js');
+    return fs.existsSync(candidate) ? candidate : null;
 }
 
 const cliPath = getCliPath();
-const skipReason = cliPath ? undefined : 'CLI not built (requires compile:claude)';
+const skipReason = cliPath ? undefined : 'CLI not built (requires npm run build:entrypoints)';
 
 /**
  * Start MCP server as subprocess and send a message

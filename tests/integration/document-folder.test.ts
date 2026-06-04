@@ -56,11 +56,11 @@ test('processFolderInfoReport writes to workspaceRoot/.arch, never elsewhere', a
 
         assert.ok(fs.existsSync(result.readmePath), `readmePath must exist on disk: ${result.readmePath}`);
 
-        const expectedReadme = path.join(tmpRoot, '.arch', 'src', 'info', 'README.md');
+        const expectedReadme = path.join(tmpRoot, '.llmem', 'docs', 'src', 'info', 'README.md');
         assert.equal(
             path.resolve(result.readmePath),
             path.resolve(expectedReadme),
-            'readmePath must equal <tmpRoot>/.arch/src/info/README.md',
+            'readmePath must equal <tmpRoot>/.llmem/docs/src/info/README.md',
         );
 
         const contents = fs.readFileSync(result.readmePath, 'utf-8');
@@ -130,7 +130,7 @@ test('buildDocumentFolderPrompt reads from ctx.artifactRoot, not literal .artifa
         const customAbs = path.join(tmpRoot, customRel);
         fs.mkdirSync(customAbs, { recursive: true });
         const emptyEdges = JSON.stringify({
-            schemaVersion: 2,
+            schemaVersion: 3,
             resolverVersion: 'ts-resolveModuleName-v1',
             timestamp: new Date().toISOString(),
             nodes: [],

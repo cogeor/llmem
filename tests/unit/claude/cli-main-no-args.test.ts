@@ -18,8 +18,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { main } from '../../../src/claude/cli/main';
-import { serveCommand } from '../../../src/claude/cli/commands/serve';
+import { main } from '../../../src/cli/main';
+import { serveCommand } from '../../../src/cli/commands/serve';
 
 test('main(): no-args dispatches to serveCommand with schema defaults', async () => {
     const originalArgv = process.argv;

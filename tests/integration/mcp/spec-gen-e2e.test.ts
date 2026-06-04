@@ -10,10 +10,10 @@
  *   1. `tools/list` — asserts exactly the five trimmed tools survive,
  *      and that `inspect_source` is gone (locks in Loop 01).
  *   2. `file_info` → `report_file_info` — proves the file-doc pair
- *      writes `.arch/<path>.md` containing the stub's overview/purpose
+ *      writes `.llmem/docs/<path>.md` containing the stub's overview/purpose
  *      text.
  *   3. `folder_info` → `report_folder_info` — proves the folder-doc
- *      pair writes `.arch/<folder>/README.md` containing the stub's
+ *      pair writes `.llmem/docs/<folder>/README.md` containing the stub's
  *      overview/architecture/key-file strings.
  *
  * Design choices (cross-platform + isolation):
@@ -23,10 +23,10 @@
  *   exec the `#!/usr/bin/env node` shebang natively. Same convention as
  *   `cli-serve-zero-config.test.ts:117`.
  * - Sets `LLMEM_WORKSPACE` explicitly to the temp dir. Without this,
- *   `detectWorkspaceRoot()` in `src/claude/index.ts` walks up from cwd
+ *   `detectWorkspaceRoot()` in `src/mcp/main.ts` walks up from cwd
  *   and would happily find the llmem repo itself (which has `.git`,
  *   `package.json`, `.arch`, every marker), polluting the repo with a
- *   real `.arch/` write.
+ *   real `.llmem/docs/` write.
  * - Uses the SDK `Client` + `StdioClientTransport` — never hand-frames
  *   JSON-RPC. MCP stdio uses newline-delimited JSON-RPC (confirmed in
  *   LOOPS.yaml notes) so the SDK transport handles framing internally.
@@ -35,7 +35,7 @@
  * - Fresh workspace per test (`t.before`/`t.after` via the helper). Each
  *   `test()` block gets its own tempDir + client so cleanup is
  *   independent and assertions don't leak across blocks.
- * - All `.arch/` assertion paths are `path.join(tempDir, ...)`, never
+ * - All `.llmem/docs/` assertion paths are `path.join(tempDir, ...)`, never
  *   relative — the test must never write under the llmem repo.
  * - First `callTool` after handshake uses a 10s timeout to absorb lazy
  *   parser registry init (the first `file_info` after a cold spawn
@@ -60,12 +60,12 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..', '..');
 const BIN = path.join(REPO_ROOT, 'bin', 'llmem');
-const DIST_MAIN = path.join(REPO_ROOT, 'dist', 'claude', 'cli', 'main.js');
+const DIST_MAIN = path.join(REPO_ROOT, 'dist', 'cli', 'main.js');
 
 function ensureBuilt(): void {
     if (!fs.existsSync(DIST_MAIN)) {
         throw new Error(
-            `Expected ${DIST_MAIN} to exist. Run \`npm run build:claude\` before running the integration suite.`,
+            `Expected ${DIST_MAIN} to exist. Run \`npm run build:entrypoints\` before running the integration suite.`,
         );
     }
 }
@@ -87,14 +87,13 @@ interface Fixture {
  * `.git/` marker so the server's auto-detect would also find it (we set
  * `LLMEM_WORKSPACE` explicitly, but the marker is belt-and-suspenders).
  *
- * Also seeds an empty `.artifacts/` directory. `folder_info` in
- * `src/application/document-folder.ts:151` hard-fails with "Artifacts
- * directory not found ... run 'npm run scan' first" if the directory is
- * missing; once the directory exists, `ImportEdgeListStore.load()` /
- * `CallEdgeListStore.load()` create empty in-memory edge lists when the
- * JSON files are absent (`src/graph/edgelist.ts:94-104`). Empty lists
- * are exactly what we want — this test exercises the protocol +
- * .arch-writer, not the parser/edge-list pipeline.
+ * Also seeds an empty `.llmem/graph/` directory. Historically `folder_info`
+ * hard-failed with "Artifacts directory not found ... run 'npm run scan'
+ * first" if the directory was missing; LS-06 removed that throw —
+ * `refreshFolderGraph` now creates the artifact root on demand. The seed is
+ * kept as harmless belt-and-suspenders. This test exercises the protocol +
+ * docs-writer; refresh parses the two fixture files into a small graph, which
+ * is irrelevant to the assertions below (they check the prompt + written doc).
  *
  * Returns posix-style relative paths because that's what the MCP schemas
  * accept across platforms.
@@ -102,7 +101,7 @@ interface Fixture {
 function createFixtureWorkspace(): Fixture {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-mcp-e2e-'));
     fs.mkdirSync(path.join(tempDir, '.git'), { recursive: true });
-    fs.mkdirSync(path.join(tempDir, '.artifacts'), { recursive: true });
+    fs.mkdirSync(path.join(tempDir, '.llmem', 'graph'), { recursive: true });
 
     const srcDir = path.join(tempDir, 'src');
     fs.mkdirSync(srcDir, { recursive: true });
@@ -298,7 +297,7 @@ test('MCP spec-gen e2e: tools/list returns exactly the 5 trimmed tools', async (
     );
 });
 
-test('MCP spec-gen e2e: file_info → report_file_info writes .arch/<path>.md', async (t) => {
+test('MCP spec-gen e2e: file_info → report_file_info writes .llmem/docs/<path>.md', async (t) => {
     const { client, tempDir, fixtureFile, stderrBuf } = await setupSpecGenE2E(t);
 
     // First call: 10s timeout absorbs lazy parser registry init.
@@ -358,8 +357,8 @@ test('MCP spec-gen e2e: file_info → report_file_info writes .arch/<path>.md', 
     );
 
     // Matches getFileArchPath in src/docs/arch-store.ts:32-34
-    // → .arch/{src}.md, so .arch/src/a.ts.md.
-    const archPath = path.join(tempDir, '.arch', 'src', 'a.ts.md');
+    // → .llmem/docs/{src}.md, so .llmem/docs/src/a.ts.md.
+    const archPath = path.join(tempDir, '.llmem', 'docs', 'src', 'a.ts.md');
     assert.ok(
         fs.existsSync(archPath),
         `expected ${archPath} to exist after report_file_info. Child stderr:\n${stderrBuf.value}`,
@@ -371,7 +370,7 @@ test('MCP spec-gen e2e: file_info → report_file_info writes .arch/<path>.md', 
     assert.ok(content.includes('helloA'), `archived doc missing helloA: ${content}`);
 });
 
-test('MCP spec-gen e2e: folder_info → report_folder_info writes .arch/<folder>/README.md', async (t) => {
+test('MCP spec-gen e2e: folder_info → report_folder_info writes .llmem/docs/<folder>/README.md', async (t) => {
     const { client, tempDir, fixtureFolder, stderrBuf } = await setupSpecGenE2E(t);
 
     const folderInfoResult = await client.callTool(
@@ -424,8 +423,8 @@ test('MCP spec-gen e2e: folder_info → report_folder_info writes .arch/<folder>
     );
 
     // Matches getFolderArchPath in src/docs/arch-store.ts:36-38
-    // → .arch/{src}/README.md, so .arch/src/README.md.
-    const readmePath = path.join(tempDir, '.arch', 'src', 'README.md');
+    // → .llmem/docs/{src}/README.md, so .llmem/docs/src/README.md.
+    const readmePath = path.join(tempDir, '.llmem', 'docs', 'src', 'README.md');
     assert.ok(
         fs.existsSync(readmePath),
         `expected ${readmePath} to exist after report_folder_info. Child stderr:\n${stderrBuf.value}`,

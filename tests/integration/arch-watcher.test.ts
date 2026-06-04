@@ -17,8 +17,11 @@ import { WebSocket } from 'ws';
 
 // Test workspace setup - use system temp dir to avoid polluting project root
 const TEST_WORKSPACE = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-arch-'));
-const TEST_ARCH_DIR = path.join(TEST_WORKSPACE, '.arch');
-const TEST_ARTIFACTS_DIR = path.join(TEST_WORKSPACE, '.artifacts');
+const TEST_ARCH_DIR = path.join(TEST_WORKSPACE, '.llmem', 'docs');
+// GraphServer defaults its artifactRoot to `.llmem/graph` (config-defaults.ts).
+// Seed the edge lists there so the live-server suites start from a warm
+// index. (GraphServer.start() also cold-scans when this seed is absent.)
+const TEST_GRAPH_DIR = path.join(TEST_WORKSPACE, '.llmem', 'graph');
 
 // Loop 21 — the Server API + WebSocket suites boot a real GraphServer,
 // which calls into web-launcher.ts. The launcher now resolves the webview
@@ -143,26 +146,27 @@ function waitForWsMessageOfType(
 function setupTestWorkspace(): void {
     // Create directories (TEST_WORKSPACE already exists from mkdtempSync)
     fs.mkdirSync(TEST_ARCH_DIR, { recursive: true });
-    fs.mkdirSync(TEST_ARTIFACTS_DIR, { recursive: true });
+    fs.mkdirSync(TEST_GRAPH_DIR, { recursive: true });
 
     // Create minimal edge lists so server can start. Loop 16 introduced the
-    // schemaVersion: 1 wire format; Loop 13 (codebase-quality-v2) bumped
-    // it to v2 + added the resolverVersion stamp. We write the current
-    // shape so this test exercises what production now writes; the
-    // migrator now REJECTS pre-v2 shapes outright.
+    // schemaVersion: 1 wire format; Loop 13 (codebase-quality-v2) bumped it to
+    // v2 + added the resolverVersion stamp; Loop 12 (this cycle) bumped it to
+    // v3 (NodeEntry gained the optional callGraph capability). We write the
+    // current shape so this test exercises what production now writes; the
+    // migrator now REJECTS pre-v3 shapes outright.
     const emptyEdgeList = {
-        schemaVersion: 2,
+        schemaVersion: 3,
         resolverVersion: 'ts-resolveModuleName-v1',
         timestamp: new Date().toISOString(),
         nodes: [],
         edges: [],
     };
     fs.writeFileSync(
-        path.join(TEST_ARTIFACTS_DIR, 'import-edgelist.json'),
+        path.join(TEST_GRAPH_DIR, 'import-edgelist.json'),
         JSON.stringify(emptyEdgeList)
     );
     fs.writeFileSync(
-        path.join(TEST_ARTIFACTS_DIR, 'call-edgelist.json'),
+        path.join(TEST_GRAPH_DIR, 'call-edgelist.json'),
         JSON.stringify(emptyEdgeList)
     );
 }
@@ -185,7 +189,7 @@ describe('ArchWatcherService', () => {
     after(() => cleanupTestWorkspace());
 
     test('readDoc returns null for non-existent file', async () => {
-        const { ArchWatcherService } = await import('../../src/claude/server/arch-watcher');
+        const { ArchWatcherService } = await import('../../src/http-server/arch-watcher');
         const { createWorkspaceContext } = await import('../../src/application/workspace-context');
         const ctx = await createWorkspaceContext({ workspaceRoot: TEST_WORKSPACE });
         const watcher = new ArchWatcherService(ctx);
@@ -195,7 +199,7 @@ describe('ArchWatcherService', () => {
     });
 
     test('writeDoc creates file and readDoc retrieves it', async () => {
-        const { ArchWatcherService } = await import('../../src/claude/server/arch-watcher');
+        const { ArchWatcherService } = await import('../../src/http-server/arch-watcher');
         const { createWorkspaceContext } = await import('../../src/application/workspace-context');
         const ctx = await createWorkspaceContext({ workspaceRoot: TEST_WORKSPACE });
         const watcher = new ArchWatcherService(ctx);
@@ -216,7 +220,7 @@ describe('ArchWatcherService', () => {
     });
 
     test('writeDoc creates nested directories', async () => {
-        const { ArchWatcherService } = await import('../../src/claude/server/arch-watcher');
+        const { ArchWatcherService } = await import('../../src/http-server/arch-watcher');
         const { createWorkspaceContext } = await import('../../src/application/workspace-context');
         const ctx = await createWorkspaceContext({ workspaceRoot: TEST_WORKSPACE });
         const watcher = new ArchWatcherService(ctx);
@@ -228,8 +232,8 @@ describe('ArchWatcherService', () => {
         assert.ok(fs.existsSync(filePath), 'Nested file should exist');
     });
 
-    test('hasArchDir returns true when .arch exists', async () => {
-        const { ArchWatcherService } = await import('../../src/claude/server/arch-watcher');
+    test('hasArchDir returns true when .llmem/docs exists', async () => {
+        const { ArchWatcherService } = await import('../../src/http-server/arch-watcher');
         const { createWorkspaceContext } = await import('../../src/application/workspace-context');
         const ctx = await createWorkspaceContext({ workspaceRoot: TEST_WORKSPACE });
         const watcher = new ArchWatcherService(ctx);
@@ -239,7 +243,7 @@ describe('ArchWatcherService', () => {
     });
 
     test('getArchDir returns correct path', async () => {
-        const { ArchWatcherService } = await import('../../src/claude/server/arch-watcher');
+        const { ArchWatcherService } = await import('../../src/http-server/arch-watcher');
         const { createWorkspaceContext } = await import('../../src/application/workspace-context');
         const ctx = await createWorkspaceContext({ workspaceRoot: TEST_WORKSPACE });
         const watcher = new ArchWatcherService(ctx);
@@ -254,7 +258,7 @@ describe('ArchWatcherService', () => {
         // attack — textual `..` traversal and (POSIX) symlink-target-
         // outside-workspace — surface as PathEscapeError with code
         // PATH_ESCAPE.
-        const { ArchWatcherService } = await import('../../src/claude/server/arch-watcher');
+        const { ArchWatcherService } = await import('../../src/http-server/arch-watcher');
         const { createWorkspaceContext } = await import('../../src/application/workspace-context');
         const ctx = await createWorkspaceContext({ workspaceRoot: TEST_WORKSPACE });
         const watcher = new ArchWatcherService(ctx);
@@ -273,20 +277,24 @@ describe('ArchWatcherService', () => {
 
 describe('Server API Endpoints', { skip: SERVER_SKIP_REASON }, () => {
     let server: any;
-    const PORT = 3099; // Use non-standard port for tests
+    // Ephemeral port: the fixed test ports 3097-3099 fall in a Windows
+    // reserved/excluded TCP range on some machines and fail to bind with
+    // EACCES. Bind 0 and read the OS-assigned port via server.getPort().
+    let port = 0;
 
     before(async () => {
         setupTestWorkspace();
 
         // Import and start server
-        const { GraphServer } = await import('../../src/claude/server/index');
+        const { GraphServer } = await import('../../src/http-server/index');
         server = new GraphServer({
             workspaceRoot: TEST_WORKSPACE,
-            port: PORT,
+            port: 0,
             verbose: false,
         });
 
         await server.start();
+        port = server.getPort();
         // Give server time to fully initialize
         await new Promise(resolve => setTimeout(resolve, 500));
     });
@@ -299,7 +307,7 @@ describe('Server API Endpoints', { skip: SERVER_SKIP_REASON }, () => {
     });
 
     test('GET /api/arch returns 400 without path param', async () => {
-        const { status, data } = await httpRequest('GET', `http://localhost:${PORT}/api/arch`);
+        const { status, data } = await httpRequest('GET', `http://localhost:${port}/api/arch`);
         assert.equal(status, 400);
         assert.equal(data.success, false);
         assert.ok(data.message.includes('path'));
@@ -308,7 +316,7 @@ describe('Server API Endpoints', { skip: SERVER_SKIP_REASON }, () => {
     test('GET /api/arch returns 404 for non-existent doc', async () => {
         const { status, data } = await httpRequest(
             'GET',
-            `http://localhost:${PORT}/api/arch?path=does-not-exist`
+            `http://localhost:${port}/api/arch?path=does-not-exist`
         );
         assert.equal(status, 404);
         assert.equal(data.success, false);
@@ -319,7 +327,7 @@ describe('Server API Endpoints', { skip: SERVER_SKIP_REASON }, () => {
         const testMarkdown = '# API Test\n\nCreated via API.';
 
         // Create
-        const postResult = await httpRequest('POST', `http://localhost:${PORT}/api/arch`, {
+        const postResult = await httpRequest('POST', `http://localhost:${port}/api/arch`, {
             path: testPath,
             markdown: testMarkdown
         });
@@ -332,7 +340,7 @@ describe('Server API Endpoints', { skip: SERVER_SKIP_REASON }, () => {
         // Retrieve
         const getResult = await httpRequest(
             'GET',
-            `http://localhost:${PORT}/api/arch?path=${testPath}`
+            `http://localhost:${port}/api/arch?path=${testPath}`
         );
         assert.equal(getResult.status, 200);
         assert.equal(getResult.data.success, true);
@@ -341,7 +349,7 @@ describe('Server API Endpoints', { skip: SERVER_SKIP_REASON }, () => {
     });
 
     test('POST /api/arch returns 400 without path', async () => {
-        const { status, data } = await httpRequest('POST', `http://localhost:${PORT}/api/arch`, {
+        const { status, data } = await httpRequest('POST', `http://localhost:${port}/api/arch`, {
             markdown: 'test'
         });
         assert.equal(status, 400);
@@ -349,7 +357,7 @@ describe('Server API Endpoints', { skip: SERVER_SKIP_REASON }, () => {
     });
 
     test('POST /api/arch returns 400 without markdown', async () => {
-        const { status, data } = await httpRequest('POST', `http://localhost:${PORT}/api/arch`, {
+        const { status, data } = await httpRequest('POST', `http://localhost:${port}/api/arch`, {
             path: 'test'
         });
         assert.equal(status, 400);
@@ -363,19 +371,20 @@ describe('Server API Endpoints', { skip: SERVER_SKIP_REASON }, () => {
 
 describe('WebSocket Incremental Updates', { skip: SERVER_SKIP_REASON }, () => {
     let server: any;
-    const PORT = 3098; // Different port
+    let port = 0; // ephemeral (see Server API Endpoints suite)
 
     before(async () => {
         setupTestWorkspace();
 
-        const { GraphServer } = await import('../../src/claude/server/index');
+        const { GraphServer } = await import('../../src/http-server/index');
         server = new GraphServer({
             workspaceRoot: TEST_WORKSPACE,
-            port: PORT,
+            port: 0,
             verbose: false,
         });
 
         await server.start();
+        port = server.getPort();
         await new Promise(resolve => setTimeout(resolve, 500));
     });
 
@@ -387,7 +396,7 @@ describe('WebSocket Incremental Updates', { skip: SERVER_SKIP_REASON }, () => {
     });
 
     test('WebSocket receives arch:created when file is created via API', async () => {
-        const ws = new WebSocket(`ws://localhost:${PORT}`);
+        const ws = new WebSocket(`ws://localhost:${port}`);
 
         await new Promise<void>((resolve, reject) => {
             ws.on('open', resolve);
@@ -397,7 +406,7 @@ describe('WebSocket Incremental Updates', { skip: SERVER_SKIP_REASON }, () => {
 
         // Create file via API - this triggers the arch watcher
         const testPath = 'ws-test-create';
-        const createPromise = httpRequest('POST', `http://localhost:${PORT}/api/arch`, {
+        const createPromise = httpRequest('POST', `http://localhost:${port}/api/arch`, {
             path: testPath,
             markdown: '# WS Test Create'
         });
@@ -419,7 +428,7 @@ describe('WebSocket Incremental Updates', { skip: SERVER_SKIP_REASON }, () => {
     });
 
     test('WebSocket receives arch:updated when file is modified', async () => {
-        const ws = new WebSocket(`ws://localhost:${PORT}`);
+        const ws = new WebSocket(`ws://localhost:${port}`);
 
         await new Promise<void>((resolve, reject) => {
             ws.on('open', resolve);
@@ -447,7 +456,7 @@ describe('WebSocket Incremental Updates', { skip: SERVER_SKIP_REASON }, () => {
     });
 
     test('WebSocket receives arch:deleted when file is removed', async () => {
-        const ws = new WebSocket(`ws://localhost:${PORT}`);
+        const ws = new WebSocket(`ws://localhost:${port}`);
 
         await new Promise<void>((resolve, reject) => {
             ws.on('open', resolve);
@@ -478,19 +487,20 @@ describe('WebSocket Incremental Updates', { skip: SERVER_SKIP_REASON }, () => {
 
 describe('End-to-End: Save and Update Flow', { skip: SERVER_SKIP_REASON }, () => {
     let server: any;
-    const PORT = 3097;
+    let port = 0; // ephemeral (see Server API Endpoints suite)
 
     before(async () => {
         setupTestWorkspace();
 
-        const { GraphServer } = await import('../../src/claude/server/index');
+        const { GraphServer } = await import('../../src/http-server/index');
         server = new GraphServer({
             workspaceRoot: TEST_WORKSPACE,
-            port: PORT,
+            port: 0,
             verbose: false,
         });
 
         await server.start();
+        port = server.getPort();
         await new Promise(resolve => setTimeout(resolve, 500));
     });
 
@@ -502,7 +512,7 @@ describe('End-to-End: Save and Update Flow', { skip: SERVER_SKIP_REASON }, () =>
     });
 
     test('complete save flow: API -> File -> WebSocket', async () => {
-        const ws = new WebSocket(`ws://localhost:${PORT}`);
+        const ws = new WebSocket(`ws://localhost:${port}`);
 
         await new Promise<void>((resolve, reject) => {
             ws.on('open', resolve);
@@ -514,7 +524,7 @@ describe('End-to-End: Save and Update Flow', { skip: SERVER_SKIP_REASON }, () =>
         const testPath = 'e2e-test';
         const testMarkdown = '# E2E Test\n\nComplete flow test.';
 
-        const saveResult = await httpRequest('POST', `http://localhost:${PORT}/api/arch`, {
+        const saveResult = await httpRequest('POST', `http://localhost:${port}/api/arch`, {
             path: testPath,
             markdown: testMarkdown
         });
@@ -529,7 +539,7 @@ describe('End-to-End: Save and Update Flow', { skip: SERVER_SKIP_REASON }, () =>
         // 3. Verify we can retrieve via API
         const getResult = await httpRequest(
             'GET',
-            `http://localhost:${PORT}/api/arch?path=${testPath}`
+            `http://localhost:${port}/api/arch?path=${testPath}`
         );
         assert.equal(getResult.status, 200);
         assert.equal(getResult.data.markdown, testMarkdown);
@@ -539,5 +549,63 @@ describe('End-to-End: Save and Update Flow', { skip: SERVER_SKIP_REASON }, () =>
 
         ws.close();
         console.log('E2E test passed: Save -> File -> API retrieval');
+    });
+});
+
+// ============================================================================
+// Regression: cold-start indexing
+// ============================================================================
+
+describe('GraphServer cold-start indexing', { skip: SERVER_SKIP_REASON }, () => {
+    // Separate fresh workspace with NO edge lists seeded — exercises the
+    // cold-scan guard in GraphServer.start(). A bare server on an unindexed
+    // workspace must scan once instead of throwing "Edge lists not found".
+    let coldWorkspace: string;
+    let server: any;
+
+    before(() => {
+        coldWorkspace = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-cold-'));
+        // Give the scan something to index, but do NOT seed any edge lists.
+        fs.writeFileSync(
+            path.join(coldWorkspace, 'sample.ts'),
+            'export const x = 1;\n',
+        );
+    });
+
+    after(async () => {
+        if (server) {
+            await server.stop();
+        }
+        if (coldWorkspace && fs.existsSync(coldWorkspace)) {
+            fs.rmSync(coldWorkspace, { recursive: true, force: true });
+        }
+    });
+
+    test('start() cold-scans an unindexed workspace instead of throwing', async () => {
+        const graphDir = path.join(coldWorkspace, '.llmem', 'graph');
+        assert.ok(
+            !fs.existsSync(path.join(graphDir, 'import-edgelist.json')),
+            'precondition: no edge lists seeded',
+        );
+
+        const { GraphServer } = await import('../../src/http-server/index');
+        server = new GraphServer({
+            workspaceRoot: coldWorkspace,
+            port: 0, // ephemeral — avoids port contention with the suites above
+            openBrowser: false,
+            verbose: false,
+        });
+
+        await assert.doesNotReject(server.start(), 'cold start should not throw');
+
+        // Cold-scan ran: edge lists now exist under .llmem/graph.
+        assert.ok(
+            fs.existsSync(path.join(graphDir, 'import-edgelist.json')),
+            'import edge list should exist after cold-scan',
+        );
+        assert.ok(
+            fs.existsSync(path.join(graphDir, 'call-edgelist.json')),
+            'call edge list should exist after cold-scan',
+        );
     });
 });

@@ -8,8 +8,8 @@
  *
  * Two things must hold:
  *
- *   1. **Happy path** — a workspace with a tiny TS file and a `.arch/`
- *      markdown doc produces a `ViewerData` with the expected design-doc
+ *   1. **Happy path** — a workspace with a tiny TS file and a
+ *      `.llmem/docs/` markdown doc produces a `ViewerData` with the expected design-doc
  *      key, the seeded TS file in the worktree, and a valid (possibly
  *      empty) `importGraph` shape.
  *   2. **Realpath escape** — a symlink inside the workspace pointing
@@ -33,14 +33,14 @@ test('collectViewerData: returns the seeded TS file and design doc', async () =>
         // Seed a TS file at the root.
         fs.writeFileSync(path.join(root, 'sample.ts'), 'export const x = 1;\n');
 
-        // Seed a tiny design doc under .arch/.
-        const archDir = path.join(root, '.arch');
+        // Seed a tiny design doc under the docs root (.llmem/docs).
+        const archDir = path.join(root, '.llmem', 'docs');
         fs.mkdirSync(archDir, { recursive: true });
         const docContent = '# Sample\n\nA tiny doc.\n';
         fs.writeFileSync(path.join(archDir, 'sample.md'), docContent);
 
-        // Artifact root under the workspace.
-        const artifactDir = path.join(root, '.artifacts');
+        // Artifact root under the workspace (.llmem/graph).
+        const artifactDir = path.join(root, '.llmem', 'graph');
         fs.mkdirSync(artifactDir, { recursive: true });
 
         const ctx = await createWorkspaceContext({ workspaceRoot: root });
@@ -102,10 +102,10 @@ test('collectViewerData: refuses to traverse outside the workspace via symlink (
 
         // Also plant a legitimate doc and tiny TS file so collectViewerData
         // has something to do.
-        fs.mkdirSync(path.join(root, '.arch'), { recursive: true });
-        fs.writeFileSync(path.join(root, '.arch', 'good.md'), '# Good\n');
+        fs.mkdirSync(path.join(root, '.llmem', 'docs'), { recursive: true });
+        fs.writeFileSync(path.join(root, '.llmem', 'docs', 'good.md'), '# Good\n');
         fs.writeFileSync(path.join(root, 'main.ts'), 'export const y = 2;\n');
-        fs.mkdirSync(path.join(root, '.artifacts'), { recursive: true });
+        fs.mkdirSync(path.join(root, '.llmem', 'graph'), { recursive: true });
 
         const ctx = await createWorkspaceContext({ workspaceRoot: root });
 

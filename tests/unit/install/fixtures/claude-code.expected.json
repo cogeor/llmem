@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "llmem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@cogeor/llmem",
+        "mcp"
+      ]
+    }
+  }
+}

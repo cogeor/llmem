@@ -23,7 +23,7 @@
  * loop closed was the relative `scripts -> extension` boundary.
  */
 
-import { DEFAULT_CONFIG, ENV_VARS, MAX_FILES_PER_FOLDER_CAP, MAX_FILE_SIZE_KB_CAP } from '../config-defaults';
+import { DEFAULT_CONFIG, ENV_VARS, MAX_FILES_PER_FOLDER_CAP, MAX_FILE_SIZE_KB_CAP, MAX_FILE_LINES_CAP } from '../config-defaults';
 import type { Config } from '../core/config-types';
 
 /**
@@ -49,7 +49,7 @@ let configInstance: Config | null = null;
  */
 export function loadConfig(): Config {
     // Read VS Code workspace settings (silently ignored outside VS Code)
-    let vsCodeConfig: { artifactRoot?: string; maxFilesPerFolder?: number; maxFileSizeKB?: number } = {};
+    let vsCodeConfig: { artifactRoot?: string; maxFilesPerFolder?: number; maxFileSizeKB?: number; maxFileLines?: number } = {};
     try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const vscode = require('vscode');
@@ -58,6 +58,7 @@ export function loadConfig(): Config {
             artifactRoot: ws.get('artifactRoot') as string | undefined,
             maxFilesPerFolder: ws.get('maxFilesPerFolder') as number | undefined,
             maxFileSizeKB: ws.get('maxFileSizeKB') as number | undefined,
+            maxFileLines: ws.get('maxFileLines') as number | undefined,
         };
     } catch {
         // Not running inside VS Code — ignore
@@ -77,6 +78,11 @@ export function loadConfig(): Config {
                 || String(vsCodeConfig.maxFileSizeKB ?? DEFAULT_CONFIG.maxFileSizeKB),
             10
         ),
+        maxFileLines: parseInt(
+            process.env[ENV_VARS.MAX_FILE_LINES]
+                || String(vsCodeConfig.maxFileLines ?? DEFAULT_CONFIG.maxFileLines),
+            10
+        ),
     };
 
     // Validate numeric values — lower bound
@@ -88,12 +94,19 @@ export function loadConfig(): Config {
         configInstance.maxFileSizeKB = DEFAULT_CONFIG.maxFileSizeKB;
     }
 
+    if (isNaN(configInstance.maxFileLines) || configInstance.maxFileLines < 1) {
+        configInstance.maxFileLines = DEFAULT_CONFIG.maxFileLines;
+    }
+
     // Validate numeric values — upper-bound caps
     if (configInstance.maxFilesPerFolder > MAX_FILES_PER_FOLDER_CAP) {
         configInstance.maxFilesPerFolder = MAX_FILES_PER_FOLDER_CAP;
     }
     if (configInstance.maxFileSizeKB > MAX_FILE_SIZE_KB_CAP) {
         configInstance.maxFileSizeKB = MAX_FILE_SIZE_KB_CAP;
+    }
+    if (configInstance.maxFileLines > MAX_FILE_LINES_CAP) {
+        configInstance.maxFileLines = MAX_FILE_LINES_CAP;
     }
 
     return configInstance;

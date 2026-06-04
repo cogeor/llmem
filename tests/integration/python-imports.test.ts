@@ -28,7 +28,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 import { PythonExtractor } from '../../src/parser/python';
-import { artifactToEdgeList } from '../../src/graph/artifact-converter';
+import { artifactToEdgeList } from '../../src/application/artifact-converter';
 import { parseGraphId } from '../../src/core/ids';
 
 // Skip the whole file when the optional `tree-sitter-python` peer dep isn't

@@ -29,6 +29,16 @@ import { assertWorkspaceRootMatch } from './shared';
 export const FolderInfoSchema = z.object({
     workspaceRoot: z.string().describe('Absolute path to workspace root (current project directory)'),
     path: z.string().describe('Path to folder (relative to workspace root)'),
+    refresh: z
+        .enum(['auto', 'skip'])
+        .default('auto')
+        .describe(
+            "Freshness mode. 'auto' (default) brings the folder's edges up to " +
+            'date before summarizing (warm = stat-walk + diff only; ' +
+            "cold/changed = rescan). 'skip' bypasses the freshness stat-walk/diff " +
+            'and projects the current stores as-is — use for back-to-back ' +
+            'same-turn calls on a folder you just refreshed.',
+        ),
 });
 
 export type FolderInfoInput = z.infer<typeof FolderInfoSchema>;
@@ -41,7 +51,7 @@ async function handleFolderInfoImpl(
         return formatError(validation.error!);
     }
 
-    const { workspaceRoot, path: folderPath } = validation.data!;
+    const { workspaceRoot, path: folderPath, refresh } = validation.data!;
 
     validateWorkspaceRoot(workspaceRoot);
     assertWorkspaceRootMatch(workspaceRoot);
@@ -50,6 +60,7 @@ async function handleFolderInfoImpl(
     const ctx = await getStoredContext();
     const data = await buildDocumentFolderPrompt(ctx, {
         folderPath: asRelPath(folderPath),
+        refresh,
     });
 
     return formatPromptResponse(

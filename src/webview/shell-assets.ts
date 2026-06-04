@@ -70,4 +70,5 @@ export const MOUNT_POINTS: readonly string[] = [
     'graph-type-toggle',
     'graph-view',
     'folder-structure-view',
+    'folder-summary-panel',
 ] as const;

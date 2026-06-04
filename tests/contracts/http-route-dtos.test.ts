@@ -2,7 +2,7 @@
  * HTTP route DTO contract test (Loop 17 / Phase 7).
  *
  * Pins the request/response wire shape for every route under
- * `src/claude/server/routes/`. The harness lives in
+ * `src/http-server/routes/`. The harness lives in
  * `tests/contracts/_helpers/build-server.ts` (extracted in Loop 17 because
  * this file exceeded the 300-line size budget mentioned in the plan).
  *
@@ -111,7 +111,7 @@ test('route DTO: GET /api/stats with seeded edge lists parses against schema', a
     const artifactDir = path.join(tmp, '.artifacts');
     fs.mkdirSync(artifactDir, { recursive: true });
     const empty = {
-        schemaVersion: 2,
+        schemaVersion: 3,
         resolverVersion: 'ts-resolveModuleName-v1',
         timestamp: new Date().toISOString(),
         nodes: [],
