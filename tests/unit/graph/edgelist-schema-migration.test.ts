@@ -53,7 +53,7 @@ test('edgelist-schema-migration: v1 fixture throws SchemaMismatchError', () => {
     assert.equal(mismatch.oldResolverVersion, null);
 });
 
-test('edgelist-schema-migration: v2 with stale resolverVersion throws SchemaMismatchError', () => {
+test('edgelist-schema-migration: current schemaVersion with stale resolverVersion throws SchemaMismatchError', () => {
     const stale = {
         schemaVersion: EDGELIST_SCHEMA_VERSION,
         resolverVersion: 'ts-resolveModuleName-v0',
@@ -70,7 +70,7 @@ test('edgelist-schema-migration: v2 with stale resolverVersion throws SchemaMism
     assert.ok(caught, 'expected an EdgeListLoadError');
     assert.ok(caught instanceof SchemaMismatchError);
     const mismatch = caught as SchemaMismatchError;
-    assert.equal(mismatch.oldSchemaVersion, 2);
+    assert.equal(mismatch.oldSchemaVersion, EDGELIST_SCHEMA_VERSION);
     assert.equal(mismatch.oldResolverVersion, 'ts-resolveModuleName-v0');
 });
 

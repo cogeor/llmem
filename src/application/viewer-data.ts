@@ -32,7 +32,7 @@ import type { WorkspaceRoot, AbsPath } from '../core/paths';
 import { asWorkspaceRoot, asAbsPath } from '../core/paths';
 import type { Logger } from '../core/logger';
 import { getDesignDocKey } from '../docs/arch-store';
-import { generateWorkTree, type ITreeNode } from '../webview/worktree';
+import { generateWorkTree, type ITreeNode } from './viewer/worktree';
 import {
     prepareWebviewDataFromSplitEdgeLists,
     type WebviewGraphData,
@@ -40,12 +40,20 @@ import {
 import { ImportEdgeListStore, CallEdgeListStore } from '../graph/edgelist';
 import { TypeScriptService } from '../parser/ts-service';
 import { TypeScriptExtractor } from '../parser/ts-extractor';
-import { artifactToEdgeList } from '../graph/artifact-converter';
+import { artifactToEdgeList } from './artifact-converter';
 import { LAZY_CODEBASE_LINE_THRESHOLD } from '../parser/config';
-import { computeAllFolderStatuses } from '../webview/graph-status';
+import { computeAllFolderStatuses } from './viewer/graph-status';
 import { WatchService } from '../graph/worktree-state';
 import type { WorkspaceIO } from '../workspace/workspace-io';
 import type { WorkspaceContext } from './workspace-context';
+import { ensureGitignored } from './ensure-gitignored';
+
+/**
+ * Once-per-process guard so `ensureGitignored` does not re-read `.gitignore`
+ * on every viewer-data call. Keyed by workspace root so a process that serves
+ * multiple workspaces still ensures each one exactly once.
+ */
+const gitignoreEnsured = new Set<string>();
 
 /**
  * Shape of the data the viewer renders. Note: `designDocs` is RAW markdown.
@@ -56,16 +64,6 @@ export interface ViewerData {
     graphData: WebviewGraphData;
     workTree: ITreeNode;
     designDocs: Record<string, string>;
-}
-
-/**
- * Per-call request fields for `collectViewerDataWithStores`. The stores
- * are caller-owned (e.g. hot-reload's long-lived stores) and are passed
- * in rather than freshly loaded.
- */
-export interface CollectViewerDataWithStoresRequest {
-    importStore: ImportEdgeListStore;
-    callStore: CallEdgeListStore;
 }
 
 /** Convert an absolute path under the workspace to its workspace-relative POSIX form. */
@@ -89,6 +87,20 @@ export async function collectViewerData(
     // walks up to the nearest existing ancestor and asserts containment.
     const artifactRel = toWorkspaceRel(workspaceRoot, artifactRoot);
     await io.mkdirRecursive(artifactRel);
+
+    // First creation of the `.llmem/` dot-folder is our cue to ensure a single
+    // blanket `.llmem/` line in the repo's .gitignore (append-only, idempotent;
+    // see ensure-gitignored.ts). Once per workspace per process.
+    if (!gitignoreEnsured.has(workspaceRoot)) {
+        gitignoreEnsured.add(workspaceRoot);
+        try {
+            await ensureGitignored(workspaceRoot, io, undefined, logger);
+        } catch (e) {
+            logger.error(
+                `[WebviewDataService] ensureGitignored failed: ${e instanceof Error ? e.message : String(e)}`,
+            );
+        }
+    }
 
     // Load or generate split edge lists
     const importStore = new ImportEdgeListStore(artifactRoot, io);
@@ -123,13 +135,13 @@ export async function collectViewerData(
     logger.info(`[WebviewDataService] Import graph: ${importStats.nodes} nodes, ${importStats.edges} edges`);
     logger.info(`[WebviewDataService] Call graph: ${callStats.nodes} nodes, ${callStats.edges} edges`);
 
-    // Ensure .arch exists. `io.mkdirRecursive` surfaces a structured
+    // Ensure the docs dir exists. `io.mkdirRecursive` surfaces a structured
     // PathEscapeError if the candidate escapes the workspace, which can't
-    // happen for the well-known '.arch' relative path.
+    // happen for the well-known `ctx.archRootRel` relative path (.llmem/docs).
     try {
-        await io.mkdirRecursive('.arch');
+        await io.mkdirRecursive(ctx.archRootRel);
     } catch (e) {
-        logger.error(`Failed to create .arch directory: ${e instanceof Error ? e.message : String(e)}`);
+        logger.error(`Failed to create docs directory: ${e instanceof Error ? e.message : String(e)}`);
     }
 
     // Load watched files state
@@ -152,56 +164,6 @@ export async function collectViewerData(
     // Populate graph status for directories
     const folderStatuses = await computeAllFolderStatuses(workspaceRoot, artifactRoot, io);
     populateTreeStatus(workTree, folderStatuses);
-
-    // 3. Design Docs (raw markdown — caller renders)
-    const designDocs = await collectRawDesignDocs(workspaceRoot, archRoot, io, logger);
-
-    return {
-        graphData,
-        workTree,
-        designDocs,
-    };
-}
-
-/**
- * Variant for callers that already hold open EdgeListStore instances
- * (e.g. hot-reload). Skips the file-existence check and store load.
- *
- * NOTE: this helper is currently UNUSED in the codebase (verified via
- * grep before Loop 06). Lifted along with `collectViewerData` because
- * the legacy `WebviewDataService.collectDataWithSplitEdgeLists` did the
- * same work; if it is still unused after Loop 12, delete it.
- */
-export async function collectViewerDataWithStores(
-    ctx: WorkspaceContext,
-    req: CollectViewerDataWithStoresRequest,
-): Promise<ViewerData> {
-    const { workspaceRoot, artifactRoot, archRoot, io, logger } = ctx;
-    const { importStore, callStore } = req;
-
-    // Ensure .arch exists (see collectViewerData for io.mkdirRecursive notes).
-    try {
-        await io.mkdirRecursive('.arch');
-    } catch (e) {
-        logger.error(`Failed to create .arch directory: ${e instanceof Error ? e.message : String(e)}`);
-    }
-
-    // Load watched files state.
-    const watchService = new WatchService(artifactRoot, workspaceRoot, io);
-    await watchService.load();
-    const watchedFilesArray = watchService.getWatchedFiles();
-    const watchedFiles = watchedFilesArray.length > 0 ? new Set(watchedFilesArray) : undefined;
-    logger.info(`[WebviewDataService] Loaded ${watchedFilesArray.length} watched files`);
-
-    // 1. Graph Data
-    const graphData = prepareWebviewDataFromSplitEdgeLists(
-        importStore.getData(),
-        callStore.getData(),
-        watchedFiles,
-    );
-
-    // 2. Work Tree
-    const workTree = await generateWorkTree(io);
 
     // 3. Design Docs (raw markdown — caller renders)
     const designDocs = await collectRawDesignDocs(workspaceRoot, archRoot, io, logger);

@@ -4,7 +4,7 @@
 // Replaces the four duplicated `new Function`-based dynamic-import shims
 // that previously dynamic-imported `marked` from
 // `src/webview/design-docs.ts`, `src/extension/panel.ts`,
-// `src/extension/hot-reload.ts`, and `src/claude/server/arch-watcher.ts`.
+// `src/extension/hot-reload.ts`, and `src/http-server/arch-watcher.ts`.
 //
 // The dynamic-import shim is preserved here (marked v17 is ESM-only and
 // `tsconfig.base.json` sets `module: commonjs`, which would otherwise downlevel

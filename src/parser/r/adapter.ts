@@ -5,7 +5,8 @@
  * Uses tree-sitter-r for fast AST parsing.
  * 
  * Note: Only import extraction is supported (via library/require/source).
- * Call graph is NOT available for R (TypeScript/JavaScript only).
+ * Call graph is NOT available for R (call graphs are TS/JS — semantic —
+ * and Python — heuristic — only).
  */
 
 import { TreeSitterAdapter } from '../adapter';

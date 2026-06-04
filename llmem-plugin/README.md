@@ -13,10 +13,10 @@ cd llmem
 
 # Install dependencies and build
 npm install
-npm run build:claude
+npm run build:entrypoints
 
 # Bundle the CLI for the plugin
-npx esbuild dist/claude/claude/cli.js --bundle --platform=node \
+npx esbuild dist/cli/main.js --bundle --platform=node \
   --outfile=llmem-plugin/dist/cli.bundle.js \
   --external:tree-sitter --external:tree-sitter-python \
   --external:tree-sitter-cpp --external:tree-sitter-rust \

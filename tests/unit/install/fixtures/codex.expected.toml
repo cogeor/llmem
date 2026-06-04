@@ -1,0 +1,3 @@
+[mcp_servers.llmem]
+command = "npx"
+args = [ "-y", "@cogeor/llmem", "mcp" ]

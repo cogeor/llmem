@@ -12,12 +12,15 @@
  *   3. Asserts stdout shows `Server running ... 127.0.0.1:<DEFAULT_PORT+1>`.
  *   4. Hits `/api/stats` on the bound port and asserts HTTP 200.
  *
- * Workspace coupling: this test runs against `REPO_ROOT` because that's
- * the only path with pre-existing `.artifacts/` available without doing
- * an in-test scan. Loop 03 introduces zero-config so a future test could
- * run against a tmp dir, but in loop 02 we accept the workspace coupling
- * to keep this test's scope tight (port fallback is its only assertion).
- * Loop 03 also adds --no-open so default-on browser-open does not fire in CI.
+ * Workspace: this test runs against a fresh `mkdtemp` workspace seeded
+ * with two `.ts` files and relies on `serve`'s zero-config cold scan to
+ * generate edge lists + webview under the centralized `.llmem/graph`
+ * default. (Previously it coupled to `REPO_ROOT`'s legacy `.artifacts/`;
+ * after storage centralization the repo no longer guarantees a populated
+ * `.llmem/graph`, so a self-contained tmp workspace is correct.)
+ * `LLMEM_ASSET_ROOT` points at the repo's `dist/webview` so the cold
+ * regenerate finds the prebuilt webview HTML/JS (the tmp dir has no
+ * `dist/`). `--no-open` keeps default-on browser-open from firing in CI.
  *
  * Cross-platform notes:
  * - `spawn('node', [BIN, ...])` rather than `spawn(BIN, ...)`. On Windows
@@ -41,6 +44,7 @@ import { strict as assert } from 'node:assert';
 import { spawn } from 'node:child_process';
 import * as net from 'node:net';
 import * as http from 'node:http';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 
@@ -48,12 +52,13 @@ import { DEFAULT_PORT } from '../../../src/config-defaults';
 
 const REPO_ROOT = path.join(__dirname, '..', '..', '..');
 const BIN = path.join(REPO_ROOT, 'bin', 'llmem');
-const DIST_MAIN = path.join(REPO_ROOT, 'dist', 'claude', 'cli', 'main.js');
+const DIST_MAIN = path.join(REPO_ROOT, 'dist', 'cli', 'main.js');
+const DIST_WEBVIEW = path.join(REPO_ROOT, 'dist', 'webview');
 
 function ensureBuilt(): void {
     if (!fs.existsSync(DIST_MAIN)) {
         throw new Error(
-            `Expected ${DIST_MAIN} to exist. Run \`npm run build:claude\` before \`npm run test:integration\`.`,
+            `Expected ${DIST_MAIN} to exist. Run \`npm run build:entrypoints\` before \`npm run test:integration\`.`,
         );
     }
 }
@@ -103,13 +108,22 @@ function waitForOutput(
 test('serve picks the next free port when the default is taken', async () => {
     ensureBuilt();
 
-    // Use this repo as the workspace — it already has .artifacts/ from
-    // prior runs. (Loop 03 lifts this constraint with zero-config; in
-    // loop 02 we still need pre-existing edge lists.)
+    // Self-contained fresh workspace: serve's zero-config cold scan
+    // generates edge lists + webview under `.llmem/graph`. No dependency
+    // on any pre-existing repo-root artifact directory.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-portfb-'));
+    fs.mkdirSync(path.join(tmp, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, 'src', 'a.ts'), 'export const a = 1;\n', 'utf8');
+    fs.writeFileSync(
+        path.join(tmp, 'src', 'b.ts'),
+        "import { a } from './a';\nexport const b = a + 1;\n",
+        'utf8',
+    );
+
     const blocker = await holdPort(DEFAULT_PORT);
-    const child = spawn('node', [BIN, 'serve', '--no-open', '--workspace', REPO_ROOT], {
-        cwd: REPO_ROOT,
-        env: { ...process.env, FORCE_COLOR: '0' },
+    const child = spawn('node', [BIN, 'serve', '--no-open', '--workspace', tmp], {
+        cwd: tmp,
+        env: { ...process.env, FORCE_COLOR: '0', LLMEM_ASSET_ROOT: DIST_WEBVIEW },
         stdio: ['ignore', 'pipe', 'pipe'],
     });
 
@@ -139,5 +153,10 @@ test('serve picks the next free port when the default is taken', async () => {
             child.once('exit', () => resolve());
         });
         await new Promise<void>((resolve) => blocker.close(() => resolve()));
+        try {
+            fs.rmSync(tmp, { recursive: true, force: true });
+        } catch {
+            // Best-effort cleanup — Windows file watchers can delay release.
+        }
     }
 });

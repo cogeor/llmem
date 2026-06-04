@@ -10,8 +10,7 @@
 //   3. scripts -> extension                   (Loop 04 / 05 fix)
 //   4. info -> artifact (deprecated module)   (fixed in Loop 07)
 //   5. extension -> artifact (deprecated)     (Loop 15 fix)
-//   6. claude -> extension                    (Loop 04 fix)
-//   7. config-defaults -> extension           (Loop 04 fix)
+//   6. config-defaults -> extension           (Loop 04 fix)
 //
 // Implementation notes:
 //   - Imports are read with the TypeScript Compiler API (no regex on raw
@@ -74,12 +73,6 @@ const RULES: readonly BoundaryRule[] = [
     fromPrefix: 'src/extension/',
     toPrefix: 'src/artifact/',
     reason: 'src/artifact is deprecated; extension should use the new edge-list path.',
-  },
-  {
-    id: 'claude -> extension',
-    fromPrefix: 'src/claude/',
-    toPrefix: 'src/extension/',
-    reason: 'Claude server must not depend on VS Code extension wiring.',
   },
   {
     id: 'config-defaults -> extension',

@@ -21,6 +21,7 @@ import {
     nonIncidentEdgeIds,
     readmeKeyCandidates,
     resolveReadmeDoc,
+    resolveClosestDoc,
 } from '../../../src/webview/ui/components/folderViewModel';
 
 import {
@@ -301,6 +302,88 @@ test('resolveReadmeDoc: miss returns null (not undefined)', () => {
     const docs: Record<string, DesignDoc> = {};
     const out = resolveReadmeDoc(docs, 'src/foo');
     assert.equal(out, null);
+});
+
+// ---------------------------------------------------------------------------
+// resolveClosestDoc — parent-walk doc lookup (exact / ancestor / none).
+// ---------------------------------------------------------------------------
+
+test('resolveClosestDoc: EXACT directory hit → inherited:false', () => {
+    const docs: Record<string, DesignDoc> = {
+        'src/parser.html': { markdown: 'm', html: '<p>parser</p>' },
+    };
+    const out = resolveClosestDoc(docs, 'src/parser', 'directory');
+    assert.equal(out?.key, 'src/parser.html');
+    assert.equal(out?.doc.html, '<p>parser</p>');
+    assert.equal(out?.inherited, false);
+});
+
+test('resolveClosestDoc: EXACT folder README hit → inherited:false', () => {
+    const docs: Record<string, DesignDoc> = {
+        'src/parser/README.md': { markdown: 'm', html: '<p>readme</p>' },
+    };
+    const out = resolveClosestDoc(docs, 'src/parser', 'directory');
+    assert.equal(out?.key, 'src/parser/README.md');
+    assert.equal(out?.inherited, false);
+});
+
+test('resolveClosestDoc: ANCESTOR hit (only src/README.md) → inherited:true', () => {
+    const docs: Record<string, DesignDoc> = {
+        'src/README.md': { markdown: 'm', html: '<p>src readme</p>' },
+    };
+    const out = resolveClosestDoc(docs, 'src/parser/deep/x', 'directory');
+    assert.equal(out?.key, 'src/README.md');
+    assert.equal(out?.doc.html, '<p>src readme</p>');
+    assert.equal(out?.inherited, true);
+});
+
+test('resolveClosestDoc: NONE up to root → null', () => {
+    const docs: Record<string, DesignDoc> = {
+        'other/README.md': { markdown: 'm', html: '<p>nope</p>' },
+    };
+    const out = resolveClosestDoc(docs, 'src/parser/deep/x', 'directory');
+    assert.equal(out, null);
+});
+
+test('resolveClosestDoc: FILE→FOLDER fallback to containing dir README → inherited:true', () => {
+    // The file's own doc (src/parser/foo.html) is absent; its containing
+    // folder README exists. That is not the file's own doc → inherited.
+    const docs: Record<string, DesignDoc> = {
+        'src/parser/README.html': { markdown: 'm', html: '<p>parser readme</p>' },
+    };
+    const out = resolveClosestDoc(docs, 'src/parser/foo.ts', 'file');
+    assert.equal(out?.key, 'src/parser/README.html');
+    assert.equal(out?.doc.html, '<p>parser readme</p>');
+    assert.equal(out?.inherited, true);
+});
+
+test('resolveClosestDoc: FILE exact own doc → inherited:false (extension stripped)', () => {
+    const docs: Record<string, DesignDoc> = {
+        'src/parser/foo.html': { markdown: 'm', html: '<p>foo</p>' },
+    };
+    const out = resolveClosestDoc(docs, 'src/parser/foo.ts', 'file');
+    assert.equal(out?.key, 'src/parser/foo.html');
+    assert.equal(out?.inherited, false);
+});
+
+test('resolveClosestDoc: basename fallback hit → inherited:true', () => {
+    // Only a basename-keyed doc exists (no full-path key). The basename
+    // candidate is never the selected path's own full key → inherited.
+    const docs: Record<string, DesignDoc> = {
+        'parser.html': { markdown: 'm', html: '<p>basename</p>' },
+    };
+    const out = resolveClosestDoc(docs, 'src/parser', 'directory');
+    assert.equal(out?.key, 'parser.html');
+    assert.equal(out?.inherited, true);
+});
+
+test('resolveClosestDoc: Windows-backslash input is normalized', () => {
+    const docs: Record<string, DesignDoc> = {
+        'src/parser.html': { markdown: 'm', html: '<p>parser</p>' },
+    };
+    const out = resolveClosestDoc(docs, 'src\\parser', 'directory');
+    assert.equal(out?.key, 'src/parser.html');
+    assert.equal(out?.inherited, false);
 });
 
 // ---------------------------------------------------------------------------

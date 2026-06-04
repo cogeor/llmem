@@ -1,90 +1,28 @@
 
-import type { FolderTreeData } from '../../contracts/folder-tree';
-import type { FolderEdgelistData } from '../../contracts/folder-edges';
+// Loop 08 (H1): the injected viewer payload DTOs now live in the single
+// browser-safe contracts module. This file is a thin barrel that re-exports
+// them so every existing `../ui/types` / `./types` importer keeps compiling
+// unchanged. App-internal UI state (`AppState`) stays defined locally below.
+//
+// The bare `import` (not just the type-only re-export) pulls in the
+// `declare global { interface Window { ... } }` augmentation from the
+// contracts module, so consumers that read `window.GRAPH_DATA` etc. keep
+// their typing.
+import '../../contracts/webview-payloads';
 
-export interface VisNode {
-    id: string;
-    label: string;
-    group: string;
-    fileId?: string; // For Call Graph
-    [key: string]: any;
-}
+export type {
+    VisNode,
+    VisEdge,
+    GraphData,
+    GraphStatus,
+    FileNode,
+    DirectoryNode,
+    WorkTreeNode,
+    DesignViewMode,
+    DesignDoc,
+} from '../../contracts/webview-payloads';
 
-export interface VisEdge {
-    from: string;
-    to: string;
-    [key: string]: any;
-}
-
-export interface GraphData {
-    importGraph: {
-        nodes: VisNode[];
-        edges: VisEdge[];
-    };
-    callGraph: {
-        nodes: VisNode[];
-        edges: VisEdge[];
-    };
-}
-
-/**
- * Graph computation status for a folder/file.
- * - 'never': edges have never been computed
- * - 'outdated': edges exist but files have changed since computation
- * - 'current': edges are up-to-date with source files
- */
-export type GraphStatus = 'never' | 'outdated' | 'current';
-
-export interface FileNode {
-    name: string;
-    type: 'file';
-    path: string; // Relative path
-    lineCount: number;
-    importStatus?: GraphStatus;  // Status of import edges for this file
-    callStatus?: GraphStatus;    // Status of call edges for this file
-    /**
-     * Loop 12: Whether this file's extension is parsable (computed server-side
-     * from the parser registry). The browser must not import parser/config to
-     * derive this — the Node-side worktree generator attaches the flag here.
-     * Optional so older serialized worktrees still parse; consumers default
-     * to `false` if missing.
-     */
-    isSupported?: boolean;
-    /**
-     * PH-04: statically a known source extension but its tree-sitter grammar
-     * is not installed at runtime. The renderer shows a muted install hint
-     * marker (not a live toggle) for these files.
-     */
-    needsGrammar?: boolean;
-    /** PH-04: NPM grammar package to install to make this file parsable. */
-    installHint?: string;
-    /** PH-04: call-graph capability for this file's language (badge consumes it). */
-    callGraph?: 'semantic' | 'heuristic' | 'none';
-}
-
-export interface DirectoryNode {
-    name: string;
-    type: 'directory';
-    path: string;
-    children: (FileNode | DirectoryNode)[];
-    importStatus?: GraphStatus;  // Status of import edges for this folder
-    callStatus?: GraphStatus;    // Status of call edges for this folder
-}
-
-export type WorkTreeNode = FileNode | DirectoryNode;
-
-/**
- * Design view mode: view (rendered HTML) or edit (markdown source)
- */
-export type DesignViewMode = 'view' | 'edit';
-
-/**
- * Design document with both markdown source and rendered HTML
- */
-export interface DesignDoc {
-    markdown: string;
-    html: string;
-}
+import type { DesignViewMode } from '../../contracts/webview-payloads';
 
 export interface AppState {
     currentView: "graph" | "design" | "packages" | "folders";
@@ -101,18 +39,4 @@ export interface AppState {
      * UI should hide call graph button if false.
      */
     callGraphAvailable: boolean;
-}
-
-declare global {
-    interface Window {
-        GRAPH_DATA?: GraphData;
-        WORK_TREE?: WorkTreeNode; // Root node
-        DESIGN_DOCS?: { [key: string]: DesignDoc };  // Updated: Now includes markdown + HTML
-        GRAPH_DATA_URL?: string; // Optional if loading via URL
-        FOLDER_TREE?: FolderTreeData;     // loop 13 (emitted by loop 11)
-        FOLDER_EDGES?: FolderEdgelistData; // loop 13 (emitted by loop 11)
-        /** Loop 14: when truthy, the webview logger emits .log/.debug.
-         *  .warn/.error always emit regardless of this flag. */
-        LLMEM_DEBUG?: boolean;
-    }
 }

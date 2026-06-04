@@ -10,8 +10,7 @@ plan/**
 .env
 .env.example
 scripts/**
-.artifacts/**
-.arch/**
+.llmem/**
 
 # Source files (we include dist/ instead)
 src/**
@@ -25,8 +24,9 @@ src/**
 # Exclude all node_modules (not needed in VSIX; vsce bundles deps)
 node_modules/**
 
-# MCP server CLI (not needed inside VSIX)
-dist/claude/**
+# Standalone CLI + MCP server bundles (npm package only; not needed inside VSIX)
+dist/cli/**
+dist/mcp/**
 
 # Delegate work folder
 .delegate/**

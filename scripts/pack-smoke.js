@@ -78,25 +78,25 @@ function rmrf(p) {
 async function main() {
     // 1a. Full build so every bundle the tarball's files[] references exists.
     //     The tarball ships dist/webview/** (from `build` = build:vscode) AND
-    //     dist/claude/cli/main.js + dist/claude/index.js. The claude bundles
-    //     are produced by `build:claude` (esbuild) — NOT compile:claude, whose
-    //     narrow tsconfig rootDir cannot emit the CLI's cross-tree imports
-    //     (see src/scripts/build_claude.ts). So we run both `build` and
-    //     `build:claude`; `build:all` would invoke the broken compile:claude.
-    step('Build (npm run build + npm run build:claude)');
+    //     dist/cli/main.js + dist/mcp/main.js. The CLI/MCP entry bundles are
+    //     produced by `build:entrypoints` (esbuild), which walks each entry's
+    //     cross-tree imports (the CLI/MCP entry use src/application, src/parser,
+    //     src/graph, etc.) — see src/scripts/build_entrypoints.ts. So we run
+    //     both `build` and `build:entrypoints`.
+    step('Build (npm run build + npm run build:entrypoints)');
     if (run(NPM, ['run', 'build'], { cwd: REPO_ROOT }) !== 0) {
         fail('npm run build failed');
     }
-    if (run(NPM, ['run', 'build:claude'], { cwd: REPO_ROOT }) !== 0) {
-        fail('npm run build:claude failed');
+    if (run(NPM, ['run', 'build:entrypoints'], { cwd: REPO_ROOT }) !== 0) {
+        fail('npm run build:entrypoints failed');
     }
     // Verify the CLI/MCP entry points the tarball ships actually exist.
-    for (const rel of ['dist/claude/cli/main.js', 'dist/claude/index.js']) {
+    for (const rel of ['dist/cli/main.js', 'dist/mcp/main.js']) {
         if (!fs.existsSync(path.join(REPO_ROOT, rel))) {
             fail(`expected build output missing: ${rel}`);
         }
     }
-    ok('build produced dist/claude/cli/main.js + dist/claude/index.js');
+    ok('build produced dist/cli/main.js + dist/mcp/main.js');
 
     // 1b. npm pack → tarball.
     step('npm pack');
@@ -171,13 +171,13 @@ async function main() {
     }
     // Resolve the bin we will invoke as `node <bin-js>` (avoids .cmd shim issues
     // and keeps it portable). bin/llmem is a Node shim that requires
-    // dist/claude/cli/main.js.
+    // dist/cli/main.js.
     const binJs = path.join(installedRoot, 'bin', 'llmem');
     if (!fs.existsSync(binJs)) {
         fail(`installed bin missing: ${binJs} (files[] regression?)`);
     }
     // Sanity-check the bundles the bin needs are actually shipped.
-    for (const rel of ['dist/claude/cli/main.js', 'dist/claude/index.js']) {
+    for (const rel of ['dist/cli/main.js', 'dist/mcp/main.js']) {
         if (!fs.existsSync(path.join(installedRoot, rel))) {
             fail(`tarball missing ${rel} (files[] regression?)`);
         }
@@ -241,8 +241,8 @@ async function main() {
             console.error(r.stderr);
             fail('llmem scan exited non-zero');
         }
-        const importEdges = path.join(fixtureRoot, '.artifacts', 'import-edgelist.json');
-        const callEdges = path.join(fixtureRoot, '.artifacts', 'call-edgelist.json');
+        const importEdges = path.join(fixtureRoot, '.llmem', 'graph', 'import-edgelist.json');
+        const callEdges = path.join(fixtureRoot, '.llmem', 'graph', 'call-edgelist.json');
         if (!fs.existsSync(importEdges)) fail(`scan did not write ${importEdges}`);
         if (!fs.existsSync(callEdges)) fail(`scan did not write ${callEdges}`);
         ok('scan exited 0 and wrote import-edgelist.json + call-edgelist.json');

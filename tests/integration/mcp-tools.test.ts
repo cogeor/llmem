@@ -70,8 +70,8 @@ export class Calculator {
 }
 `.trim());
 
-    // Create .arch directory
-    const archDir = path.join(root, '.arch');
+    // Create docs directory
+    const archDir = path.join(root, '.llmem', 'docs');
     fs.mkdirSync(archDir, { recursive: true });
 
     return {
@@ -236,7 +236,7 @@ describe('MCP Tools Integration', () => {
         workspace.cleanup();
     });
 
-    test('report_file_info creates design document in .arch/', async () => {
+    test('report_file_info creates design document in .llmem/docs/', async () => {
         // Import the handler
         const { handleReportFileInfo } = await import('../../src/mcp/tools');
 
@@ -266,7 +266,7 @@ describe('MCP Tools Integration', () => {
         assert.ok(response.data, 'Response should have data');
 
         // Check file was created
-        const archFile = path.join(workspace.root, '.arch', 'src', 'sample.ts.md');
+        const archFile = path.join(workspace.root, '.llmem', 'docs', 'src', 'sample.ts.md');
         assert.ok(fs.existsSync(archFile), `Expected file to exist: ${archFile}`);
 
         // Check content
@@ -329,8 +329,8 @@ describe('MCP Tools Integration', () => {
                 `archPath ${archResolved} must NOT start with fakeAppData ${cwdResolved}`,
             );
 
-            // Concretely: <workspaceRoot>/.arch/src/sample.ts.md
-            const expected = path.join(ws.root, '.arch', 'src', 'sample.ts.md');
+            // Concretely: <workspaceRoot>/.llmem/docs/src/sample.ts.md
+            const expected = path.join(ws.root, '.llmem', 'docs', 'src', 'sample.ts.md');
             assert.equal(
                 path.resolve((response.data as { artifactPath: string }).artifactPath),
                 path.resolve(expected),
@@ -392,8 +392,8 @@ describe('MCP Tools Integration', () => {
                 `readmePath ${readmeResolved} must NOT start with fakeAppData ${cwdResolved}`,
             );
 
-            // Concretely: <workspaceRoot>/.arch/src/README.md
-            const expected = path.join(ws.root, '.arch', 'src', 'README.md');
+            // Concretely: <workspaceRoot>/.llmem/docs/src/README.md
+            const expected = path.join(ws.root, '.llmem', 'docs', 'src', 'README.md');
             assert.equal(
                 path.resolve((response.data as { artifactPath: string }).artifactPath),
                 path.resolve(expected),
@@ -409,7 +409,7 @@ describe('MCP Tools Integration', () => {
         }
     });
 
-    test('report_folder_info creates README in .arch/<folder>/', async () => {
+    test('report_folder_info creates README in .llmem/docs/<folder>/', async () => {
         const { handleReportFolderInfo } = await import('../../src/mcp/tools');
 
         const response = await handleReportFolderInfo({
@@ -427,7 +427,7 @@ describe('MCP Tools Integration', () => {
         assert.equal(response.status, 'success', `Expected success but got: ${response.error}`);
 
         // Check file was created
-        const readmeFile = path.join(workspace.root, '.arch', 'src', 'README.md');
+        const readmeFile = path.join(workspace.root, '.llmem', 'docs', 'src', 'README.md');
         assert.ok(fs.existsSync(readmeFile), `Expected file to exist: ${readmeFile}`);
 
         // Check content
@@ -547,7 +547,7 @@ describe('MCP End-to-End Workflow', () => {
         assert.equal(reportResponse.status, 'success');
 
         // Step 3: Verify the generated documentation
-        const docPath = path.join(workspace.root, '.arch', 'src', 'sample.ts.md');
+        const docPath = path.join(workspace.root, '.llmem', 'docs', 'src', 'sample.ts.md');
         assert.ok(fs.existsSync(docPath), 'Design document should exist');
 
         const content = fs.readFileSync(docPath, 'utf-8');

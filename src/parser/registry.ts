@@ -251,6 +251,24 @@ export class ParserRegistry {
     }
 
     /**
+     * Invalidate any per-workspace parser caches across all adapters.
+     *
+     * Adapters that cache workspace-scoped state (the TypeScript adapter holds
+     * one `ts.Program` per root for scan performance) implement
+     * `invalidateCache`; adapters without a cache omit it and are skipped. The
+     * on-demand refresh (LS-06) calls this when its manifest diff detects new /
+     * changed / deleted files, so the subsequent re-scan re-reads the current
+     * source instead of a stale cached Program.
+     *
+     * @param workspaceRoot Absolute path to workspace root directory
+     */
+    public invalidateCaches(workspaceRoot: string): void {
+        for (const adapter of this.adapters.values()) {
+            adapter.invalidateCache?.(workspaceRoot);
+        }
+    }
+
+    /**
      * Get all registered adapters
      *
      * @returns Array of all language adapters

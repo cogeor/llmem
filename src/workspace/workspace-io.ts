@@ -201,6 +201,49 @@ export class WorkspaceIO {
         await fs.unlink(abs);
     }
 
+    /**
+     * Rename `fromRel` → `toRel`, asserting BOTH paths' parents are
+     * contained under the workspace root (mirrors `writeFile`/`unlink`:
+     * the source or target may be a file that we don't want to deref, so
+     * we validate the parent dirs' realpaths rather than the targets).
+     *
+     * Replace semantics: `fs.rename` overwrites an existing target on
+     * POSIX, but on Windows a rename-over-existing can throw EEXIST/EPERM
+     * if a concurrent reader holds the target open. We retry once after a
+     * best-effort unlink of the target.
+     *
+     * RESIDUAL WINDOWS RACE: between the failing rename, the unlink, and
+     * the retry there is a tiny window where the target does not exist; a
+     * reader hitting that window sees ENOENT (handled by callers as
+     * "no file yet") rather than a torn file. Atomicity therefore holds
+     * for the common case; the rare Windows lock-contention path trades a
+     * strict atomic swap for a momentary absence. Acceptable for the
+     * single-writer-per-file invariant the in-process mutex enforces.
+     */
+    async rename(fromRel: string, toRel: string): Promise<void> {
+        const fromAbs = this.resolve(fromRel);
+        const toAbs = this.resolve(toRel);
+        await this.assertParentContained(fromAbs);
+        await this.assertParentContained(toAbs);
+        try {
+            await fs.rename(fromAbs, toAbs);
+        } catch (err) {
+            const code = (err as NodeJS.ErrnoException).code;
+            if (code === 'EEXIST' || code === 'EPERM') {
+                // Windows: target exists / is locked. Drop it then retry once.
+                try {
+                    await fs.unlink(toAbs);
+                } catch {
+                    // best-effort — if unlink also fails, the retry below
+                    // will surface the original-style error.
+                }
+                await fs.rename(fromAbs, toAbs);
+                return;
+            }
+            throw err;
+        }
+    }
+
     // ------------------------------------------------------------------
     // Internal
     // ------------------------------------------------------------------

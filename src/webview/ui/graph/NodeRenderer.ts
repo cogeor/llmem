@@ -10,6 +10,29 @@ import { WebviewLogger, createWebviewLogger } from '../services/webview-logger';
 const NODE_RADIUS = 8;
 const LABEL_OFFSET = 12;
 
+/** PC-04: CSS class applied to heuristic call-graph nodes (dashed border). */
+export const HEURISTIC_NODE_CLASS = 'node-heuristic';
+/** PC-04: tooltip shown on heuristic call-graph nodes. */
+export const HEURISTIC_NODE_TITLE = 'heuristic call graph (name-matched)';
+
+/**
+ * PC-04: pure decision for a node's heuristic badge. A node is badged ONLY
+ * when its baked `callGraph` capability is 'heuristic' (e.g. Python). Semantic
+ * (TS/JS), 'none', and absent capabilities are NOT badged — absence of the
+ * badge signals a trusted/semantic node. Kept pure (no DOM) so it can be
+ * unit-tested directly and reused by the renderer.
+ */
+export function heuristicBadge(node: { callGraph?: 'semantic' | 'heuristic' | 'none' }): {
+    isHeuristic: boolean;
+    className?: string;
+    title?: string;
+} {
+    if (node.callGraph === 'heuristic') {
+        return { isHeuristic: true, className: HEURISTIC_NODE_CLASS, title: HEURISTIC_NODE_TITLE };
+    }
+    return { isHeuristic: false };
+}
+
 export class NodeRenderer {
     private svg: SVGGElement;
     private positions: Map<string, { x: number; y: number }> = new Map();
@@ -63,12 +86,28 @@ export class NodeRenderer {
         g.setAttribute('transform', `translate(${pos.x}, ${pos.y})`);
         g.style.cursor = 'pointer';
 
+        // PC-04: badge heuristic-language call nodes (e.g. Python) distinctly —
+        // a heuristic node with no edges otherwise looks like a genuine leaf.
+        // Semantic (TS/JS) nodes stay unbadged (absence of badge = trusted).
+        const badge = heuristicBadge(node);
+
         // Circle
         const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         circle.setAttribute('r', String(NODE_RADIUS));
         circle.setAttribute('fill', this.nodeColors.get(node.id) || node.color || '#6c757d');
         circle.setAttribute('stroke', '#fff');
         circle.setAttribute('stroke-width', '1.5');
+
+        if (badge.isHeuristic) {
+            g.classList.add(badge.className!);
+            // Distinct dashed border so a heuristic node reads as best-effort.
+            circle.setAttribute('stroke', 'var(--node-heuristic-stroke, #b58900)');
+            circle.setAttribute('stroke-dasharray', '2 2');
+            // Tooltip via SVG <title> so hovering explains the badge.
+            const titleEl = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+            titleEl.textContent = badge.title!;
+            g.appendChild(titleEl);
+        }
 
         g.appendChild(circle);
 

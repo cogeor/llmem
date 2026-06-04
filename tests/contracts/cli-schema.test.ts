@@ -9,14 +9,14 @@
  *
  * Snapshot regeneration recipe (Linux/macOS bash):
  *
- *   npm run build:claude
+ *   npm run build:entrypoints
  *   node ./bin/llmem describe --json \
  *     | sed 's/"version": "[^"]*"/"version": "<X>"/' \
  *     > tests/contracts/__snapshots__/cli-describe.json
  *
  * On Windows (PowerShell):
  *
- *   npm run build:claude
+ *   npm run build:entrypoints
  *   node ./bin/llmem describe --json `
  *     | ForEach-Object { $_ -replace '"version": "[^"]*"', '"version": "<X>"' } `
  *     | Out-File -Encoding utf8 -NoNewline tests/contracts/__snapshots__/cli-describe.json
@@ -42,13 +42,13 @@ import * as fs from 'node:fs';
 
 const REPO_ROOT = path.join(__dirname, '..', '..');
 const BIN = path.join(REPO_ROOT, 'bin', 'llmem');
-const DIST_MAIN = path.join(REPO_ROOT, 'dist', 'claude', 'cli', 'main.js');
+const DIST_MAIN = path.join(REPO_ROOT, 'dist', 'cli', 'main.js');
 const SNAPSHOT_PATH = path.join(__dirname, '__snapshots__', 'cli-describe.json');
 
 function ensureBuilt(): void {
     if (!fs.existsSync(DIST_MAIN)) {
         throw new Error(
-            `Expected ${DIST_MAIN} to exist. Run \`npm run build:claude\` before \`npm test\`.`,
+            `Expected ${DIST_MAIN} to exist. Run \`npm run build:entrypoints\` before \`npm test\`.`,
         );
     }
 }

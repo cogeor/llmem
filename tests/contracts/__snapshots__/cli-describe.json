@@ -54,11 +54,11 @@
         "properties": {},
         "type": "object"
       },
-      "description": "Start MCP server for Claude Code (stdio)",
+      "description": "Start the MCP server (stdio)",
       "examples": [
         {
           "command": "llmem mcp",
-          "scenario": "Start the MCP stdio server (Claude Code config target)"
+          "scenario": "Start the MCP stdio server (MCP client config target)"
         }
       ],
       "name": "mcp"
@@ -105,7 +105,7 @@
         },
         "type": "object"
       },
-      "description": "Scan the workspace and write edge lists to .artifacts/",
+      "description": "Scan the workspace and write edge lists to .llmem/graph/",
       "examples": [
         {
           "command": "llmem scan",
@@ -200,6 +200,67 @@
         }
       ],
       "name": "init"
+    },
+    {
+      "args": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "_": {
+            "description": "(internal) Positional client names routed by the dispatcher.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "dryRun": {
+            "default": false,
+            "description": "Print what would be written and exit 0 without touching any file.",
+            "type": "boolean"
+          },
+          "force": {
+            "default": false,
+            "description": "Overwrite an existing llmem registration of the same name.",
+            "type": "boolean"
+          },
+          "print": {
+            "default": false,
+            "description": "Print copy-pasteable config snippets (both forms) and exit 0; writes nothing.",
+            "type": "boolean"
+          },
+          "scope": {
+            "default": "user",
+            "description": "Config scope to target: user (cross-machine default), project, or local.",
+            "enum": [
+              "user",
+              "project",
+              "local"
+            ],
+            "type": "string"
+          },
+          "workspace": {
+            "description": "Workspace root to pin as LLMEM_WORKSPACE in the registration (auto-detected if omitted).",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "description": "Register the llmem MCP server with your agent client(s) (Claude Code, Codex, Claude Desktop).",
+      "examples": [
+        {
+          "command": "llmem install",
+          "scenario": "Auto-detect installed clients and register llmem"
+        },
+        {
+          "command": "llmem install --print",
+          "scenario": "Print copy-pasteable config snippets (writes nothing)"
+        },
+        {
+          "command": "llmem install claude --force",
+          "scenario": "Register only Claude Code, overwriting any existing entry"
+        }
+      ],
+      "name": "install"
     }
   ],
   "version": "<X>"

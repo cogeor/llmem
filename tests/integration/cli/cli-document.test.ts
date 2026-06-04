@@ -7,7 +7,7 @@
  *      embedded). No banner contamination on stderr.
  *   2. `--prompt-only` (folder) → after a pre-scan, exits 0 with the folder
  *      enrichment prompt on stdout (header `# FOLDER DOCUMENTATION TASK`).
- *   3. `--content '<json>'` writes `.arch/{path}.md` and prints the
+ *   3. `--content '<json>'` writes `.llmem/docs/{path}.md` and prints the
  *      forward-slash-normalized absolute path to stdout.
  *   4. `--content-file <path>` reads the JSON from disk; writes the same
  *      doc and does not consume the source payload file.
@@ -53,12 +53,12 @@ import * as fs from 'node:fs';
 
 const REPO_ROOT = path.join(__dirname, '..', '..', '..');
 const BIN = path.join(REPO_ROOT, 'bin', 'llmem');
-const DIST_MAIN = path.join(REPO_ROOT, 'dist', 'claude', 'cli', 'main.js');
+const DIST_MAIN = path.join(REPO_ROOT, 'dist', 'cli', 'main.js');
 
 function ensureBuilt(): void {
     if (!fs.existsSync(DIST_MAIN)) {
         throw new Error(
-            `Expected ${DIST_MAIN} to exist. Run \`npm run build:claude\` before \`npm run test:integration\`.`,
+            `Expected ${DIST_MAIN} to exist. Run \`npm run build:entrypoints\` before \`npm run test:integration\`.`,
         );
     }
 }
@@ -190,7 +190,7 @@ test('document: --prompt-only on a folder prints the folder enrichment prompt', 
     ensureBuilt();
     const tmp = mkFixture();
     try {
-        // Pre-scan so .artifacts/ exists (folder prompt requires edge lists).
+        // Pre-scan so .llmem/graph/ exists (folder prompt requires edge lists).
         const scan = await runCli(tmp, ['scan', '--workspace', tmp]);
         assert.equal(
             scan.exitCode, 0,
@@ -222,7 +222,7 @@ test('document: --prompt-only on a folder prints the folder enrichment prompt', 
 // Test 3 — --content writes the design doc
 // ----------------------------------------------------------------------------
 
-test('document: --content writes the design doc and prints the .arch path', async () => {
+test('document: --content writes the design doc and prints the .llmem/docs path', async () => {
     ensureBuilt();
     const tmp = mkFixture();
     try {
@@ -246,11 +246,11 @@ test('document: --content writes the design doc and prints the .arch path', asyn
 
         assert.equal(exitCode, 0, `expected exit 0; stdout=${stdout}`);
         assert.ok(
-            stdout.trim().endsWith('/.arch/fixtures/foo.ts.md'),
+            stdout.trim().endsWith('/.llmem/docs/fixtures/foo.ts.md'),
             `stdout should end with forward-slash arch path; got:\n${stdout}`,
         );
 
-        const expectedFile = path.join(tmp, '.arch', 'fixtures', 'foo.ts.md');
+        const expectedFile = path.join(tmp, '.llmem', 'docs', 'fixtures', 'foo.ts.md');
         assert.ok(
             fs.existsSync(expectedFile),
             `expected ${expectedFile} to exist`,
@@ -296,11 +296,11 @@ test('document: --content-file <path> reads JSON from disk', async () => {
 
         assert.equal(exitCode, 0, `expected exit 0; stdout=${stdout}`);
         assert.ok(
-            stdout.trim().endsWith('/.arch/fixtures/foo.ts.md'),
+            stdout.trim().endsWith('/.llmem/docs/fixtures/foo.ts.md'),
             `stdout should end with forward-slash arch path; got:\n${stdout}`,
         );
 
-        const expectedFile = path.join(tmp, '.arch', 'fixtures', 'foo.ts.md');
+        const expectedFile = path.join(tmp, '.llmem', 'docs', 'fixtures', 'foo.ts.md');
         assert.ok(
             fs.existsSync(expectedFile),
             `expected ${expectedFile} to exist`,
@@ -354,11 +354,11 @@ test('document: --content-file - reads JSON from stdin to EOF', async () => {
 
         assert.equal(exitCode, 0, `expected exit 0; stdout=${stdout}`);
         assert.ok(
-            stdout.trim().endsWith('/.arch/fixtures/foo.ts.md'),
+            stdout.trim().endsWith('/.llmem/docs/fixtures/foo.ts.md'),
             `stdout should end with forward-slash arch path; got:\n${stdout}`,
         );
 
-        const expectedFile = path.join(tmp, '.arch', 'fixtures', 'foo.ts.md');
+        const expectedFile = path.join(tmp, '.llmem', 'docs', 'fixtures', 'foo.ts.md');
         assert.ok(
             fs.existsSync(expectedFile),
             `expected ${expectedFile} to exist`,

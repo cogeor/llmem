@@ -11,9 +11,10 @@ import type { Config } from './core/config-types';
  * Default configuration values shared by all LLMem modules.
  */
 export const DEFAULT_CONFIG: Config = {
-    artifactRoot: '.artifacts',
+    artifactRoot: '.llmem/graph',
     maxFilesPerFolder: 20,
     maxFileSizeKB: 512,
+    maxFileLines: 2000,
 };
 
 /**
@@ -25,6 +26,7 @@ export const ENV_VARS = {
     ARTIFACT_ROOT: 'LLMEM_ARTIFACT_ROOT',
     MAX_FILES_PER_FOLDER: 'LLMEM_MAX_FILES_PER_FOLDER',
     MAX_FILE_SIZE_KB: 'LLMEM_MAX_FILE_SIZE_KB',
+    MAX_FILE_LINES: 'LLMEM_MAX_FILE_LINES',
 } as const;
 
 /** Upper-bound cap for maxFilesPerFolder */
@@ -32,6 +34,9 @@ export const MAX_FILES_PER_FOLDER_CAP = 500;
 
 /** Upper-bound cap for maxFileSizeKB */
 export const MAX_FILE_SIZE_KB_CAP = 10240;
+
+/** Upper-bound cap for maxFileLines */
+export const MAX_FILE_LINES_CAP = 100000;
 
 /**
  * Default port for the graph webview HTTP server.

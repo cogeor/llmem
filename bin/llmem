@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 const path = require('path');
-const cliPath = path.join(__dirname, '..', 'dist', 'claude', 'cli', 'main.js');
+const cliPath = path.join(__dirname, '..', 'dist', 'cli', 'main.js');
 require(cliPath).main().catch((err) => {
     console.error(err && err.message ? err.message : err);
     process.exit(1);

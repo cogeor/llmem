@@ -3,8 +3,9 @@
  *
  * Uses split stores (ImportEdgeListStore + CallEdgeListStore).
  *
- * IMPORTANT: Call graph is TypeScript/JavaScript only.
- * Other languages (Python, C++, Rust, R) only produce import graphs.
+ * Call graph spans languages whose LANGUAGES descriptor declares a capability:
+ * 'semantic' (TS/JS) and 'heuristic' (Python). C/C++/Rust/R (callGraph 'none')
+ * produce import graphs only.
  */
 
 import { ImportGraph, CallGraph, EntityNode, ImportEdge, CallEdge, ImportGraphNode } from './types';
@@ -72,12 +73,30 @@ export function buildGraphsFromSplitEdgeLists(
         }
     }
 
-    // Create file/external nodes via the canonical helper
+    // Create file/external nodes via the canonical helper. `fileIds` is the
+    // set of REAL file-nodes (the persisted file nodes, after the watched
+    // filter) — the dangling-node filter below uses it to decide which edge
+    // endpoints are legitimate.
     for (const fileId of fileIds) {
         importNodes.set(fileId, makeImportNode(fileId));
     }
 
-    // Add import edges (include edges to external modules)
+    // Add import edges with a DANGLING-NODE FILTER (LS-07).
+    //
+    // The old loop SYNTHESIZED a phantom makeImportNode for ANY edge endpoint,
+    // so a deleted file with incoming imports still rendered as a node + edge.
+    // We now mirror the call graph's both-endpoints filter (below): an import
+    // edge is kept ONLY when each endpoint either (a) is a real file-node in
+    // `fileIds`, or (b) is an external module (npm package etc.). We never
+    // fabricate a file-node for a non-existent target — that is the self-healing
+    // behavior on every build, so a stale edge to a deleted file simply drops.
+    //
+    // External-module nodes still need to be CREATED on demand (they have no
+    // entry in importData.nodes), so we synthesize them here — but only for
+    // genuinely external endpoints, never for missing files.
+    const isRealEndpoint = (id: string): boolean =>
+        importNodes.has(id) || isExternalModuleId(id);
+
     for (const edge of importData.edges) {
         const sourceWatched = !watchedFiles || watchedFiles.has(edge.source);
 
@@ -86,8 +105,12 @@ export function buildGraphsFromSplitEdgeLists(
         const isTargetExternal = isExternalModuleId(edge.target);
         const targetWatched = !watchedFiles || watchedFiles.has(edge.target) || isTargetExternal;
 
-        // Include edge if source is watched AND (target is watched OR target is external)
-        if (sourceWatched && targetWatched) {
+        // Both endpoints must be watched-eligible AND resolve to a real node
+        // (existing file-node or external module). A non-external endpoint with
+        // no file-node is a deleted/phantom file — drop the edge, don't render.
+        if (sourceWatched && targetWatched && isRealEndpoint(edge.source) && isRealEndpoint(edge.target)) {
+            // Only external endpoints need on-demand node creation here; real
+            // file-nodes were already added from `fileIds` above.
             if (!importNodes.has(edge.source)) {
                 importNodes.set(edge.source, makeImportNode(edge.source));
             }
@@ -110,27 +133,40 @@ export function buildGraphsFromSplitEdgeLists(
     };
 
     // Build Call Graph (entity-level nodes and call edges)
-    // IMPORTANT: Call graph is TypeScript/JavaScript only
+    // Call graph spans every language whose descriptor declares a call-graph
+    // capability: 'semantic' (TS/JS) or 'heuristic' (Python). Languages with
+    // callGraph 'none' (C/C++/Rust/R) and unknown extensions are excluded.
     const callNodes = new Map<string, EntityNode>();
     const callEdgesOut: CallEdge[] = [];
 
-    // Create entity nodes from call data (filter by watched files AND TS/JS only)
+    // Create entity nodes from call data (filter by watched files AND call-graph capability)
     for (const node of callData.nodes) {
         if (node.kind !== 'file') {
             // Loop 16: route through the contract's external classifier
             // instead of duplicating the local heuristic.
             const isExternal = node.fileId === node.id || isExternalModuleId(node.fileId);
 
-            // Only include nodes from TypeScript/JavaScript files (call graph is TS-only)
-            const isTypeScript = isTypeScriptFile(node.fileId);
+            // Include nodes whose file has a call-graph capability (semantic or
+            // heuristic) — PC: the call graph is no longer TS-only.
+            // PC-04 / Loop 12: read the capability that the converter PERSISTED
+            // onto the node (node.callGraph) instead of re-importing
+            // parser/config here. A node without the field (legacy in-memory
+            // construction in a test, external/synthesized module node) defaults
+            // to 'none' and is excluded — same outcome the parser lookup gave
+            // for non-source ids.
+            const callGraphCapability = node.callGraph ?? 'none';
+            const hasCallGraph = callGraphCapability !== 'none';
 
-            // Include node if: (1) it's from a TS/JS file, AND (2) its file is watched or no filter, OR (3) it's external
-            if (isTypeScript && (!watchedFiles || watchedFiles.has(node.fileId) || isExternal)) {
+            // Include node if: (1) its file supports a call graph, AND (2) its file is watched or no filter, OR (3) it's external
+            if (hasCallGraph && (!watchedFiles || watchedFiles.has(node.fileId) || isExternal)) {
                 callNodes.set(node.id, {
                     id: node.id,
                     kind: node.kind as 'function' | 'class' | 'method',
                     label: node.name,
-                    fileId: node.fileId
+                    fileId: node.fileId,
+                    // PC-04: bake the capability onto the node so the browser
+                    // can badge 'heuristic' nodes without importing parser/config.
+                    callGraph: callGraphCapability
                 });
             }
         }

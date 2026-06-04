@@ -25,7 +25,7 @@
     {
       "type": "stdio",
       "command": "node",
-      "args": ["dist/claude/index.js"]
+      "args": ["dist/mcp/main.js"]
     }
   ],
   "tools": [

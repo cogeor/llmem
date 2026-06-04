@@ -9,6 +9,8 @@ import { GraphTypeToggle } from './components/GraphTypeToggle';
 import { GraphView } from './components/GraphView';
 import { FolderStructureView } from './components/FolderStructureView';
 import { ViewToggle } from './components/ViewToggle';
+import { FolderDescriptionPanel } from './components/FolderDescriptionPanel';
+import { SummaryPanel } from './components/SummaryPanel';
 import { Splitter } from './libs/Splitter';
 import { explorerIcon, graphIcon, sun } from './icons';
 import { requireElement } from './dom-validation';
@@ -43,6 +45,7 @@ const elGraphToggle = requireElement('graph-type-toggle');
 const elGraphView = requireElement('graph-view');
 const elFolderStructureView = requireElement('folder-structure-view');
 const elViewToggle = requireElement('view-toggle');
+const elSummaryPanel = requireElement('folder-summary-panel');
 
 // Splitter elements
 const elSplitter1 = requireElement('splitter-1');
@@ -120,17 +123,79 @@ const viewToggle = new ViewToggle({
     state,
 });
 
+// Docked summary panel (VS-A1 mount). Mounts in both VS Code + standalone
+// and is independent of graph-only mode — with no docs it simply stays
+// hidden. The FolderDescriptionPanel is a (mostly) pure renderer; the
+// SummaryPanel controller owns the pinned exact/ancestor/empty +
+// toggle-on-reclick state machine and resolves via resolveClosestDoc.
+const summaryRenderer = new FolderDescriptionPanel({
+    el: elSummaryPanel,
+    designDocs: window.DESIGN_DOCS || {},
+    logger,
+});
+const summaryPanel = new SummaryPanel({
+    panel: summaryRenderer,
+    designDocs: window.DESIGN_DOCS || {},
+});
+state.subscribe((s) => {
+    summaryPanel.onSelection(s.selectedPath, s.selectedType);
+});
+
 // Register Routes
 router.registerRoute('graph', graphView);
 router.registerRoute('folders', folderStructureView);
 
-// Subscribe to refresh events (hot reload)
+// Live-refresh the summary panel (VS-A4). Re-pull the docs map and push it
+// into the controller, which re-resolves the CURRENT selection so an edited /
+// added / deleted doc updates the open panel without a manual reselect.
+// `loadDesignDocs()` is the host-agnostic source:
+//   - static / serve: StaticDataProvider returns designDocCache.getAll(),
+//     which has already applied the incremental arch:* WebSocket events, so it
+//     reflects the just-changed docs (no /api/arch full-map fetch needed — the
+//     cache IS the full map). Limitation: serve mode relies on the cache being
+//     seeded from window.DESIGN_DOCS + kept current by the WebSocket deltas;
+//     there is no whole-map endpoint and we do not add one here.
+//   - VS Code: returns the regenerated designDocs from the panel echo.
+// Guard: a missing / graph-only doc source yields {} → panel hides; never
+// throws.
+const refreshSummaryDocs = async (): Promise<void> => {
+    try {
+        const docs = (await dataProvider.loadDesignDocs()) || {};
+        summaryPanel.refreshDocs(docs);
+    } catch (e) {
+        logger.error('[Webview] Summary-panel doc refresh failed', e);
+        summaryPanel.refreshDocs({});
+    }
+};
+
+// Subscribe to refresh events (hot reload). Single onRefresh registration —
+// graph + folder views AND the summary-panel docs map all refresh through this
+// one handler (no double-subscription / leak). This fires on graph-edge
+// updates (StaticDataProvider's `graph:updated`) and on VS Code data echoes.
 dataProvider.onRefresh(async () => {
     logger.log('[Webview] Refresh triggered - reloading graph');
     // Only refresh graph + folder views - Worktree structure doesn't change on edge refresh
     await graphView.mount();
     await folderStructureView.mount();
+    // Refresh docs AFTER the graph/folder re-mount so the doc re-resolve does
+    // not race the graph mount (await order: graph first, then docs).
+    await refreshSummaryDocs();
 });
+
+// In serve / static mode a pure arch edit (no graph change) flows through the
+// designDocCache → `onDesignDocChange`, NOT `onRefresh` (which only fires on
+// `graph:updated`). Subscribe to it as well so editing/regenerating a doc
+// live-updates the open summary panel even when the graph is unchanged. This
+// is a DISTINCT hook from onRefresh (not a double onRefresh subscription); the
+// cache has already applied the delta before the callback fires, so we just
+// re-pull the whole map. The optional method is absent in VS Code mode (where
+// `onRefresh` already carries the regenerated docs), so this is guarded.
+if (dataProvider.onDesignDocChange) {
+    dataProvider.onDesignDocChange(() => {
+        logger.log('[Webview] Design doc changed - refreshing summary panel');
+        void refreshSummaryDocs();
+    });
+}
 
 // Subscribe to watched paths restoration (persisted state from disk)
 if (dataProvider.onWatchedPathsRestored) {

@@ -7,7 +7,7 @@
  *   - Function and class definitions (entities only, no call extraction)
  *
  * Note: Call graph extraction is NOT supported for C/C++.
- * Only TypeScript/JavaScript support call graphs.
+ * Call graphs are TS/JS (semantic) and Python (heuristic) only.
  *
  * Performance target: 10,000+ lines/sec
  */

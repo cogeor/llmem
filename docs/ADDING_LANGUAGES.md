@@ -431,7 +431,7 @@ These modules are **language-agnostic** and require no changes:
 - ✅ `src/graph/artifact-converter.ts` - FileArtifact → edges
 - ✅ `src/graph/index.ts` - Graph building
 - ✅ `src/webview/` - Visualization UI
-- ✅ `src/claude/` - CLI and server
+- ✅ `src/cli/` + `src/http-server/` + `src/mcp/` - CLI, server, and MCP entrypoint
 
 **Once the adapter is registered, everything else works automatically.**
 

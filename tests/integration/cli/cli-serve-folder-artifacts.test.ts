@@ -43,13 +43,13 @@ import { asWorkspaceRoot } from '../../../src/core/paths';
 
 const REPO_ROOT = path.join(__dirname, '..', '..', '..');
 const BIN = path.join(REPO_ROOT, 'bin', 'llmem');
-const DIST_MAIN = path.join(REPO_ROOT, 'dist', 'claude', 'cli', 'main.js');
+const DIST_MAIN = path.join(REPO_ROOT, 'dist', 'cli', 'main.js');
 const DIST_WEBVIEW = path.join(REPO_ROOT, 'dist', 'webview');
 
 function ensureBuilt(): void {
     if (!fs.existsSync(DIST_MAIN)) {
         throw new Error(
-            `Expected ${DIST_MAIN} to exist. Run \`npm run build:claude\` before \`npm run test:integration\`.`,
+            `Expected ${DIST_MAIN} to exist. Run \`npm run build:entrypoints\` before \`npm run test:integration\`.`,
         );
     }
     if (!fs.existsSync(path.join(DIST_WEBVIEW, 'index.html'))) {
@@ -128,7 +128,7 @@ test('serve: cold start emits all four artifacts (folder-tree + folder-edgelist 
             60_000,
         );
 
-        const artifacts = path.join(tmp, '.artifacts');
+        const artifacts = path.join(tmp, '.llmem', 'graph');
         assert.ok(
             fs.existsSync(path.join(artifacts, 'import-edgelist.json')),
             'expected import-edgelist.json after cold-start serve',

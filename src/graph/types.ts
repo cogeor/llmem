@@ -49,6 +49,14 @@ export interface EntityNode extends Node {
     fileId: string;  // Reference to the FileNode ID
     parentEntityId?: string; // For methods inside classes
     signature?: string;
+    /**
+     * PC-04: call-graph capability of this entity's source language, baked
+     * onto the node server-side from `getCallGraphCapability(fileId)`. The
+     * viewer badges 'heuristic' nodes (e.g. Python, name-matched) distinctly;
+     * 'semantic' (TS/JS) stays unbadged (absence of badge = trusted). The
+     * browser must NOT recompute this (no parser/config import in the UI).
+     */
+    callGraph?: 'semantic' | 'heuristic' | 'none';
 }
 
 export interface CallEdge extends Edge {

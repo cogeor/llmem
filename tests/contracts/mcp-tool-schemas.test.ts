@@ -40,16 +40,33 @@ describe('mcp tool schema: file_info', () => {
         path: 'src/foo.ts',
     };
 
-    test('parses a known-good payload', () => {
+    test('parses a known-good payload (refresh defaults to auto)', () => {
         const got = FileInfoSchema.parse(KNOWN_GOOD);
-        assert.deepEqual(got, KNOWN_GOOD);
+        assert.deepEqual(got, { ...KNOWN_GOOD, refresh: 'auto' });
     });
 
-    test('property set is exactly [path, workspaceRoot]', () => {
+    test('refresh defaults to auto when omitted', () => {
+        const parsed = FileInfoSchema.parse(KNOWN_GOOD);
+        assert.equal(parsed.refresh, 'auto');
+    });
+
+    test("accepts refresh: 'skip'", () => {
+        const got = FileInfoSchema.parse({ ...KNOWN_GOOD, refresh: 'skip' });
+        assert.equal(got.refresh, 'skip');
+    });
+
+    test('rejects an unknown refresh value', () => {
+        assert.throws(
+            () => FileInfoSchema.parse({ ...KNOWN_GOOD, refresh: 'always' }),
+            z.ZodError,
+        );
+    });
+
+    test('property set is exactly [path, refresh, workspaceRoot]', () => {
         const parsed = FileInfoSchema.parse(KNOWN_GOOD);
         assert.deepEqual(
             Object.keys(parsed).sort(),
-            ['path', 'workspaceRoot'],
+            ['path', 'refresh', 'workspaceRoot'],
             'A new property in FileInfoSchema requires an explicit pin update.',
         );
     });
@@ -149,14 +166,31 @@ describe('mcp tool schema: folder_info', () => {
         path: 'src/utils',
     };
 
-    test('parses a known-good payload', () => {
+    test('parses a known-good payload (refresh defaults to auto)', () => {
         const got = FolderInfoSchema.parse(KNOWN_GOOD);
-        assert.deepEqual(got, KNOWN_GOOD);
+        assert.deepEqual(got, { ...KNOWN_GOOD, refresh: 'auto' });
     });
 
-    test('property set is exactly [path, workspaceRoot]', () => {
+    test('refresh defaults to auto when omitted', () => {
         const parsed = FolderInfoSchema.parse(KNOWN_GOOD);
-        assert.deepEqual(Object.keys(parsed).sort(), ['path', 'workspaceRoot']);
+        assert.equal(parsed.refresh, 'auto');
+    });
+
+    test("accepts refresh: 'skip'", () => {
+        const got = FolderInfoSchema.parse({ ...KNOWN_GOOD, refresh: 'skip' });
+        assert.equal(got.refresh, 'skip');
+    });
+
+    test('rejects an unknown refresh value', () => {
+        assert.throws(
+            () => FolderInfoSchema.parse({ ...KNOWN_GOOD, refresh: 'always' }),
+            z.ZodError,
+        );
+    });
+
+    test('property set is exactly [path, refresh, workspaceRoot]', () => {
+        const parsed = FolderInfoSchema.parse(KNOWN_GOOD);
+        assert.deepEqual(Object.keys(parsed).sort(), ['path', 'refresh', 'workspaceRoot']);
     });
 
     test('rejects payload missing workspaceRoot', () => {

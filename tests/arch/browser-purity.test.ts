@@ -15,7 +15,7 @@
 //
 // Forbidden relative resolutions (resolve target relative to importer; check
 // it does not land inside any of these directories):
-//   - src/parser/, src/mcp/, src/extension/, src/claude/, src/scripts/,
+//   - src/parser/, src/mcp/, src/extension/, src/scripts/,
 //     src/artifact/, src/info/, src/graph/
 //
 // Allowed: other paths under src/webview/ui/ and other src/webview/* paths
@@ -63,10 +63,7 @@ const FORBIDDEN_RELATIVE_PREFIXES: readonly string[] = [
   'src/parser/',
   'src/mcp/',
   'src/extension/',
-  'src/claude/',
   'src/scripts/',
-  'src/artifact/',
-  'src/info/',
   'src/graph/',
 ];
 

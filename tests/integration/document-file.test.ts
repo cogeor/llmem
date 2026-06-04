@@ -24,9 +24,14 @@ import * as path from 'node:path';
 
 import {
     processFileInfoReport,
+    buildDocumentFilePrompt,
 } from '../../src/application/document-file';
 import { asRelPath } from '../../src/core/paths';
 import { createWorkspaceContext } from '../../src/application/workspace-context';
+import {
+    ImportEdgeListStore,
+    CallEdgeListStore,
+} from '../../src/graph/edgelist';
 
 function makeTmp(prefix: string): string {
     return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -67,12 +72,12 @@ test('processFileInfoReport writes to workspaceRoot/.arch, never elsewhere', asy
         // The file must actually exist at archPath.
         assert.ok(fs.existsSync(result.archPath), `archPath must exist on disk: ${result.archPath}`);
 
-        // And the .arch directory must be inside tmpRoot.
-        const expectedArch = path.join(tmpRoot, '.arch', 'src', 'foo.ts.md');
+        // And the docs directory must be inside tmpRoot.
+        const expectedArch = path.join(tmpRoot, '.llmem', 'docs', 'src', 'foo.ts.md');
         assert.equal(
             path.resolve(result.archPath),
             path.resolve(expectedArch),
-            'archPath must equal <tmpRoot>/.arch/src/foo.ts.md',
+            'archPath must equal <tmpRoot>/.llmem/docs/src/foo.ts.md',
         );
 
         // Sanity: contents include the overview text.
@@ -103,6 +108,105 @@ test('processFileInfoReport bytesWritten matches utf-8 byte length', async () =>
         });
         const stat = fs.statSync(result.archPath);
         assert.equal(result.bytesWritten, stat.size);
+    } finally {
+        fs.rmSync(tmpRoot, { recursive: true, force: true });
+    }
+});
+
+test('buildDocumentFilePrompt on a never-scanned file refreshes that file\'s edges (LS-08)', async () => {
+    const tmpRoot = makeTmp('llmem-doc-file-cold-');
+    try {
+        // A source file with an import + a function so the refresh produces
+        // at least one node/edge in the stores.
+        const srcDir = path.join(tmpRoot, 'src');
+        fs.mkdirSync(srcDir, { recursive: true });
+        fs.writeFileSync(
+            path.join(srcDir, 'a.ts'),
+            "import { helper } from './b';\nexport function run() { return helper(); }\n",
+            'utf-8',
+        );
+
+        const ctx = await createWorkspaceContext({ workspaceRoot: tmpRoot });
+
+        const data = await buildDocumentFilePrompt(ctx, {
+            filePath: asRelPath('src/a.ts'),
+        });
+
+        // The normal prompt shape is preserved (no caveat for a clean file).
+        assert.ok(
+            data.prompt.includes('# DESIGN DOCUMENT GENERATION TASK'),
+            'prompt header must be present',
+        );
+        assert.ok(
+            !data.prompt.includes('COVERAGE NOTES'),
+            'a clean file must NOT carry a coverage caveat',
+        );
+
+        // The refresh populated the edge stores: the file node exists.
+        const importStore = new ImportEdgeListStore(ctx.artifactRoot, ctx.io);
+        await importStore.load();
+        const nodeFiles = importStore.getNodes().map((n) => n.fileId);
+        assert.ok(
+            nodeFiles.includes('src/a.ts'),
+            `import store must contain a node for src/a.ts; got ${nodeFiles.join(', ')}`,
+        );
+        const importTargets = importStore.getEdges().map((e) => e.target);
+        assert.ok(
+            importTargets.some((t) => t.includes('b')),
+            `import edge for ./b must be present; got ${importTargets.join(', ')}`,
+        );
+
+        // The call store is created too (cold refresh saved both).
+        const callStore = new CallEdgeListStore(ctx.artifactRoot, ctx.io);
+        await callStore.load();
+        assert.ok(
+            callStore.getNodes().length > 0,
+            'call store must have nodes after a cold refresh',
+        );
+    } finally {
+        fs.rmSync(tmpRoot, { recursive: true, force: true });
+    }
+});
+
+test('buildDocumentFilePrompt on an over-line file emits the COVERAGE NOTES caveat (LS-08)', async () => {
+    const tmpRoot = makeTmp('llmem-doc-file-overline-');
+    try {
+        const srcDir = path.join(tmpRoot, 'src');
+        fs.mkdirSync(srcDir, { recursive: true });
+        // 6 trivial lines; configure maxFileLines = 3 so the file is gated.
+        fs.writeFileSync(
+            path.join(srcDir, 'big.ts'),
+            'const a = 1;\nconst b = 2;\nconst c = 3;\nconst d = 4;\nconst e = 5;\nconst f = 6;\n',
+            'utf-8',
+        );
+
+        const ctx = await createWorkspaceContext({
+            workspaceRoot: tmpRoot,
+            configOverrides: { maxFileLines: 3 },
+        });
+
+        const data = await buildDocumentFilePrompt(ctx, {
+            filePath: asRelPath('src/big.ts'),
+        });
+
+        // The §7 caveat is appended, using the SHARED renderCoverageCaveat
+        // wording (line-limit reason renders the LIMIT).
+        assert.ok(
+            data.prompt.includes('## ⚠️ COVERAGE NOTES (graph may be incomplete)'),
+            'over-line file must carry the coverage caveat header',
+        );
+        assert.ok(
+            data.prompt.includes('src/big.ts — exceeds line limit (3)'),
+            'caveat must name the over-line file with the configured limit',
+        );
+
+        // The gated file's edges are NOT in the stores (it was not parsed).
+        const importStore = new ImportEdgeListStore(ctx.artifactRoot, ctx.io);
+        await importStore.load();
+        const hasBig = importStore
+            .getNodes()
+            .some((n) => n.fileId === 'src/big.ts');
+        assert.ok(!hasBig, 'an over-line file must NOT be parsed into the graph');
     } finally {
         fs.rmSync(tmpRoot, { recursive: true, force: true });
     }

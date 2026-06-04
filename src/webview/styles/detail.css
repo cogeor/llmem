@@ -68,3 +68,34 @@
     padding: var(--spacing-lg);
     color: var(--foreground-muted);
 }
+
+/* Folder summary panel — collapsible bottom strip docked at the foot of the
+   graph pane. Hidden by default (display:none in the shell markup removes it
+   from flow, so the graph keeps full height while collapsed). When expanded
+   it occupies a bounded strip and scrolls its own overflow. */
+.folder-summary-panel {
+    flex: 0 0 auto;
+    max-height: 40%;
+    overflow: auto;
+    border-top: 1px solid var(--border-color);
+    background-color: var(--background);
+    padding: var(--spacing-sm);
+}
+
+.folder-summary-panel.collapsed {
+    display: none !important;
+}
+
+/* "Inherited from <ancestor>" marker rendered above an ancestor-resolved
+   design doc (SummaryPanel ANCESTOR state). */
+.package-description-inherited {
+    font-size: 0.85em;
+    opacity: 0.7;
+    margin-bottom: var(--spacing-sm);
+}
+
+/* Empty-state hint when no design doc resolves for the selection. */
+.package-description-empty {
+    font-size: 0.9em;
+    opacity: 0.8;
+}

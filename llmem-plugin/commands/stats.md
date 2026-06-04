@@ -12,7 +12,7 @@ Show statistics about the import and call graphs for this codebase.
 Run the stats command:
 
 ```bash
-cd $WORKSPACE_ROOT && node ./dist/claude/cli.js stats
+cd $WORKSPACE_ROOT && node ./dist/cli/main.js stats
 ```
 
 ## Output

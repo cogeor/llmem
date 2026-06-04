@@ -9,7 +9,10 @@
  * Versioning
  * ----------
  * The persisted envelope carries TWO version fields:
- *   - `schemaVersion: 2` — monotonic integer for the on-disk shape.
+ *   - `schemaVersion: 3` — monotonic integer for the on-disk shape.
+ *     Bumped 2→3 by Loop 12: NodeEntry gained an optional `callGraph`
+ *     capability field (persisted so the graph builder stops importing
+ *     parser/config to re-derive it).
  *   - `resolverVersion: 'ts-resolveModuleName-v1'` — names the import
  *     resolver implementation that produced the file. Loop 12 swapped
  *     the heuristic resolver for `ts.resolveModuleName`, which changes
@@ -37,7 +40,7 @@
 
 import { z } from 'zod';
 
-export const EDGELIST_SCHEMA_VERSION = 2;
+export const EDGELIST_SCHEMA_VERSION = 3;
 export const EDGELIST_RESOLVER_VERSION = 'ts-resolveModuleName-v1';
 
 // ---------------------------------------------------------------------------
@@ -60,6 +63,12 @@ export const NodeEntrySchema = z.object({
     name: z.string(),
     kind: NodeKindSchema,
     fileId: z.string().min(1),
+    // Loop 12: the scanned file's call-graph capability, stamped by
+    // artifact-converter so the graph builder no longer imports parser/config
+    // to re-derive it. Optional + self-contained literal enum (NO parser import
+    // here). Bumping EDGELIST_SCHEMA_VERSION 2→3 forces stale on-disk envelopes
+    // (which lack this field) through the self-healing rescan path.
+    callGraph: z.enum(['semantic', 'heuristic', 'none']).optional(),
 });
 
 export const EdgeEntrySchema = z.object({

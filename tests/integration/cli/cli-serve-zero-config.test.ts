@@ -11,7 +11,7 @@
  *   2. Spawn `node bin/llmem serve --port 0 --no-open --workspace <tmp>`.
  *   3. waitForOutput on `Server running.*127\.0\.0\.1:(\d+)`.
  *   4. http.get `/api/stats` → assert HTTP 200.
- *   5. Assert `<tmp>/.artifacts/import-edgelist.json` was written.
+ *   5. Assert `<tmp>/.llmem/graph/import-edgelist.json` was written.
  *   6. Cleanup in finally.
  *
  * Cross-platform notes:
@@ -30,7 +30,7 @@
  *   workspace has no `dist/`, and walking up from a tmp `cwd` will not
  *   find the llmem repo root. The asset-root override is the
  *   documented escape hatch for exactly this case (see
- *   `src/claude/cli/commands/serve.ts:LLMEM_ASSET_ROOT`).
+ *   `src/cli/commands/serve.ts:LLMEM_ASSET_ROOT`).
  * - Forward-slash normalization is not asserted in this test — that is
  *   the `cli-describe` snapshot test's job (loop 04). This test only
  *   asserts `boundPort` numeric, the `/api/stats` HTTP code, and that the
@@ -50,12 +50,12 @@ import * as fs from 'node:fs';
 
 const REPO_ROOT = path.join(__dirname, '..', '..', '..');
 const BIN = path.join(REPO_ROOT, 'bin', 'llmem');
-const DIST_MAIN = path.join(REPO_ROOT, 'dist', 'claude', 'cli', 'main.js');
+const DIST_MAIN = path.join(REPO_ROOT, 'dist', 'cli', 'main.js');
 
 function ensureBuilt(): void {
     if (!fs.existsSync(DIST_MAIN)) {
         throw new Error(
-            `Expected ${DIST_MAIN} to exist. Run \`npm run build:claude\` before \`npm run test:integration\`.`,
+            `Expected ${DIST_MAIN} to exist. Run \`npm run build:entrypoints\` before \`npm run test:integration\`.`,
         );
     }
 }
@@ -148,7 +148,7 @@ async function runServeZeroConfig(extraEnv: Record<string, string>): Promise<voi
         assert.equal(status, 200, `/api/stats returned ${status}`);
 
         // Import edge list must have been written by the cold scan.
-        const importEdgeList = path.join(tmp, '.artifacts', 'import-edgelist.json');
+        const importEdgeList = path.join(tmp, '.llmem', 'graph', 'import-edgelist.json');
         assert.ok(
             fs.existsSync(importEdgeList),
             `expected ${importEdgeList} to exist after zero-config scan`,
@@ -187,7 +187,7 @@ test('serve zero-config: cold scan + bind on a fresh workspace', async () => {
  * Same body, no `LLMEM_ASSET_ROOT`. Exercises the followup fix to
  * `resolveAssetRoot`: when running from a fresh tmp cwd, the cwd-based
  * walk-up cannot find the llmem repo root, but the `__dirname`-based
- * install-root walk-up can — `dist/claude/web-launcher.js` is two levels
+ * install-root walk-up can — the compiled web-launcher module is nested
  * under the install root (the repo here), so the walk-up finds the
  * repo's `package.json` and resolves `<repo>/dist/webview`.
  *

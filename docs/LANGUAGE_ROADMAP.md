@@ -79,7 +79,7 @@ These files are **language-agnostic** and automatically work with new languages:
 - ✅ All files in `src/info/` (info extraction)
 - ✅ All files in `src/graph/` (graph building)
 - ✅ All files in `src/webview/` (visualization)
-- ✅ All files in `src/claude/` (CLI/server)
+- ✅ All files in `src/cli/`, `src/http-server/`, `src/mcp/` (CLI/server/MCP entrypoint)
 - ✅ All files in `src/extension/` (VS Code extension)
 
 ---

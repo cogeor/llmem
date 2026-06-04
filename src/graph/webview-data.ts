@@ -15,6 +15,12 @@ export interface VisNode {
     title?: string;
     color?: string;
     fileId?: string;
+    /**
+     * PC-04: call-graph capability of a call-graph node's source language,
+     * forwarded from the EntityNode. The browser NodeRenderer badges
+     * 'heuristic' nodes; 'semantic'/'none'/absent render normally.
+     */
+    callGraph?: 'semantic' | 'heuristic' | 'none';
 }
 
 export interface VisEdge {
@@ -87,7 +93,10 @@ function transformGraphsToVisData(importGraph: any, callGraph: any): WebviewGrap
         group: 'function',
         title: n.id,
         color: callColors.get(n.id),
-        fileId: n.fileId
+        fileId: n.fileId,
+        // PC-04: forward the baked per-node call-graph capability so the
+        // browser can badge heuristic-language nodes.
+        callGraph: n.callGraph
     }));
 
     const callEdges: VisEdge[] = callGraph.edges.map((e: any) => ({

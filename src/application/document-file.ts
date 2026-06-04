@@ -22,15 +22,17 @@
  */
 
 import * as path from 'path';
-import { artifactToEdgeList } from '../graph/artifact-converter';
+import { artifactToEdgeList } from './artifact-converter';
 import { ParserRegistry } from '../parser/registry';
 import { getLanguageFromPath } from '../parser/config';
 import { parseGraphId } from '../core/ids';
 import type { WorkspaceRoot, AbsPath, RelPath } from '../core/paths';
 import { getFileArchPath } from '../docs/arch-store';
-import { extractFileInfo } from '../info/extractor';
-import { getImportEdges, getCallEdges, filterImportEdges } from '../info/filter';
-import type { FileInfo } from '../info/types';
+import { extractFileInfo } from './file-info';
+import { getImportEdges, getCallEdges, filterImportEdges } from '../graph/query/filter';
+import type { FileInfo } from './file-info';
+import { refreshFileGraph } from './refresh-graph';
+import { renderCoverageCaveat } from './coverage-caveat';
 import type { WorkspaceContext } from './workspace-context';
 
 // ============================================================================
@@ -60,6 +62,13 @@ export interface EnrichedFileData {
 /** Per-call request fields for `buildDocumentFilePrompt`. */
 export interface DocumentFileRequest {
     filePath: RelPath;
+    /**
+     * `'auto'` (default): refresh THIS file's edges before building the prompt
+     * (warm = stat + manifest compare only; cold/changed = re-gate + parse).
+     * `'skip'`: project the current stores as-is, no freshness work. Mirrors
+     * the folder path's `refresh`; LS-09 plumbs it through the MCP schema.
+     */
+    refresh?: 'auto' | 'skip';
 }
 
 export interface DocumentFileData {
@@ -111,7 +120,22 @@ export async function buildDocumentFilePrompt(
     req: DocumentFileRequest,
 ): Promise<DocumentFileData> {
     const { workspaceRoot, io } = ctx;
-    const { filePath } = req;
+    const { filePath, refresh } = req;
+
+    // LS-08: bring THIS file's edges up to date as a side effect, mirroring
+    // the folder path's refreshFolderGraph (LS-06). On a never-scanned file
+    // this populates the stores + manifest; on a warm file it is stat + a
+    // manifest fingerprint compare only (no re-parse). The returned
+    // ScanCoverage drives the §7 caveat appended below. Run BEFORE the inline
+    // extract so a gate-skipped file still surfaces a caveat.
+    //
+    // DOUBLE-PARSE (perf follow-up): the inline parser.extract below also
+    // parses this file to build the prompt's structural markdown, so a
+    // cold/changed file is parsed twice in one call. Reconciling is invasive
+    // (the inline extract drives the exact prompt shape the tests assert), so
+    // the second parse is accepted; warm calls do not re-parse in refresh, so
+    // steady-state file_info pays a single parse.
+    const refreshCoverage = await refreshFileGraph(ctx, { filePath, refresh });
 
     // Read source via WorkspaceIO (realpath-strong containment).
     // WorkspaceIO.readFile does NOT swallow ENOENT — translate it
@@ -209,7 +233,18 @@ export async function buildDocumentFilePrompt(
     const info: FileInfo = extractFileInfo(filePath, artifact, new Map());
     const archPath = getFileArchPath(workspaceRoot, filePath);
 
-    const prompt = renderEnrichmentPrompt(filePath, structuralMarkdown, sourceCode);
+    let prompt = renderEnrichmentPrompt(filePath, structuralMarkdown, sourceCode);
+
+    // LS-08 + LS-04: append the §7 coverage caveat when the refresh dropped
+    // this file by a gate (denylist / size / lines). Reuses the SHARED
+    // renderCoverageCaveat helper from ./coverage-caveat — same wording. Returns
+    // '' for a clean coverage, so a normal file leaves the prompt unchanged
+    // (the prompt shape the tests assert is preserved).
+    const caveat = renderCoverageCaveat(refreshCoverage, {
+        maxFileSizeKB: ctx.config.maxFileSizeKB,
+        maxFileLines: ctx.config.maxFileLines,
+    });
+    if (caveat) prompt = `${prompt}\n${caveat}\n`;
 
     return {
         filePath,

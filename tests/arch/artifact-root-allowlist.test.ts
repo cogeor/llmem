@@ -48,7 +48,7 @@
 //     `(rel, line)` before any console output. CI must produce the
 //     same line numbers on Windows, macOS, and Linux.
 //   - Skip directories: `node_modules`, `.git`, `dist`, `.artifacts`,
-//     `.delegate`, `.arch`, `plans`, `out`, `build`, `coverage`.
+//     `.llmem`, `.delegate`, `.arch`, `plans`, `out`, `build`, `coverage`.
 //   - Skip files: `package-lock.json`, `*.js`, `*.js.map`, `*.d.ts`,
 //     `*.d.ts.map`, `*.lock`, common binary extensions.
 //   - Include rule (otherwise skip): `.ts`, `.tsx`, `.json`, `.md`,
@@ -95,6 +95,7 @@ const SKIP_DIRS: ReadonlySet<string> = new Set([
     '.git',
     'dist',
     '.artifacts',
+    '.llmem',
     '.delegate',
     '.arch',
     'plans',
@@ -256,18 +257,14 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     { file: '.env.example',
       phase: 'permanent',
       reason: 'Example env file documents `ARTIFACT_ROOT=.artifacts` as the default.' },
-    { file: '.eslintrc.json',
-      phase: 'permanent',
-      reason: 'ESLint ignore pattern for the generated artifact directory.' },
     { file: '.gitignore',
       phase: 'permanent',
-      reason: 'git-ignore for the generated artifact directory.' },
-    { file: '.vscodeignore',
-      phase: 'permanent',
-      reason: 'VSIX packaging excludes the generated artifact directory.' },
+      reason: 'G3: re-ignores the generated `.artifacts/` edge-list/webview cache (legacy + dev-script default root) to prevent staging it.' },
+    // VS-B4: .eslintrc.json / .vscodeignore now ignore the centralized
+    // `.llmem/` tree (blanket), not `.artifacts` — rows removed.
     { file: 'package.json',
       phase: 'permanent',
-      reason: 'Extension contributes `llmem.artifactRoot` setting; canonical default value is `.artifacts`.' },
+      reason: 'G3: `clean:dist` npm script removes the regenerable `.artifacts/` cache dir (legacy + dev-script default root) alongside dist/.' },
 
     // -----------------------------------------------------------------------
     // B. Top-level documentation
@@ -319,42 +316,33 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     //    legitimately mention the literal. Any new entry to this
     //    category requires reviewer scrutiny in the PR.
     // -----------------------------------------------------------------------
-    { file: 'src/claude/cli/commands/generate.ts',
+    { file: 'src/cli/commands/generate.ts',
       phase: 'permanent',
       reason: 'Workspace-marker walker (`[\'.git\', \'package.json\', \'.llmem\', \'.arch\', \'.artifacts\']`).' },
-    { file: 'src/claude/cli/commands/init.ts',
+    // G3: init.ts config template now emits `artifactRoot = ".llmem/graph"` (the
+    // real default) — `.artifacts` literal gone, row removed.
+    // G3: scan.ts description now says "write edge lists to .llmem/graph/" (the
+    // real default) — `.artifacts` literal gone, row removed.
+    { file: 'src/cli/commands/serve.ts',
       phase: 'permanent',
-      reason: 'Emits a `.llmem/config.toml` template that contains `artifactRoot = ".artifacts"`.' },
-    { file: 'src/claude/cli/commands/scan.ts',
-      phase: 'permanent',
-      reason: 'CLI command description string ("write edge lists to .artifacts/").' },
-    { file: 'src/claude/cli/commands/serve.ts',
-      phase: 'permanent',
-      reason: 'Default `{ artifactRoot: \'.artifacts\' }` and `path.join(workspace, \'.artifacts\', \'webview\')` derived path.' },
-    { file: 'src/claude/cli/commands/stats.ts',
+      reason: 'Comment explaining the resolved artifactRoot must NOT force `.artifacts`; functional code consumes `ctx.config.artifactRoot`.' },
+    { file: 'src/cli/commands/stats.ts',
       phase: 'permanent',
       reason: 'Workspace-marker walker.' },
-    { file: 'src/claude/cli/main.ts',
-      phase: 'permanent',
-      reason: '--help text documents `LLMEM_ARTIFACT_ROOT` default value.' },
-    { file: 'src/claude/cli/workspace.ts',
-      phase: 'permanent',
-      reason: 'Workspace-marker walker + JSDoc that lists the markers checked.' },
-    { file: 'src/claude/config.ts',
-      phase: 'permanent',
-      reason: 'JSDoc documents `LLMEM_ARTIFACT_ROOT` env var default.' },
-    { file: 'src/claude/index.ts',
+    // G3: main.ts --help text now documents the `.llmem/graph` default —
+    // `.artifacts` literal gone, row removed.
+    // G3: config.ts JSDoc now documents the `.llmem/graph` default —
+    // `.artifacts` literal gone, row removed.
+    { file: 'src/mcp/main.ts',
       phase: 'permanent',
       reason: 'Workspace-marker walker.' },
-    { file: 'src/claude/server/index.ts',
+    { file: 'src/workspace/detect.ts',
       phase: 'permanent',
-      reason: 'JSDoc + `config.artifactRoot || \'.artifacts\'` fallback in HTTP server bootstrap.' },
-    { file: 'src/claude/web-launcher.ts',
-      phase: 'permanent',
-      reason: 'Default-param assignment for the legacy back-compat path; ignored when `ctx` is supplied.' },
-    { file: 'src/config-defaults.ts',
-      phase: 'permanent',
-      reason: 'Canonical default value for `RuntimeConfig.artifactRoot`. Single source of truth; if this entry ever moves, the rest of category D must follow.' },
+      reason: 'Workspace-marker walker + JSDoc listing the markers checked (moved from the original CLI workspace helper in G2).' },
+    // VS-BUGFIX: src/http-server/index.ts now defaults to
+    // `DEFAULT_CONFIG.artifactRoot` (not `'.artifacts'`) — row removed.
+    // VS-BUGFIX: src/viewer-generator/graph-stats.ts `hasEdgeLists` default
+    // param now `DEFAULT_CONFIG.artifactRoot` — literal gone, row removed.
 
     // -----------------------------------------------------------------------
     // E. IGNORED_FOLDERS / scan-skip lists in src/
@@ -363,9 +351,6 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     //    `node_modules` and `.git`. Safe future cleanup: centralise in
     //    `src/config-defaults.ts`.
     // -----------------------------------------------------------------------
-    { file: 'src/artifact/service.ts',
-      phase: 'permanent',
-      reason: 'ALWAYS_IGNORED set in legacy artifact tree builder.' },
     { file: 'src/parser/config.ts',
       phase: 'permanent',
       reason: 'IGNORED_FOLDERS set used by parser scans.' },
@@ -380,12 +365,12 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     //    Functional code uses `ctx.artifactRoot` (or equivalent) but
     //    comments describe the on-disk shape for readers.
     // -----------------------------------------------------------------------
-    { file: 'src/artifact/path-mapper.ts',
+    { file: 'src/application/migrate-docs.ts',
       phase: 'permanent',
-      reason: 'JSDoc describes the on-disk layout (`/.artifacts/path/to/source/file.ext/...`).' },
-    { file: 'src/extension/panel.ts',
+      reason: 'JSDoc explains the docs migration leaves `.artifacts/` (regenerable cache) untouched; no functional callsite uses the literal.' },
+    { file: 'src/extension/panel/panel-data-handlers.ts',
       phase: 'permanent',
-      reason: 'JSDoc on `_loadFolderTree` / `_loadFolderEdges` documents which artifact JSON files are read.' },
+      reason: 'JSDoc on `loadFolderTree` / `loadFolderEdges` documents which artifact JSON files are read.' },
     { file: 'src/scripts/generate-call-edges.ts',
       phase: 'permanent',
       reason: 'Dev script-side helper resolves `.artifacts` directly; scripts run outside the WorkspaceContext model, allowed by design.' },
@@ -405,6 +390,9 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     // -----------------------------------------------------------------------
     // G. Architecture tests' own skip-directory lists
     // -----------------------------------------------------------------------
+    { file: 'tests/arch/arch-root-literals.test.ts',
+      phase: 'permanent',
+      reason: 'VS-B5 sibling guard for the `.arch` storage-root literal; its SKIP_DIRS set and scoping doc name `.artifacts` by design.' },
     { file: 'tests/arch/artifact-root-allowlist.test.ts',
       phase: 'permanent',
       reason: 'This file IS the allowlist test — its banner, regex, scan, ALLOWLIST entries, and assertion messages all mention the literal by design. Self-reference is permanent.' },
@@ -420,6 +408,21 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     { file: 'tests/arch/graph-ids.test.ts',
       phase: 'permanent',
       reason: 'Skip directory in walkSrc.' },
+    { file: 'tests/arch/install-namespace.test.ts',
+      phase: 'permanent',
+      reason: 'Skip directory in walkSrc (install-namespace scanner; literal lives in shouldSkipDir).' },
+    { file: 'tests/arch/layer-matrix.test.ts',
+      phase: 'permanent',
+      reason: 'Skip directory in walkSrc (layer-matrix import scanner; literal lives in shouldSkipDir).' },
+    { file: 'tests/arch/no-artifact-imports.test.ts',
+      phase: 'permanent',
+      reason: 'Skip directory in walkSrc (no-artifact-imports scanner; literal lives in shouldSkipDir).' },
+    { file: 'tests/arch/no-claude-namespace.test.ts',
+      phase: 'permanent',
+      reason: 'Skip directory in walkRepo (no-claude-namespace scanner; literal lives in SKIP_DIRS + banner).' },
+    { file: 'tests/arch/no-nul-source.test.ts',
+      phase: 'permanent',
+      reason: 'Skip directory in walkSrc (no-NUL scanner; literal lives in shouldSkipDir + header comment).' },
     { file: 'tests/arch/no-layout-scratch-any.test.ts',
       phase: 'permanent',
       reason: 'Skip directory in walkSrc.' },
@@ -439,39 +442,27 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     //    dir, assert against scan output paths, exercise CLI describe
     //    snapshots, etc.
     // -----------------------------------------------------------------------
-    { file: 'tests/contracts/__snapshots__/cli-describe.json',
-      phase: 'permanent',
-      reason: 'Frozen CLI description snapshot mentions `.artifacts/` (matches src/claude/cli/commands/scan.ts).' },
+    // G3: cli-describe snapshot now mirrors scan.ts's `.llmem/graph/`
+    // description — `.artifacts` literal gone, row removed.
     { file: 'tests/contracts/_helpers/build-server.ts',
       phase: 'permanent',
       reason: 'Fixture builds a server with `artifactRoot: \'.artifacts\'` and a webviewDir under it.' },
     { file: 'tests/contracts/http-route-dtos.test.ts',
       phase: 'permanent',
       reason: 'Constructs fixture artifact dir under tmp.' },
-    { file: 'tests/integration/arch-watcher.test.ts',
-      phase: 'permanent',
-      reason: 'TEST_ARTIFACTS_DIR constant for the watcher fixture.' },
-    { file: 'tests/integration/cli/cli-describe.test.ts',
-      phase: 'permanent',
-      reason: 'Fixture artifact dir for CLI describe assertions.' },
-    { file: 'tests/integration/cli/cli-document.test.ts',
-      phase: 'permanent',
-      reason: 'Comment + fixture artifact dir for CLI document assertions.' },
+    // G1: arch-watcher.test.ts fixture now seeds `.llmem/graph` (the real
+    // default artifactRoot) via TEST_GRAPH_DIR — `.artifacts` literal gone,
+    // row removed.
+    // VS-BUGFIX: cli-describe.test.ts now seeds `.llmem/graph` (default
+    // config) — `.artifacts` literal gone, row removed.
     { file: 'tests/integration/cli/cli-port-fallback.test.ts',
       phase: 'permanent',
-      reason: 'Banner + comment about pre-existing `.artifacts/` in this repo as the test workspace.' },
-    { file: 'tests/integration/cli/cli-scan-folder-artifacts.test.ts',
-      phase: 'permanent',
-      reason: 'Fixture artifact dir constructed under tmp (twice).' },
-    { file: 'tests/integration/cli/cli-scan.test.ts',
-      phase: 'permanent',
-      reason: 'Banner + fixture path assertions on scan output files.' },
-    { file: 'tests/integration/cli/cli-serve-folder-artifacts.test.ts',
-      phase: 'permanent',
-      reason: 'Fixture artifact dir for the serve-folder-artifacts integration.' },
+      reason: 'Banner mentions the previously-coupled legacy `.artifacts/` workspace (now a self-contained tmp dir).' },
+    // VS-BUGFIX: cli-serve-folder-artifacts.test.ts now asserts under
+    // `.llmem/graph` (default config) — `.artifacts` literal gone, row removed.
     { file: 'tests/integration/cli/cli-serve-zero-config.test.ts',
       phase: 'permanent',
-      reason: 'Banner + asserts that scan wrote `.artifacts/import-edgelist.json`.' },
+      reason: 'Banner mentions a fresh workspace with no `.artifacts/` directory.' },
     { file: 'tests/integration/document-folder.test.ts',
       phase: 'permanent',
       reason: 'Test name + "poison" fixture asserts hardcoded `.artifacts` is NOT used (Loop 09 contract).' },
@@ -481,15 +472,9 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     { file: 'tests/integration/mcp-tools.test.ts',
       phase: 'permanent',
       reason: 'Comment about reader/writer not consulting `.artifacts` directly.' },
-    { file: 'tests/integration/mcp/spec-gen-e2e.test.ts',
-      phase: 'permanent',
-      reason: 'Black-box stdio e2e test seeds an empty `.artifacts/` fixture dir so folder_info passes its existence check (see comment + mkdirSync at top of file).' },
     { file: 'tests/integration/server-hardening.test.ts',
       phase: 'permanent',
       reason: 'Fixture builds a server with `artifactRoot: \'.artifacts\'` and webviewDir under it (multiple fixtures).' },
-    { file: 'tests/integration/toggle-watch.test.ts',
-      phase: 'permanent',
-      reason: 'Fixture artifact dir for the toggle-watch integration (multiple fixtures).' },
     { file: 'tests/integration/webview/generator-folder-globals.test.ts',
       phase: 'permanent',
       reason: 'Banner mentions `.artifacts/webview/` cache rule (per CLAUDE.md).' },
@@ -497,21 +482,21 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     // -----------------------------------------------------------------------
     // I. Unit tests under tests/unit/
     // -----------------------------------------------------------------------
+    { file: 'tests/unit/application/migrate-docs.test.ts',
+      phase: 'permanent',
+      reason: 'Seeds a fixture `.artifacts/` dir to assert the docs migration never mutates the regenerable cache.' },
     { file: 'tests/unit/application/scan-containment.test.ts',
       phase: 'permanent',
       reason: 'Fixture artifact dir for scan-containment unit test.' },
-    { file: 'tests/unit/application/viewer-data.test.ts',
-      phase: 'permanent',
-      reason: 'Fixture artifact dir for viewer-data unit test.' },
-    { file: 'tests/unit/application/workspace-context.test.ts',
-      phase: 'permanent',
-      reason: 'Asserts `RuntimeConfig.artifactRoot` default value is `.artifacts`.' },
     { file: 'tests/unit/claude-server/middleware.test.ts',
       phase: 'permanent',
       reason: 'Fixture builds context with `artifactRoot: \'.artifacts\'`.' },
     { file: 'tests/unit/extension/panel-folder-handlers.test.ts',
       phase: 'permanent',
       reason: 'Fixture artifact dir for panel folder-handlers unit test.' },
+    { file: 'tests/unit/graph/edgelist-store.test.ts',
+      phase: 'permanent',
+      reason: 'Fixture artifact dir for edge-store atomic-publish + write-mutex unit tests (Loop LS-10).' },
     { file: 'tests/unit/graph/folder-edges-store.test.ts',
       phase: 'permanent',
       reason: 'Fixture artifact dir for folder-edges-store unit tests (multiple fixtures).' },

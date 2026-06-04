@@ -9,7 +9,7 @@
  *   - Function definitions (entities only, no call extraction)
  *
  * Note: Call graph extraction is NOT supported for R.
- * Only TypeScript/JavaScript support call graphs.
+ * Call graphs are TS/JS (semantic) and Python (heuristic) only.
  */
 
 import * as fs from 'fs';

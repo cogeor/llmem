@@ -32,6 +32,16 @@ import { assertWorkspaceRootMatch } from './shared';
 export const FileInfoSchema = z.object({
     workspaceRoot: z.string().describe('Absolute path to workspace root (current project directory)'),
     path: z.string().describe('Path to file (relative to workspace root)'),
+    refresh: z
+        .enum(['auto', 'skip'])
+        .default('auto')
+        .describe(
+            "Freshness mode. 'auto' (default) brings this file's edges up to " +
+            'date before summarizing (warm = stat + manifest compare only; ' +
+            "cold/changed = re-parse). 'skip' bypasses the freshness check and " +
+            'projects the current stores as-is — use for back-to-back ' +
+            'same-turn calls on a file you just refreshed.',
+        ),
 });
 
 export type FileInfoInput = z.infer<typeof FileInfoSchema>;
@@ -44,7 +54,7 @@ async function handleFileInfoImpl(
         return formatError(validation.error!);
     }
 
-    const { workspaceRoot, path: relativePath } = validation.data!;
+    const { workspaceRoot, path: relativePath, refresh } = validation.data!;
 
     validateWorkspaceRoot(workspaceRoot);
     assertWorkspaceRootMatch(workspaceRoot);
@@ -53,6 +63,7 @@ async function handleFileInfoImpl(
     const ctx = await getStoredContext();
     const data = await buildDocumentFilePrompt(ctx, {
         filePath: asRelPath(relativePath),
+        refresh,
     });
 
     return formatPromptResponse(

@@ -20,7 +20,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { ArchWatcherService } from '../../../src/claude/server/arch-watcher';
+import { ArchWatcherService } from '../../../src/http-server/arch-watcher';
 import { createWorkspaceContext } from '../../../src/application/workspace-context';
 
 test('arch-watcher: writeDoc rejects ../escape', async () => {

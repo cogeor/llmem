@@ -30,11 +30,11 @@ import * as path from 'node:path';
 import {
     HttpRequestHandler,
     DEFAULT_MAX_BODY_BYTES,
-} from '../../src/claude/server/http-handler';
-import { registerRoutes } from '../../src/claude/server/routes';
-import type { ServerContext } from '../../src/claude/server/routes';
+} from '../../src/http-server/http-handler';
+import { registerRoutes } from '../../src/http-server/routes';
+import type { ServerContext } from '../../src/http-server/routes';
 import { createWorkspaceContext } from '../../src/application/workspace-context';
-import type { ServerConfig } from '../../src/claude/server';
+import type { ServerConfig } from '../../src/http-server';
 import { NoopLogger } from '../../src/core/logger';
 
 interface RequestResult {

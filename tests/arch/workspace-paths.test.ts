@@ -198,21 +198,61 @@ interface WriteAllowlistEntry {
 // shape that the scan uses is derived from `file` below.
 const WRITE_ALLOWLIST_ENTRIES: readonly WriteAllowlistEntry[] = [
   {
-    file: 'src/artifact/storage.ts',
+    file: 'src/application/migrate-docs.ts',
     phase: 'permanent',
     reason:
-      'Free-function back-compat write surface (see file banner; live ' +
-      'writers should use `ArtifactStorage` which routes through ' +
-      '`WorkspaceIO`). Same lifecycle as the entries in ' +
-      'KNOWN_WRITE_VIOLATIONS below.',
+      'One-time docs migration moves the top-level `.arch/` dir to ' +
+      '`.llmem/docs/` via a whole-dir `fs.rename` (atomic on same volume) ' +
+      'with an EXDEV copy→verify→rm fallback. `WorkspaceIO` has no rename ' +
+      'and is for in-workspace file ops; this is a top-level dir move at ' +
+      'init on absolute paths under the workspace root, by design.',
   },
   {
-    file: 'src/claude/cli/commands/init.ts',
+    file: 'src/cli/commands/init.ts',
     phase: 'permanent',
     reason:
       'Bootstraps the `.llmem/` workspace marker before any ' +
       '`WorkspaceIO` exists — the marker file is what later code reads ' +
       'to discover the workspace root.',
+  },
+  {
+    file: 'src/install/claude-code.ts',
+    phase: 'permanent',
+    reason:
+      'The `llmem install` Claude Code adapter writes/merges a project-' +
+      'local `.mcp.json` config in the user-selected workspace root ' +
+      '(resolved by `detectWorkspace`, not WorkspaceIO). This is a top-' +
+      'level user-config write outside any WorkspaceIO sandbox — the ' +
+      'install command predates and bootstraps the workspace, by design. ' +
+      'The write path is injectable (FsIo seam) so tests never touch a ' +
+      'real config; the raw `fs.promises` default is the production wiring.',
+  },
+  {
+    file: 'src/install/codex.ts',
+    phase: 'permanent',
+    reason:
+      'The `llmem install` Codex adapter writes/merges the user-scope ' +
+      '`~/.codex/config.toml` (TOML) and `fs.mkdir`s `~/.codex/` when ' +
+      'absent. This is a HOME-based user-config write outside any ' +
+      'WorkspaceIO sandbox — the install command bootstraps client config ' +
+      'and predates the workspace, by design. The home + write paths are ' +
+      'injectable (homeOf + CodexFsIo seams) so tests use a temp HOME and ' +
+      'never touch the real `~/.codex`; the raw `fs.promises` default is the ' +
+      'production wiring.',
+  },
+  {
+    file: 'src/install/claude-desktop.ts',
+    phase: 'permanent',
+    reason:
+      'The `llmem install` Claude Desktop adapter writes/merges the per-OS ' +
+      'user-scope `claude_desktop_config.json` (macOS Application Support / ' +
+      'win32 %APPDATA% / linux ~/.config) and `fs.mkdir`s its `Claude/` ' +
+      'parent when absent. This is a HOME/APPDATA-based user-config write ' +
+      'outside any WorkspaceIO sandbox — the install command bootstraps ' +
+      'client config and predates the workspace, by design. The platform + ' +
+      'home + write paths are injectable (platformOf + homeOf + DesktopFsIo ' +
+      'seams) so tests use a temp dir and never touch the real config; the ' +
+      'raw `fs.promises` default is the production wiring.',
   },
   {
     file: 'src/webview/generator.ts',
@@ -473,7 +513,7 @@ interface KnownFsWriteViolation {
   readonly reason: string;
 }
 
-const SUBTREES_TO_SCAN = ['src/graph', 'src/info', 'src/artifact'];
+const SUBTREES_TO_SCAN = ['src/graph'];
 
 const SUBTREE_ALLOWLIST: readonly string[] = [
   'src/workspace/',
@@ -494,30 +534,10 @@ const FS_WRITE_METHODS = new Set([
 // Documented back-compat fallback paths. Loop 07 retired the four
 // graph-store entries (edgelist, worktree-state, folder-tree-store,
 // folder-edges-store) when their constructors were tightened to require
-// `WorkspaceIO`. The remaining entries below are permanent surfaces:
-// `src/artifact/storage.ts` exposes a free-function back-compat API
-// for callers that hold absolute paths (see the file's banner) and is
-// not routed through `WorkspaceIO` by design.
-const KNOWN_WRITE_VIOLATIONS: readonly KnownFsWriteViolation[] = [
-  {
-    rel: 'src/artifact/storage.ts',
-    method: 'mkdir',
-    phase: 'permanent',
-    reason: 'Implicit mkdir inside the back-compat free-function `writeFile` in src/artifact/storage.ts (creates parent dirs before writing). Same lifecycle as the writeFile row below. If the free function is retired, remove this row.',
-  },
-  {
-    rel: 'src/artifact/storage.ts',
-    method: 'writeFile',
-    phase: 'permanent',
-    reason: 'Free-function back-compat export `writeFile` in src/artifact/storage.ts; callers pass arbitrary absolute paths so containment cannot be enforced via WorkspaceIO. Live writers use the ArtifactStorage class instead. If the free function is retired, remove this row.',
-  },
-  {
-    rel: 'src/artifact/storage.ts',
-    method: 'unlink',
-    phase: 'permanent',
-    reason: 'Free-function back-compat export `deleteFile` in src/artifact/storage.ts; callers pass arbitrary absolute paths so containment cannot be enforced via WorkspaceIO. Live writers use the ArtifactStorage class instead. If the free function is retired, remove this row.',
-  },
-];
+// `WorkspaceIO`. Loop 13 deleted the deprecated `src/artifact` module
+// (its free-function back-compat storage surface went with it), so the
+// list now lands EMPTY. It is reserved for future transitional rows.
+const KNOWN_WRITE_VIOLATIONS: readonly KnownFsWriteViolation[] = [];
 
 function isUnderAnySubtree(rel: string): boolean {
   return SUBTREES_TO_SCAN.some((s) => rel === s || rel.startsWith(`${s}/`));

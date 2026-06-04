@@ -55,7 +55,7 @@ jobs:
         run: npm ci
 
       # `npm publish` triggers `prepublishOnly` → `npm test`, whose
-      # `pretest` builds dist/claude/* and dist/webview/* before running
+      # `pretest` builds dist/cli/*, dist/mcp/*, and dist/webview/* before running
       # the suite. Both are shipped per package.json `files`, so the
       # build+test gate is the package-correctness contract — we don't
       # need an explicit build step here.

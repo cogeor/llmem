@@ -73,6 +73,62 @@ export class FolderDescriptionPanel {
         void this.logger;
     }
 
+    /**
+     * Render a pre-resolved design doc (from the controller's
+     * `resolveClosestDoc`). Unlike `show()`, this does NOT re-resolve —
+     * the controller owns resolution (incl. the parent walk) so the panel
+     * can render the inherited-ancestor context.
+     *
+     * When `inherited` is true an "inherited from <key>" marker is rendered
+     * above the doc so the user knows the doc belongs to an ancestor.
+     */
+    showResolved(key: string, doc: DesignDoc, inherited: boolean): void {
+        this.renderer = new DesignRender({
+            markdown: doc.markdown,
+            html: doc.html,
+            mode: 'view',
+            onModeChange: () => {
+                /* no-op: summary panel is read-only */
+            },
+        });
+        this.props.el.style.display = 'block';
+        if (inherited) {
+            const safeKey = escape(key);
+            // safe: structural template; safeKey is escape()-wrapped; the
+            // surrounding strings are author-controlled literals.
+            this.props.el.innerHTML =
+                `<div class="package-description-inherited">` +
+                `Inherited from <code>${safeKey}</code></div>` +
+                `<div class="package-description-body"></div>`;
+            const body = this.props.el.querySelector(
+                '.package-description-body',
+            ) as HTMLElement | null;
+            this.renderer.mount(body ?? this.props.el);
+        } else {
+            this.props.el.innerHTML = '';
+            this.renderer.mount(this.props.el);
+        }
+        void this.logger;
+    }
+
+    /**
+     * Render the `llmem document <path>` empty-state suggestion for a path
+     * with no resolvable doc. Mirrors the miss branch of `show()` but is
+     * driven explicitly by the controller (which has already resolved to
+     * `null` via `resolveClosestDoc`).
+     */
+    showEmpty(path: string): void {
+        const safePath = escape(path);
+        // safe: structural template; safePath is escape()-wrapped;
+        // surrounding strings are author-controlled literals.
+        this.props.el.innerHTML =
+            `<div class="package-description-empty">` +
+            `No design doc yet — run <code>llmem document ${safePath}</code>.` +
+            `</div>`;
+        this.props.el.style.display = 'block';
+        this.renderer = null;
+    }
+
     hide(): void {
         this.props.el.style.display = 'none';
         this.props.el.innerHTML = '';

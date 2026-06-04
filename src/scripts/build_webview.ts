@@ -38,7 +38,7 @@ async function build() {
         console.log('Webview UI bundled to dist/webview/main.js');
 
         // 2. Copy static assets for portable CLI
-        // These are needed by web-launcher.ts when running outside the source tree
+        // These are needed by the viewer-generator when running outside the source tree
 
         // Copy index.html
         const indexSrc = path.join(srcWebview, 'index.html');
