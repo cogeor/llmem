@@ -56,8 +56,8 @@ export const MAIN_SCRIPT = 'js/main.js' as const;
  * alarm if a future loop drops or renames an ID in only one host.
  *
  * Order in this list mirrors the visual layout: top-level toggle, app
- * shell with its three panes (explorer / design / graph), and the toolbar
- * mount points inside each pane.
+ * shell with its two panes (explorer / graph), and the toolbar mount
+ * points inside each pane.
  */
 export const MOUNT_POINTS: readonly string[] = [
     'view-toggle',
@@ -66,13 +66,8 @@ export const MOUNT_POINTS: readonly string[] = [
     'worktree-root',
     'theme-toggle',
     'splitter-1',
-    'design-pane',
-    'design-mode-toggle',
-    'design-view',
-    'splitter-2',
     'graph-pane',
     'graph-type-toggle',
     'graph-view',
-    'package-view',
     'folder-structure-view',
 ] as const;

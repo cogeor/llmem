@@ -11,8 +11,13 @@
  *   - from ..package import X
  */
 
-import type { SyntaxNode } from 'tree-sitter';
 import { ImportSpec, Loc } from '../types';
+
+// Type-only reference to tree-sitter's SyntaxNode, written as an inline
+// `import(...)` type query (never an `import type` statement) so ts-node / tsc
+// can never emit a runtime `require('tree-sitter')`: loading this module must
+// not pull in the native addon.
+type SyntaxNode = import('tree-sitter').SyntaxNode;
 
 export interface ImportBinding {
     /** The name used in code (alias if present, otherwise original name) */

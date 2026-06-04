@@ -58,6 +58,26 @@
     fill: var(--description-foreground, #888);
 }
 
+/* Expand/collapse caret prefix on folders that have direct files. */
+.folder-structure-caret {
+    fill: var(--description-foreground, #888);
+    font-size: 10px;
+}
+
+/* File leaves revealed when a folder is expanded — lighter, dashed rect
+   and muted italic label so they read as a different tier than folders. */
+.folder-structure-node.is-file rect {
+    fill: var(--hover-background);
+    stroke: var(--border-color);
+    stroke-dasharray: 3 2;
+}
+
+.folder-structure-node.is-file .folder-structure-name {
+    font-weight: 400;
+    font-style: italic;
+    fill: var(--description-foreground, #888);
+}
+
 .folder-structure-node {
     cursor: pointer;
 }

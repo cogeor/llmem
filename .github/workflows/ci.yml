@@ -7,12 +7,18 @@ on:
     branches: [ main ]
 
 jobs:
+  # The `build` job only compiles + tests the SOURCE tree — it never builds,
+  # packs, installs, or executes the published tarball. The `pack-smoke` job
+  # below covers the package as users actually receive it.
   build:
     runs-on: ubuntu-latest
 
     strategy:
       matrix:
-        node-version: [20.x, 22.x]
+        # 20.19.0 is the declared engines.node floor (PH-01): chokidar 5 is
+        # ESM-only and require()ing it throws ERR_REQUIRE_ESM below 20.19.0,
+        # so CI must exercise the exact floor, not a floating 20.x.
+        node-version: ['20.19.0', 22.x]
 
     steps:
     - uses: actions/checkout@v4
@@ -31,3 +37,34 @@ jobs:
 
     - name: Run Tests
       run: npm test
+
+  # Builds + packs the tarball, installs it into an isolated temp project +
+  # temp HOME, and exercises the CLI/MCP surface (describe / serve / scan /
+  # mcp handshake). Runs on Windows too because native tree-sitter
+  # build/prebuilt resolution, bin-shim/PATH resolution, and the npm pack
+  # tarball layout diverge most there — the ubuntu-only `build` job above
+  # never exercises any of it.
+  pack-smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        # Node floor (PH-01) AND latest active 22.x.
+        node-version: ['20.19.0', 22.x]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Pack smoke (build + pack + install tarball + run CLI/MCP)
+      run: npm run smoke:pack

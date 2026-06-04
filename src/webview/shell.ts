@@ -64,8 +64,8 @@ export interface ShellOptions {
  * Body order — pinned by the parity test in
  * `tests/arch/webview-shell-parity.test.ts`:
  *   1. `<div id="view-toggle">` directly under `<body>` (above `#app`).
- *   2. `<div id="app">` containing explorer / splitter-1 / design /
- *      splitter-2 / graph panes with their toolbar + content mounts.
+ *   2. `<div id="app">` containing explorer / splitter-1 / graph panes
+ *      with their toolbar + content mounts (2-pane layout).
  *   3. Library `<script>` tags from `LIBS` (with `nonce` if set).
  *   4. Optional data-script tags from `opts.dataScriptUrls` (with `nonce`
  *      if set; classic, non-module, no `type="module"` — the bundle uses
@@ -104,8 +104,8 @@ export function renderShell(opts: ShellOptions): string {
     ${styleTags}
 </head>
 <body>
-    <!-- Loop 16: tri-state route toggle (Graph / Design / Packages). Mounted
-         by main.ts via the ViewToggle component. -->
+    <!-- Two-state route toggle (Graph / Folders). Mounted by main.ts via
+         the ViewToggle component. -->
     <div id="view-toggle" class="view-toggle-host"></div>
     <div id="app" class="layout-row">
         <!-- Explorer Pane -->
@@ -122,22 +122,6 @@ export function renderShell(opts: ShellOptions): string {
         <!-- Splitter 1 -->
         <div class="splitter" id="splitter-1"></div>
 
-        <!-- Design Pane -->
-        <div id="design-pane" class="pane" style="flex: 1;">
-            <div class="pane-header">
-                <span class="pane-title" id="design-title"><span class="pane-icon"></span></span>
-                <div class="toolbar">
-                    <div id="design-mode-toggle"></div>
-                </div>
-            </div>
-            <div class="pane-content">
-                <div id="design-view" class="detail-view"></div>
-            </div>
-        </div>
-
-        <!-- Splitter 2 -->
-        <div class="splitter" id="splitter-2"></div>
-
         <!-- Graph Pane -->
         <div id="graph-pane" class="pane" style="flex: 1;">
             <div class="pane-header">
@@ -150,9 +134,8 @@ export function renderShell(opts: ShellOptions): string {
                 <div id="graph-view" class="graph-container">
                     <div class="graph-canvas"></div>
                 </div>
-                <!-- PackageView mount point (cards + arcs, memo/design/02 second half). -->
-                <div id="package-view" style="display: none; width: 100%; height: 100%; overflow: auto;"></div>
-                <!-- FolderStructureView mount point (orthogonal folder graph, memo/design/02 first half). -->
+                <!-- FolderStructureView mount point (orthogonal folder graph;
+                     folders expand to reveal their files inline). -->
                 <div id="folder-structure-view" style="display: none; width: 100%; height: 100%; overflow: auto;"></div>
             </div>
         </div>

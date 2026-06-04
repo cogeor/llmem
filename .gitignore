@@ -21,6 +21,9 @@ src/**/*.d.ts.map
 *.swp
 *.swo
 
+# Logs / scratch output
+*.log
+
 # OS
 .DS_Store
 Thumbs.db
@@ -32,3 +35,6 @@ Thumbs.db
 .claude
 
 .delegate
+
+# Local planning docs (not shipped)
+plans/

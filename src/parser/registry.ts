@@ -101,6 +101,27 @@ export class ParserRegistry {
             summary += ` Optional: install ${missing.join(', ')} to enable more.`;
         }
         log.info(summary);
+
+        // If any tree-sitter grammar registered (so a grammar package IS
+        // present), probe the native core. A grammar without a working core
+        // means every parse will throw at extractor-construction time, so warn
+        // with an actionable hint rather than failing silently per-file later.
+        // Probing is cheap and only runs when a grammar is actually present.
+        const grammarActive = active.length > 1; // >1 means more than just TS/JS
+        if (grammarActive) {
+            try {
+                // eslint-disable-next-line @typescript-eslint/no-require-imports
+                require('tree-sitter');
+            } catch (error) {
+                const err = error as NodeJS.ErrnoException;
+                log.warn(
+                    `tree-sitter grammar(s) are installed but the native core ` +
+                    `failed to load (${err?.message ?? String(error)}). ` +
+                    `Install build tools or a prebuilt binary for your Node ` +
+                    `version and reinstall to enable these languages.`
+                );
+            }
+        }
     }
 
     /**

@@ -48,7 +48,7 @@
 //     `(rel, line)` before any console output. CI must produce the
 //     same line numbers on Windows, macOS, and Linux.
 //   - Skip directories: `node_modules`, `.git`, `dist`, `.artifacts`,
-//     `.delegate`, `.arch`, `out`, `build`, `coverage`.
+//     `.delegate`, `.arch`, `plans`, `out`, `build`, `coverage`.
 //   - Skip files: `package-lock.json`, `*.js`, `*.js.map`, `*.d.ts`,
 //     `*.d.ts.map`, `*.lock`, common binary extensions.
 //   - Include rule (otherwise skip): `.ts`, `.tsx`, `.json`, `.md`,
@@ -97,6 +97,7 @@ const SKIP_DIRS: ReadonlySet<string> = new Set([
     '.artifacts',
     '.delegate',
     '.arch',
+    'plans',
     'out',
     'build',
     'coverage',

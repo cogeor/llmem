@@ -6,11 +6,15 @@
  * strictly horizontal+vertical edges (no diagonals): root on the left,
  * children fanning right, parent→child connections drawn as L-shapes.
  *
+ * Clicking a folder TOGGLES its files inline: the folder's direct files
+ * (sourced from the worktree) appear as leaf nodes in the next column,
+ * alongside its subfolders. Clicking again collapses them. This is the
+ * 2-pane replacement for the old design pane — the file list lives right
+ * in the graph instead of a separate panel.
+ *
  * Distinct from:
  *   - Worktree (left pane): a file-level explorer with watched-state
  *     toggles, used for selecting individual files into the graph.
- *   - PackageView ('packages' tab): folder cards + arcs for folder-level
- *     import/call edges (NOT the parent/child hierarchy this view shows).
  *
  * Pure browser code — uses `import type` for FolderTreeData/FolderNode
  * imported from `src/contracts/folder-tree.ts` (Loop 17 contracts split)
@@ -20,7 +24,7 @@
 import type { FolderTreeData, FolderNode } from '../../../contracts/folder-tree';
 import { DataProvider } from '../services/dataProvider';
 import { State } from '../state';
-import { AppState } from '../types';
+import { AppState, WorkTreeNode } from '../types';
 import { escape } from '../utils/escape';
 
 interface Props {
@@ -38,12 +42,42 @@ const ROW_STEP = NODE_H + ROW_GAP;
 const PAD_X = 16;
 const PAD_Y = 16;
 
-interface LaidOutNode {
-    node: FolderNode;
+/** Forward-slash a path so worktree (possibly `\` on Windows) and the
+ *  forward-slash folder-tree keys compare equal. */
+function normalize(p: string): string {
+    return p.replace(/\\/g, '/');
+}
+
+/** A file living directly under a folder, surfaced when that folder is
+ *  expanded. */
+interface FileLeaf {
+    name: string;
+    path: string;
+}
+
+/**
+ * Unified layout item: either a folder (from the folder tree) or a file
+ * leaf (from the worktree, shown only when its parent is expanded).
+ */
+interface Item {
+    kind: 'folder' | 'file';
+    path: string;
+    name: string;
+    /** Folder only: recursive file count shown on the right. */
+    fileCount?: number;
+    /** Folder only: whether `.arch/{path}/README.md` exists. */
+    documented?: boolean;
+    /** Folder only: has at least one direct file (so it can expand). */
+    expandable?: boolean;
+    children: Item[];
+}
+
+interface LaidOutItem {
+    item: Item;
     depth: number;
     x: number;
     y: number;
-    children: LaidOutNode[];
+    children: LaidOutItem[];
 }
 
 export class FolderStructureView {
@@ -53,6 +87,11 @@ export class FolderStructureView {
     private state: State;
     private dataProvider: DataProvider;
     private tree: FolderTreeData | null = null;
+    /** Direct files per folder, keyed by normalized forward-slash path.
+     *  The top-level bucket is stored under both `""` and `"."`. */
+    private filesByFolder = new Map<string, FileLeaf[]>();
+    /** Folder paths whose direct files are currently shown inline. */
+    private expanded = new Set<string>();
     private clickHandlerBound = false;
     private unsubscribe?: () => void;
 
@@ -73,6 +112,15 @@ export class FolderStructureView {
             this.el.innerHTML = `<div class="folder-structure-error">${escape(msg)}</div>`;
             return;
         }
+        // Worktree drives the inline file lists. It is optional — in
+        // graph-only mode it is empty and folders simply have nothing to
+        // expand, which is fine.
+        try {
+            const worktree = await this.dataProvider.loadWorkTree();
+            this.buildFilesByFolder(worktree);
+        } catch {
+            this.filesByFolder.clear();
+        }
         this.render();
 
         if (!this.clickHandlerBound) {
@@ -81,6 +129,56 @@ export class FolderStructureView {
         }
 
         this.unsubscribe = this.state.subscribe((s: AppState) => this.updateSelection(s));
+    }
+
+    /** Walk the worktree once, recording each directory's direct files. */
+    private buildFilesByFolder(root: WorkTreeNode): void {
+        this.filesByFolder.clear();
+        const walk = (node: WorkTreeNode): void => {
+            if (node.type !== 'directory') return;
+            const files: FileLeaf[] = node.children
+                .filter((c): c is Extract<WorkTreeNode, { type: 'file' }> => c.type === 'file')
+                .map((f) => ({ name: f.name, path: normalize(f.path) }));
+            this.filesByFolder.set(normalize(node.path), files);
+            for (const c of node.children) walk(c);
+        };
+        walk(root);
+        // The folder tree models top-level files as a folder named "."; the
+        // worktree keeps them as direct children of the root. Alias the two
+        // so expanding "." shows the repo-root files.
+        const rootFiles =
+            root.type === 'directory'
+                ? root.children
+                      .filter((c): c is Extract<WorkTreeNode, { type: 'file' }> => c.type === 'file')
+                      .map((f) => ({ name: f.name, path: normalize(f.path) }))
+                : [];
+        this.filesByFolder.set('.', rootFiles);
+        this.filesByFolder.set('', rootFiles);
+    }
+
+    private filesFor(folderPath: string): FileLeaf[] {
+        return this.filesByFolder.get(normalize(folderPath)) ?? [];
+    }
+
+    /** Build the unified layout tree from a folder node, attaching file
+     *  leaves for any expanded folder. */
+    private toItem(node: FolderNode): Item {
+        const files = this.filesFor(node.path);
+        const children: Item[] = node.children.map((c) => this.toItem(c));
+        if (this.expanded.has(node.path)) {
+            for (const f of files) {
+                children.push({ kind: 'file', path: f.path, name: f.name, children: [] });
+            }
+        }
+        return {
+            kind: 'folder',
+            path: node.path,
+            name: node.name,
+            fileCount: node.fileCount,
+            documented: node.documented,
+            expandable: files.length > 0,
+            children,
+        };
     }
 
     private render(): void {
@@ -94,10 +192,12 @@ export class FolderStructureView {
             return;
         }
 
-        const laidOut: LaidOutNode[] = [];
+        const items = topLevel.map((c) => this.toItem(c));
+
+        const laidOut: LaidOutItem[] = [];
         let nextLeafY = 0;
-        for (const child of topLevel) {
-            laidOut.push(this.layoutNode(child, 0, () => nextLeafY, (y) => { nextLeafY = y; }));
+        for (const item of items) {
+            laidOut.push(this.layoutItem(item, 0, () => nextLeafY, (y) => { nextLeafY = y; }));
         }
 
         const totalLeaves = nextLeafY / ROW_STEP;
@@ -122,6 +222,8 @@ export class FolderStructureView {
                 </svg>
             </div>
         `;
+        // Re-apply the current selection highlight after a full re-render.
+        this.updateSelection(this.state.get());
     }
 
     /**
@@ -130,31 +232,31 @@ export class FolderStructureView {
      * x is determined by depth alone — the orthogonal-edge guarantee
      * relies on every node in a column sharing the same x.
      */
-    private layoutNode(
-        node: FolderNode,
+    private layoutItem(
+        item: Item,
         depth: number,
         getNextLeafY: () => number,
         setNextLeafY: (y: number) => void,
-    ): LaidOutNode {
+    ): LaidOutItem {
         const x = PAD_X + depth * COL_STEP;
-        if (node.children.length === 0) {
+        if (item.children.length === 0) {
             const y = PAD_Y + getNextLeafY();
             setNextLeafY(getNextLeafY() + ROW_STEP);
-            return { node, depth, x, y, children: [] };
+            return { item, depth, x, y, children: [] };
         }
-        const childLayouts: LaidOutNode[] = [];
-        for (const child of node.children) {
-            childLayouts.push(this.layoutNode(child, depth + 1, getNextLeafY, setNextLeafY));
+        const childLayouts: LaidOutItem[] = [];
+        for (const child of item.children) {
+            childLayouts.push(this.layoutItem(child, depth + 1, getNextLeafY, setNextLeafY));
         }
         const firstY = childLayouts[0].y;
         const lastY = childLayouts[childLayouts.length - 1].y;
         const y = (firstY + lastY) / 2;
-        return { node, depth, x, y, children: childLayouts };
+        return { item, depth, x, y, children: childLayouts };
     }
 
-    private maxDepth(roots: LaidOutNode[]): number {
+    private maxDepth(roots: LaidOutItem[]): number {
         let max = 0;
-        const walk = (n: LaidOutNode): void => {
+        const walk = (n: LaidOutItem): void => {
             if (n.depth > max) max = n.depth;
             for (const c of n.children) walk(c);
         };
@@ -162,19 +264,36 @@ export class FolderStructureView {
         return max;
     }
 
-    private collectSvg(node: LaidOutNode, nodes: string[], edges: string[]): void {
-        // Node rect + label.
-        const safePath = escape(node.node.path);
-        const safeName = escape(node.node.name === '' ? '/' : node.node.name);
-        const docGlyph = node.node.documented ? '<tspan class="folder-structure-doc">  ✎</tspan>' : '';
+    private collectSvg(node: LaidOutItem, nodes: string[], edges: string[]): void {
+        const { item } = node;
+        const safePath = escape(item.path);
         const labelY = node.y + NODE_H / 2;
-        nodes.push(`
-            <g class="folder-structure-node" data-path="${safePath}">
-                <rect x="${node.x}" y="${node.y}" width="${NODE_W}" height="${NODE_H}" rx="3" ry="3"></rect>
-                <text x="${node.x + 10}" y="${labelY}" class="folder-structure-name" dominant-baseline="middle">${safeName}${docGlyph}</text>
-                <text x="${node.x + NODE_W - 10}" y="${labelY}" class="folder-structure-count" dominant-baseline="middle" text-anchor="end">${node.node.fileCount}</text>
-            </g>
-        `);
+
+        if (item.kind === 'file') {
+            // File leaf: distinct class, no count, leading dot glyph.
+            const safeName = escape(item.name);
+            nodes.push(`
+                <g class="folder-structure-node is-file" data-path="${safePath}" data-kind="file">
+                    <rect x="${node.x}" y="${node.y}" width="${NODE_W}" height="${NODE_H}" rx="3" ry="3"></rect>
+                    <text x="${node.x + 10}" y="${labelY}" class="folder-structure-name" dominant-baseline="middle">${safeName}</text>
+                </g>
+            `);
+        } else {
+            // Folder node: name (+ doc glyph), file count, and an expand
+            // caret when it has direct files to reveal.
+            const safeName = escape(item.name === '' ? '/' : item.name);
+            const docGlyph = item.documented ? '<tspan class="folder-structure-doc">  ✎</tspan>' : '';
+            const caret = item.expandable
+                ? `<tspan class="folder-structure-caret">${this.expanded.has(item.path) ? '▾ ' : '▸ '}</tspan>`
+                : '';
+            nodes.push(`
+                <g class="folder-structure-node" data-path="${safePath}" data-kind="folder">
+                    <rect x="${node.x}" y="${node.y}" width="${NODE_W}" height="${NODE_H}" rx="3" ry="3"></rect>
+                    <text x="${node.x + 10}" y="${labelY}" class="folder-structure-name" dominant-baseline="middle">${caret}${safeName}${docGlyph}</text>
+                    <text x="${node.x + NODE_W - 10}" y="${labelY}" class="folder-structure-count" dominant-baseline="middle" text-anchor="end">${item.fileCount ?? ''}</text>
+                </g>
+            `);
+        }
 
         // Orthogonal parent→child edges.
         for (const child of node.children) {
@@ -196,20 +315,43 @@ export class FolderStructureView {
         const target = e.target as Element;
         const group = target.closest('.folder-structure-node');
         if (!group) return;
-        const folderPath = (group as SVGGElement).getAttribute('data-path');
-        if (folderPath === null) return;
+        const path = (group as SVGGElement).getAttribute('data-path');
+        if (path === null) return;
+        const kind = (group as SVGGElement).getAttribute('data-kind');
+
+        if (kind === 'file') {
+            this.state.set({
+                selectedPath: path,
+                selectedType: 'file',
+                selectionSource: 'explorer',
+            });
+            return;
+        }
+
+        // Folder: toggle inline file expansion (when it has files) and
+        // select it. Re-render so the file leaves appear/disappear.
+        if (this.filesFor(path).length > 0) {
+            if (this.expanded.has(path)) {
+                this.expanded.delete(path);
+            } else {
+                this.expanded.add(path);
+            }
+            this.render();
+        }
         this.state.set({
-            selectedPath: folderPath,
+            selectedPath: path,
             selectedType: 'directory',
             selectionSource: 'explorer',
         });
     }
 
-    private updateSelection({ selectedPath, selectedType }: AppState): void {
+    private updateSelection({ selectedPath }: AppState): void {
         const prev = this.el.querySelector('.folder-structure-node.is-selected');
         if (prev) prev.classList.remove('is-selected');
-        if (selectedPath === null || selectedType !== 'directory') return;
-        const group = this.el.querySelector(`.folder-structure-node[data-path="${CSS.escape(selectedPath)}"]`);
+        if (selectedPath === null) return;
+        const group = this.el.querySelector(
+            `.folder-structure-node[data-path="${CSS.escape(selectedPath)}"]`,
+        );
         group?.classList.add('is-selected');
     }
 

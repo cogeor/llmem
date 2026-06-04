@@ -28,7 +28,7 @@
   ],
   "engines": {
     "vscode": "^1.85.0",
-    "node": ">=20.0.0"
+    "node": ">=20.19.0"
   },
   "categories": [
     "Visualization",
@@ -120,6 +120,7 @@
     "verify": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && npm ci && npm run build:all && npm test",
     "prepublishOnly": "npm test",
     "ci:local": "act -j build --container-architecture linux/amd64",
+    "smoke:pack": "node scripts/pack-smoke.js",
     "prepare": "node scripts/install-hooks.js",
     "build:webview": "npx ts-node src/scripts/build_webview.ts",
     "build": "npm run build:vscode",
@@ -158,7 +159,6 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "tree-sitter": "^0.22.4",
     "chokidar": "^5.0.0",
     "dompurify": "^3.2.4",
     "fs-extra": "^11.3.2",
@@ -169,6 +169,9 @@
     "ws": "^8.18.3",
     "zod": "^3.22.4",
     "zod-to-json-schema": "^3.22.4"
+  },
+  "optionalDependencies": {
+    "tree-sitter": "^0.22.4"
   },
   "peerDependencies": {
     "tree-sitter-python": "^0.23.0",

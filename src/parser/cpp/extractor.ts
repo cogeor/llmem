@@ -14,9 +14,16 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import Parser, { SyntaxNode } from 'tree-sitter';
 import { ArtifactExtractor } from '../interfaces';
 import { FileArtifact, Entity, ImportSpec, ExportSpec, Loc, EntityKind } from '../types';
+
+// Type-only references to the tree-sitter native core. Written as inline
+// `import(...)` type queries (never `import type` statements) so that ts-node /
+// tsc can never emit a runtime `require('tree-sitter')` for them: importing this
+// module must not load the native addon. The core is require()d lazily inside
+// the constructor instead.
+type Parser = import('tree-sitter');
+type SyntaxNode = import('tree-sitter').SyntaxNode;
 
 export class CppExtractor implements ArtifactExtractor {
     private parser: Parser;
@@ -29,6 +36,12 @@ export class CppExtractor implements ArtifactExtractor {
         // tree-sitter-cpp to be installed at module-load time.
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const Cpp = require('tree-sitter-cpp');
+        // Tree-sitter core (native addon) - require lazily too so that
+        // importing this module (e.g. via `parser/config.ts`) never loads
+        // the native binding; it is only loaded when an extractor is
+        // actually constructed.
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const Parser = require('tree-sitter');
         this.parser = new Parser();
         this.parser.setLanguage(Cpp);
     }
