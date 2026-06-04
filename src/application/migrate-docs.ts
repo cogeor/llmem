@@ -26,11 +26,11 @@
  * move of top-level dirs; the realpath-safe `WorkspaceIO` surface (which has no
  * `rename`) is for in-workspace file ops, not whole-dir top-level moves.
  *
- * Call site: `createWorkspaceContext` (src/application/workspace-context.ts),
- * once, after the workspace root is resolved and before returning the context.
- * init runs on EVERY context creation (CLI scan, serve, MCP, extension), so the
- * already-migrated path must be cheap — a single `.llmem/docs` exists() check
- * short-circuits before any other work.
+ * Call site: `initWorkspaceContext` (src/application/workspace-context.ts) —
+ * the host-startup factory, NOT the pure `createWorkspaceContext`. It runs once
+ * per host startup (CLI command, serve, MCP, extension panel), after the
+ * workspace root is resolved, so the already-migrated path must be cheap — a
+ * single `.llmem/docs` exists() check short-circuits before any other work.
  */
 
 import * as fs from 'fs/promises';

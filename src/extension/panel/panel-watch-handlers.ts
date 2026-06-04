@@ -20,7 +20,7 @@ import { getConfig } from '../../runtime/config';
 import { collectViewerData } from '../../application/viewer-data';
 import { scanFile } from '../../application/scan';
 import { addWatchedPath, removeWatchedPath } from '../../application/toggle-watch';
-import { createWorkspaceContext } from '../../application/workspace-context';
+import { initWorkspaceContext } from '../../application/workspace-context';
 import { createLogger } from '../../common/logger';
 import { asRelPath } from '../../core/paths';
 import { HotReloadService } from '../hot-reload';
@@ -97,7 +97,7 @@ export async function startHotReloadAndSendInitialData(host: PanelHost): Promise
     // `WorkspaceIO.create`. `getConfig().artifactRoot` is the user
     // setting today; threading it through `configOverrides` keeps the
     // existing override behavior intact.
-    const ctx = await createWorkspaceContext({
+    const ctx = await initWorkspaceContext({
         workspaceRoot: workspaceRoot,
         configOverrides: { artifactRoot: getConfig().artifactRoot },
         logger: host.panelLogger(),

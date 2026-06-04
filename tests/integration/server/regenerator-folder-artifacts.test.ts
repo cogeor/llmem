@@ -23,7 +23,10 @@ import * as path from 'node:path';
 
 import { regenerateWebview } from '../../../src/http-server/regenerator';
 import { scanFolderRecursive } from '../../../src/application/scan';
-import { createWorkspaceContext } from '../../../src/application/workspace-context';
+import {
+    createWorkspaceContext,
+    initWorkspaceContext,
+} from '../../../src/application/workspace-context';
 import {
     FolderTreeStore,
     FOLDER_TREE_FILENAME,
@@ -213,7 +216,12 @@ test('regenerateWebview: propagates documented folders from .arch/', async () =>
     try {
         buildFixture(tmp);
 
-        // Mark src/a as documented BEFORE regenerate.
+        // Mark src/a as documented BEFORE regenerate, in the LEGACY `.arch`
+        // location. The "documented" flag is read from the migrated docs tree
+        // (`.llmem/docs`), so this models a host startup that runs the one-time
+        // `.arch` -> `.llmem/docs` migration: build the context via the
+        // host-startup factory `initWorkspaceContext` (the pure
+        // `createWorkspaceContext` no longer migrates — regrade issue #5).
         fs.mkdirSync(path.join(tmp, '.arch', 'src', 'a'), { recursive: true });
         fs.writeFileSync(
             path.join(tmp, '.arch', 'src', 'a', 'README.md'),
@@ -221,7 +229,7 @@ test('regenerateWebview: propagates documented folders from .arch/', async () =>
             'utf8',
         );
 
-        const ctx = await createWorkspaceContext({ workspaceRoot: tmp });
+        const ctx = await initWorkspaceContext({ workspaceRoot: tmp });
         const artifactDir = ctx.artifactRoot;
 
         await scanFolderRecursive(ctx, { folderPath: '.' });

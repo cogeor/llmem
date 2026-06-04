@@ -316,9 +316,10 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     //    legitimately mention the literal. Any new entry to this
     //    category requires reviewer scrutiny in the PR.
     // -----------------------------------------------------------------------
-    { file: 'src/cli/commands/generate.ts',
-      phase: 'permanent',
-      reason: 'Workspace-marker walker (`[\'.git\', \'package.json\', \'.llmem\', \'.arch\', \'.artifacts\']`).' },
+    // A-grade #2: generate.ts and stats.ts dropped their duplicate local
+    // `detectWorkspace` copies (which carried the `.artifacts` marker) in favor
+    // of the shared `src/workspace/detect.ts`. The literal now lives only in
+    // that one neutral walker — rows removed here.
     // G3: init.ts config template now emits `artifactRoot = ".llmem/graph"` (the
     // real default) — `.artifacts` literal gone, row removed.
     // G3: scan.ts description now says "write edge lists to .llmem/graph/" (the
@@ -326,9 +327,6 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     { file: 'src/cli/commands/serve.ts',
       phase: 'permanent',
       reason: 'Comment explaining the resolved artifactRoot must NOT force `.artifacts`; functional code consumes `ctx.config.artifactRoot`.' },
-    { file: 'src/cli/commands/stats.ts',
-      phase: 'permanent',
-      reason: 'Workspace-marker walker.' },
     // G3: main.ts --help text now documents the `.llmem/graph` default —
     // `.artifacts` literal gone, row removed.
     // G3: config.ts JSDoc now documents the `.llmem/graph` default —
@@ -371,12 +369,11 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     { file: 'src/extension/panel/panel-data-handlers.ts',
       phase: 'permanent',
       reason: 'JSDoc on `loadFolderTree` / `loadFolderEdges` documents which artifact JSON files are read.' },
-    { file: 'src/scripts/generate-call-edges.ts',
-      phase: 'permanent',
-      reason: 'Dev script-side helper resolves `.artifacts` directly; scripts run outside the WorkspaceContext model, allowed by design.' },
-    { file: 'src/scripts/generate_edgelist.ts',
-      phase: 'permanent',
-      reason: 'Dev script-side `configOverrides: { artifactRoot: \'.artifacts\' }` literal default.' },
+    // A-grade #3: generate-call-edges.ts and generate_edgelist.ts no longer
+    // hardcode `.artifacts` — both now resolve the artifact root from the
+    // WorkspaceContext (product default `.llmem/graph`). Rows removed; the
+    // script-default contract test (tests/contracts/script-artifact-root.test.ts)
+    // keeps them from regressing.
     { file: 'src/webview/generator.ts',
       phase: 'permanent',
       reason: 'JSDoc + comments describe the `.artifacts/webview/` cache surface (this module owns it).' },
@@ -453,6 +450,9 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     { file: 'tests/contracts/http-route-dtos.test.ts',
       phase: 'permanent',
       reason: 'Constructs fixture artifact dir under tmp.' },
+    { file: 'tests/contracts/script-artifact-root.test.ts',
+      phase: 'permanent',
+      reason: 'A-grade #3 script-default contract test; its banner names the legacy literal by design to explain what it bans.' },
     // G1: arch-watcher.test.ts fixture now seeds `.llmem/graph` (the real
     // default artifactRoot) via TEST_GRAPH_DIR — `.artifacts` literal gone,
     // row removed.

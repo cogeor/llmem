@@ -9,8 +9,6 @@
  * main() that prints to console; it has no exports.
  */
 
-import * as path from 'path';
-import * as fs from 'fs';
 import { scanFolder, scanFolderRecursive } from '../application/scan';
 import { createWorkspaceContext } from '../application/workspace-context';
 import type { Logger } from '../core/logger';
@@ -47,31 +45,25 @@ async function main(): Promise<void> {
 
     const folderPath = args[0].replace(/\\/g, '/');
     const root = process.cwd();
-    const artifactDir = path.join(root, '.artifacts');
 
     console.log('='.repeat(60));
     console.log('GENERATE CALL EDGES');
     console.log('='.repeat(60));
     console.log(`\nFolder: ${folderPath}`);
     console.log(`Recursive: ${recursive}`);
-    console.log(`Artifact dir: ${artifactDir}\n`);
-
-    if (!fs.existsSync(artifactDir)) {
-        console.error(
-            'ERROR: .artifacts directory not found. Run the initial scan first.'
-        );
-        process.exit(1);
-    }
 
     try {
         // Loop 04: build a single context for the script. The CLI logger
         // bridges into the application logger so scan progress flows to
-        // the structured logger.
+        // the structured logger. The artifact root comes from the resolved
+        // context (product default `DEFAULT_CONFIG.artifactRoot`) — the
+        // scan service creates it on demand, so there is no legacy
+        // storage-root precheck and no drift from `bin/llmem scan`.
         const ctx = await createWorkspaceContext({
             workspaceRoot: root,
             logger: consoleLogger,
         });
-        void artifactDir; // resolved below via ctx.artifactRoot
+        console.log(`Artifact dir: ${ctx.artifactRoot}\n`);
         const req = { folderPath };
         const result = recursive
             ? await scanFolderRecursive(ctx, req)

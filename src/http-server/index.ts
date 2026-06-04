@@ -21,7 +21,7 @@ import type { Logger as BoundaryLogger } from '../core/logger';
 import { createLogger } from '../common/logger';
 import { registerRoutes } from './routes';
 import { openBrowser } from './open-browser';
-import { createWorkspaceContext, type WorkspaceContext } from '../application/workspace-context';
+import { initWorkspaceContext, type WorkspaceContext } from '../application/workspace-context';
 import {
     broadcastArchEvent,
     regenerateWebview as regenerateWebviewImpl,
@@ -93,7 +93,7 @@ export class GraphServer {
 
         // Loop 04: per-server runtime context, built once and threaded to
         // every downstream service (watchers, watch manager, regenerator).
-        this._ctx = await createWorkspaceContext({
+        this._ctx = await initWorkspaceContext({
             workspaceRoot,
             configOverrides: {
                 artifactRoot: this.config.artifactRoot,

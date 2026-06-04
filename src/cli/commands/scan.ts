@@ -19,6 +19,7 @@ import { scanFolderRecursive, formatUnsupportedSourceHints } from '../../applica
 import { buildAndSaveFolderArtifacts } from '../../application/folder-artifacts';
 import { detectWorkspace } from '../../workspace';
 import type { CommandSpec } from '../registry';
+import { CliError } from '../errors';
 
 const scanArgs = z.object({
     workspace: z.string().optional().describe('Workspace root directory (auto-detected if omitted)'),
@@ -64,7 +65,9 @@ export const scanCommand: CommandSpec<typeof scanArgs> = {
         await buildAndSaveFolderArtifacts(ctx);
 
         if (result.errors.length > 0) {
-            process.exit(1);
+            // The per-file failures and the "(… K errors)" summary are already
+            // printed above; signal a non-zero exit without re-reporting.
+            throw new CliError('', 1);
         }
     },
 };

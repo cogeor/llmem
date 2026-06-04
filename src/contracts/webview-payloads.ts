@@ -16,6 +16,10 @@ export interface VisNode {
     id: string;
     label: string;
     group: string;
+    /** Hover tooltip text (vis-network `title`). */
+    title?: string;
+    /** Node fill color, an `hsl(...)` string from the server ColorGenerator. */
+    color?: string;
     fileId?: string; // For Call Graph
     /**
      * PC-04: call-graph capability baked onto call-graph nodes server-side.
@@ -24,13 +28,13 @@ export interface VisNode {
      * (absence of badge = trusted). The browser never computes this itself.
      */
     callGraph?: 'semantic' | 'heuristic' | 'none';
-    [key: string]: any;
 }
 
 export interface VisEdge {
     from: string;
     to: string;
-    [key: string]: any;
+    /** vis-network arrow spec (e.g. `'to'`); set on import/call edges. */
+    arrows?: string;
 }
 
 export interface GraphData {
