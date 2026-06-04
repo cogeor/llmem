@@ -59,3 +59,54 @@ test('ParserRegistry.isSupported returns true for .ts files', () => {
         true
     );
 });
+
+// PH-04: getSupport reconciles static vs runtime support so the UI never
+// advertises a live toggle for a file that can't actually be parsed.
+
+test('getSupport.parsable agrees with getParser for a representative set', () => {
+    const registry = ParserRegistry.getInstance();
+    // getParser(filePath, workspaceRoot) returns an extractor or null.
+    const root = process.cwd();
+    const samples = ['foo.ts', 'foo.tsx', 'foo.js', 'foo.jsx', 'foo.py', 'Foo.java', 'main.go', 'README.md'];
+    for (const f of samples) {
+        assert.equal(
+            registry.getSupport(f).parsable,
+            registry.getParser(f, root) !== null,
+            `parsable must match getParser for ${f}`
+        );
+    }
+});
+
+test('getSupport: .ts is parsable, no grammar needed, semantic call graph', () => {
+    const s = ParserRegistry.getInstance().getSupport('foo.ts');
+    assert.equal(s.parsable, true);
+    assert.equal(s.needsGrammar, false);
+    assert.equal(s.callGraph, 'semantic');
+    assert.equal(s.installHint, undefined);
+});
+
+test('getSupport: .py with no grammar installed → needsGrammar + heuristic + tree-sitter-python hint', () => {
+    // In this repo's node_modules only tree-sitter core is present; the
+    // python grammar is NOT installed, so .py is genuinely needs-grammar.
+    const registry = ParserRegistry.getInstance();
+    // Guard the precondition so this stays correct if the grammar is ever added.
+    if (registry.isSupported('foo.py')) {
+        const s = registry.getSupport('foo.py');
+        assert.equal(s.parsable, true);
+        assert.equal(s.needsGrammar, false);
+        return;
+    }
+    const s = registry.getSupport('foo.py');
+    assert.equal(s.parsable, false);
+    assert.equal(s.needsGrammar, true);
+    assert.equal(s.installHint, 'tree-sitter-python');
+    assert.equal(s.callGraph, 'heuristic');
+});
+
+test('getSupport: unknown extension → not parsable, no grammar, none call graph', () => {
+    const s = ParserRegistry.getInstance().getSupport('main.go');
+    assert.equal(s.parsable, false);
+    assert.equal(s.needsGrammar, false);
+    assert.equal(s.callGraph, 'none');
+    assert.equal(s.installHint, undefined);
+});

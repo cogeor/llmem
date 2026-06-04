@@ -1,5 +1,6 @@
 import * as path from 'path';
-import { isSupportedFile } from '../parser/config';
+import { ParserRegistry } from '../parser/registry';
+import { IGNORED_FOLDERS } from '../parser/config';
 import { createLogger } from '../common/logger';
 import { WorkspaceIO } from '../workspace/workspace-io';
 
@@ -32,16 +33,24 @@ export interface ITreeNode {
     // older serialized tree blobs still parse — the browser defaults to
     // false (file is rendered, just not toggleable for watching).
     isSupported?: boolean;
+
+    // PH-04: a statically-known source extension whose tree-sitter grammar is
+    // NOT installed at runtime. Such files must render a muted "install hint"
+    // marker instead of a live toggle (the toggle would be a silent no-op).
+    needsGrammar?: boolean;
+    // PH-04: NPM grammar package to install to make this file parsable.
+    installHint?: string;
+    // PH-04: call-graph capability for this file's language (carried into the
+    // vis payload; python-callgraph's badge consumes it later).
+    callGraph?: 'semantic' | 'heuristic' | 'none';
 }
 
-// Always ignored folders (regardless of .gitignore)
-const ALWAYS_IGNORED = new Set([
-    'node_modules',
-    '.git',
-    '.artifacts',
-    '.vscode',
-    '.DS_Store'
-]);
+// PH-07: the scanner (parser/config IGNORED_FOLDERS) is the single source of
+// truth for folder ignores. The explorer previously kept a divergent
+// ALWAYS_IGNORED set that omitted venvs/target/dist/build/.arch, so the tree
+// rendered large vendored trees the scanner skipped. shouldIgnore now checks
+// IGNORED_FOLDERS by entry name (it is called per-entry before stat, so the
+// folded-in .DS_Store file name is matched too).
 
 /**
  * Parse .gitignore and return a set of patterns.
@@ -85,8 +94,8 @@ async function parseGitignore(io: WorkspaceIO): Promise<Set<string>> {
  * Simple implementation - matches exact names and basic glob patterns.
  */
 function shouldIgnore(name: string, relativePath: string, patterns: Set<string>): boolean {
-    // Check always ignored
-    if (ALWAYS_IGNORED.has(name)) return true;
+    // Check always ignored (shared scanner ignore list — PH-07)
+    if (IGNORED_FOLDERS.has(name)) return true;
 
     // Skip problematic file extensions that can cause issues (like Electron .asar archives, large CSVs)
     const SKIP_EXTENSIONS = [
@@ -192,13 +201,18 @@ export async function generateWorkTree(
             }
         }
 
+        const support = ParserRegistry.getInstance().getSupport(name);
+
         return {
             name,
             path: relativePath,
             type: 'file',
             size,
             lineCount,
-            isSupported: isSupportedFile(name)
+            isSupported: support.parsable,
+            needsGrammar: support.needsGrammar,
+            installHint: support.installHint,
+            callGraph: support.callGraph
         };
     } else if (stats.isDirectory()) {
         const children: ITreeNode[] = [];

@@ -5,10 +5,7 @@
  * This is the SINGLE SOURCE OF TRUTH for supported file extensions.
  */
 
-import { PythonAdapter } from './python/adapter';
-import { CppAdapter } from './cpp/adapter';
-import { RustAdapter } from './rust/adapter';
-import { RAdapter } from './r/adapter';
+import { LANGUAGES } from './languages';
 
 // ============================================================================
 // Line Count Thresholds
@@ -43,23 +40,17 @@ export const TYPESCRIPT_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx'];
 /**
  * All extensions supported for parsing and graph generation.
  *
- * Derived from each tree-sitter adapter's `.extensions` array (single
- * source of truth at the type level) plus `TYPESCRIPT_EXTENSIONS` for
- * the compiler-API path. Runtime support is gated separately by
- * `ParserRegistry.isSupported(filePath)`, which only returns `true` for
- * adapters whose tree-sitter package was successfully `require()`d at
- * registry-construction time.
+ * Derived from the `LANGUAGES` descriptor array (the single source of
+ * truth for supported languages and their extensions). Runtime support is
+ * gated separately by `ParserRegistry.isSupported(filePath)`, which only
+ * returns `true` for adapters whose tree-sitter package was successfully
+ * `require()`d at registry-construction time.
  *
  * TypeScript/JavaScript supports both imports and call graphs.
  * Other languages (Python, C/C++, Rust, R) support import graphs only.
  */
-export const ALL_SUPPORTED_EXTENSIONS: readonly string[] = [
-    ...TYPESCRIPT_EXTENSIONS,
-    ...new PythonAdapter().extensions,
-    ...new CppAdapter().extensions,
-    ...new RustAdapter().extensions,
-    ...new RAdapter().extensions,
-];
+export const ALL_SUPPORTED_EXTENSIONS: readonly string[] =
+    LANGUAGES.flatMap((l) => l.extensions);
 
 /**
  * Set version for efficient O(1) lookups
@@ -83,17 +74,27 @@ export function isSupportedFile(filename: string): boolean {
 }
 
 /**
- * Get language identifier from file path (for syntax highlighting, etc.)
+ * Get language identifier from file path (for syntax highlighting, etc.).
+ *
+ * Derived from the `LANGUAGES` descriptor: the file's extension is matched
+ * (case-insensitively) against each language's `extensions`, then resolved
+ * to its highlight id via `highlightOverrides[ext] ?? highlightId`. This
+ * preserves the `.ts`/`.tsx` → 'typescript' vs `.js`/`.jsx` → 'javascript'
+ * split (encoded as highlightOverrides on the typescript descriptor).
+ * Unknown extensions return 'code'.
  */
 export function getLanguageFromPath(filePath: string): string {
-    if (filePath.endsWith('.ts') || filePath.endsWith('.tsx')) return 'typescript';
-    if (filePath.endsWith('.js') || filePath.endsWith('.jsx')) return 'javascript';
-    if (filePath.endsWith('.py')) return 'python';
-    if (filePath.endsWith('.dart')) return 'dart';
-    if (filePath.endsWith('.rs')) return 'rust';
-    if (filePath.endsWith('.cpp') || filePath.endsWith('.cc') || filePath.endsWith('.c') ||
-        filePath.endsWith('.hpp') || filePath.endsWith('.h')) return 'cpp';
-    if (filePath.endsWith('.R') || filePath.endsWith('.r')) return 'r';
+    const dot = filePath.lastIndexOf('.');
+    if (dot < 0) return 'code';
+    const ext = filePath.slice(dot).toLowerCase();
+
+    for (const lang of LANGUAGES) {
+        for (const e of lang.extensions) {
+            if (e.toLowerCase() === ext) {
+                return lang.highlightOverrides?.[ext] ?? lang.highlightId;
+            }
+        }
+    }
     return 'code';
 }
 
@@ -118,9 +119,14 @@ export const IGNORED_FOLDERS = new Set([
     '.svn',
     '.idea',
     '.vscode',
-    // LLMem's own artifacts
+    // OS cruft (a file name, not a folder; matched per-entry by name — PH-07
+    // folded it here from the explorer's old ALWAYS_IGNORED set)
+    '.DS_Store',
+    // LLMem's own artifacts (.llmem is the centralized root; one folder name
+    // ignores the whole .llmem/ tree in the explorer walk — PH-07)
     '.artifacts',
     '.arch',
+    '.llmem',
     // JS / TS
     'node_modules',
     'dist',

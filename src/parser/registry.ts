@@ -9,8 +9,34 @@ import * as path from 'path';
 import { LanguageAdapter } from './adapter';
 import { ArtifactExtractor } from './interfaces';
 import { createLogger } from '../common/logger';
+import { isSupportedFile } from './config';
+import { LANGUAGES, CallGraphCapability } from './languages';
 
 const log = createLogger('parser-registry');
+
+/**
+ * Reconciled support facts for a single file, combining the RUNTIME registry
+ * (is a parser actually registered?) with the STATIC language descriptors
+ * (is this a known source extension, which grammar package enables it, and
+ * what call-graph capability does it have?).
+ *
+ * Computed Node-side and baked into the worktree payload so the browser UI can
+ * render a true 3-state affordance (live toggle / needs-grammar marker / plain)
+ * without ever importing the registry.
+ */
+export interface FileSupport {
+    /** A parser is actually registered for this extension at runtime. */
+    parsable: boolean;
+    /** Call-graph capability declared for this language ('none' if unknown). */
+    callGraph: CallGraphCapability;
+    /**
+     * Statically a known source extension but no runtime parser — the
+     * tree-sitter grammar is missing and must be installed to analyze.
+     */
+    needsGrammar: boolean;
+    /** NPM grammar package to install (from the language descriptor). */
+    installHint?: string;
+}
 
 /**
  * Singleton registry for language parsers
@@ -35,66 +61,42 @@ export class ParserRegistry {
         const active: string[] = [];
         const missing: string[] = [];
 
-        // TypeScript/JavaScript (always available - uses compiler API)
-        // This is the ONLY language with call graph support
-        try {
-            const { TypeScriptAdapter } = require('./typescript/adapter');
-            const adapter: LanguageAdapter = new TypeScriptAdapter();
-            this.registerAdapter(adapter);
-            active.push(adapter.displayName);
-        } catch (error) {
-            log.error('Failed to load TypeScript adapter', {
-                error: error instanceof Error ? error.message : String(error),
-            });
-        }
+        // Register every language from the single-source-of-truth descriptor.
+        //
+        // Languages without a grammarPackage (TypeScript/JavaScript, which uses
+        // the compiler API) register eagerly — a load() failure there is a hard
+        // error worth surfacing. Languages WITH a grammarPackage go through the
+        // optional path: a missing module (MODULE_NOT_FOUND / ERR_MODULE_NOT_FOUND)
+        // is silently recorded in `missing`; any other error — i.e. the grammar
+        // IS installed but failed to import — is surfaced as a warning so it does
+        // not get hidden by the "not installed" path.
+        for (const descriptor of LANGUAGES) {
+            if (!descriptor.grammarPackage) {
+                try {
+                    const adapter = descriptor.load();
+                    this.registerAdapter(adapter);
+                    active.push(adapter.displayName);
+                } catch (error) {
+                    log.error(`Failed to load ${descriptor.displayName} adapter`, {
+                        error: error instanceof Error ? error.message : String(error),
+                    });
+                }
+                continue;
+            }
 
-        // Helper: try to load an optional tree-sitter grammar.
-        // Missing modules (MODULE_NOT_FOUND / ERR_MODULE_NOT_FOUND) are silently
-        // recorded in `missing`. Any other error - i.e. the grammar IS installed
-        // but failed to import - is surfaced as a warning so it doesn't get
-        // hidden by the "not installed" path.
-        const tryRegisterOptional = (pkg: string, load: () => LanguageAdapter): void => {
             try {
-                const adapter = load();
+                const adapter = descriptor.load();
                 this.registerAdapter(adapter);
                 active.push(adapter.displayName);
             } catch (error) {
                 const err = error as NodeJS.ErrnoException;
                 if (err?.code === 'MODULE_NOT_FOUND' || err?.code === 'ERR_MODULE_NOT_FOUND') {
-                    missing.push(pkg);
+                    missing.push(descriptor.grammarPackage);
                 } else {
-                    log.warn(`Failed to load ${pkg}: ${err?.message ?? String(error)}`);
+                    log.warn(`Failed to load ${descriptor.grammarPackage}: ${err?.message ?? String(error)}`);
                 }
             }
-        };
-
-        // Python (tree-sitter based - imports only, no call graph)
-        tryRegisterOptional('tree-sitter-python', () => {
-            require('tree-sitter-python');
-            const { PythonAdapter } = require('./python/adapter');
-            return new PythonAdapter();
-        });
-
-        // C/C++ (tree-sitter based - imports only via #include)
-        tryRegisterOptional('tree-sitter-cpp', () => {
-            require('tree-sitter-cpp');
-            const { CppAdapter } = require('./cpp/adapter');
-            return new CppAdapter();
-        });
-
-        // Rust (tree-sitter based - imports only via use statements)
-        tryRegisterOptional('tree-sitter-rust', () => {
-            require('tree-sitter-rust');
-            const { RustAdapter } = require('./rust/adapter');
-            return new RustAdapter();
-        });
-
-        // R (tree-sitter based - imports only via library/require/source)
-        tryRegisterOptional('@davisvaughan/tree-sitter-r', () => {
-            require('@davisvaughan/tree-sitter-r');
-            const { RAdapter } = require('./r/adapter');
-            return new RAdapter();
-        });
+        }
 
         let summary = `Languages active: ${active.join(', ')}.`;
         if (missing.length > 0) {
@@ -218,6 +220,34 @@ export class ParserRegistry {
     public isSupported(filePath: string): boolean {
         const ext = path.extname(filePath).toLowerCase();
         return this.extensionMap.has(ext);
+    }
+
+    /**
+     * Reconcile static vs runtime support for a file.
+     *
+     * Fixes the "toggle-noop": a known source extension whose grammar is not
+     * installed must NOT advertise a live watch toggle (it would silently do
+     * nothing). `getSupport` returns `parsable: false, needsGrammar: true` for
+     * such files so the UI can render a muted install hint instead.
+     *
+     * @param filePath File name or path (a bare basename works too)
+     */
+    public getSupport(filePath: string): FileSupport {
+        const ext = path.extname(filePath).toLowerCase();
+        const parsable = this.extensionMap.has(ext);
+        const needsGrammar = !parsable && isSupportedFile(filePath);
+
+        // Look up the language descriptor whose extensions include this ext.
+        const descriptor = LANGUAGES.find(lang =>
+            lang.extensions.some(e => e.toLowerCase() === ext)
+        );
+
+        return {
+            parsable,
+            callGraph: descriptor ? descriptor.callGraph : 'none',
+            needsGrammar,
+            installHint: descriptor?.grammarPackage,
+        };
     }
 
     /**
