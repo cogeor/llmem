@@ -83,3 +83,41 @@ test('import-dangling: external-module targets are PRESERVED (not treated as dan
     assert.equal(importGraph.edges.length, 2, 'two external edges kept, one dangling dropped');
     assert.ok(importGraph.edges.every(e => e.target === 'react' || e.target === 'lodash'));
 });
+
+test('import-dangling: a Python module-form target is REPAIRED to the package __init__ node', () => {
+    // `from pkg.sub import x` where pkg/sub/ is a PACKAGE dir converts to the
+    // module-form target src/pkg/sub.py, but the real file-node is the package
+    // init src/pkg/sub/__init__.py. The build filter must redirect the edge to
+    // the real __init__ node instead of dropping it as dangling.
+    const importData: EdgeListData = {
+        ...createEmptyEdgeList(),
+        nodes: [
+            { id: 'src/pkg/a.py', name: 'a.py', kind: 'file', fileId: 'src/pkg/a.py' },
+            { id: 'src/pkg/sub/__init__.py', name: '__init__.py', kind: 'file', fileId: 'src/pkg/sub/__init__.py' },
+            // NOTE: no src/pkg/sub.py node — sub is a package, not a module.
+        ],
+        edges: [
+            // module-form target (converter could not see the package dir)
+            { source: 'src/pkg/a.py', target: 'src/pkg/sub.py', kind: 'import' },
+            // truly dangling: no file, no __init__ → still dropped
+            { source: 'src/pkg/a.py', target: 'src/pkg/gone.py', kind: 'import' },
+        ],
+    };
+    const { importGraph } = buildGraphsFromSplitEdgeLists(importData, createEmptyEdgeList());
+
+    assert.ok(
+        importGraph.nodes.has('src/pkg/sub/__init__.py'),
+        'package init node present',
+    );
+    assert.equal(
+        importGraph.nodes.has('src/pkg/sub.py'),
+        false,
+        'no phantom module-form node fabricated',
+    );
+    assert.equal(importGraph.edges.length, 1, 'repaired edge kept, dangling edge dropped');
+    assert.equal(
+        importGraph.edges[0].target,
+        'src/pkg/sub/__init__.py',
+        'edge redirected to the real package init node',
+    );
+});

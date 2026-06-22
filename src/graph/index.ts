@@ -11,7 +11,33 @@
 import { ImportGraph, CallGraph, EntityNode, ImportEdge, CallEdge, ImportGraphNode } from './types';
 import { EdgeListData } from './edgelist';
 import { parseGraphId, isExternalModuleId } from '../core/ids';
+import { ALL_SUPPORTED_EXTENSIONS } from '../parser/config';
 export { savePlot } from './plot/generator';
+
+/**
+ * Python package-import repair.
+ *
+ * A `from aipr.domain import models` where `aipr/domain/models/` is a PACKAGE
+ * dir (has `__init__.py`) is converted to the MODULE-form target
+ * `src/aipr/domain/models.py`. But the real file-node is the package init
+ * `src/aipr/domain/models/__init__.py`. The converter is a pure function with
+ * no node-set access, so it can't distinguish a module from a package — that
+ * disambiguation must happen here, where the full file-node set is known.
+ *
+ * Given a module-form target, returns the package-init candidate by stripping
+ * the source extension and re-appending `/__init__<ext>`
+ * (e.g. `.../models.py` → `.../models/__init__.py`). Returns null if the target
+ * has no recognized source extension.
+ */
+function packageInitCandidate(target: string): string | null {
+    for (const ext of ALL_SUPPORTED_EXTENSIONS) {
+        if (target.endsWith(ext)) {
+            const stem = target.slice(0, target.length - ext.length);
+            return `${stem}/__init__${ext}`;
+        }
+    }
+    return null;
+}
 
 /**
  * Build a runtime ImportGraphNode from a graph ID.
@@ -103,24 +129,40 @@ export function buildGraphsFromSplitEdgeLists(
         // Loop 16: route through the contract's external-module classifier
         // instead of the local `ALL_SUPPORTED_EXTENSIONS.endsWith` heuristic.
         const isTargetExternal = isExternalModuleId(edge.target);
-        const targetWatched = !watchedFiles || watchedFiles.has(edge.target) || isTargetExternal;
+
+        // PYTHON PACKAGE-IMPORT REPAIR: when the module-form target has no
+        // real file-node and is not external, try the package `__init__` form
+        // (e.g. `src/aipr/domain/models.py` → `.../models/__init__.py`). If
+        // that candidate IS a real file-node, redirect the edge to it so the
+        // package import draws to the real node instead of being dropped as
+        // dangling. The converter can't make this call — it has no node set.
+        let effectiveTarget = edge.target;
+        if (!isTargetExternal && !isRealEndpoint(edge.target)) {
+            const candidate = packageInitCandidate(edge.target);
+            if (candidate && importNodes.has(candidate)) {
+                effectiveTarget = candidate;
+            }
+        }
+
+        const targetWatched =
+            !watchedFiles || watchedFiles.has(effectiveTarget) || isTargetExternal;
 
         // Both endpoints must be watched-eligible AND resolve to a real node
         // (existing file-node or external module). A non-external endpoint with
         // no file-node is a deleted/phantom file — drop the edge, don't render.
-        if (sourceWatched && targetWatched && isRealEndpoint(edge.source) && isRealEndpoint(edge.target)) {
+        if (sourceWatched && targetWatched && isRealEndpoint(edge.source) && isRealEndpoint(effectiveTarget)) {
             // Only external endpoints need on-demand node creation here; real
             // file-nodes were already added from `fileIds` above.
             if (!importNodes.has(edge.source)) {
                 importNodes.set(edge.source, makeImportNode(edge.source));
             }
-            if (!importNodes.has(edge.target)) {
-                importNodes.set(edge.target, makeImportNode(edge.target));
+            if (!importNodes.has(effectiveTarget)) {
+                importNodes.set(effectiveTarget, makeImportNode(effectiveTarget));
             }
 
             importEdges.push({
                 source: edge.source,
-                target: edge.target,
+                target: effectiveTarget,
                 kind: 'import',
                 specifiers: []
             });

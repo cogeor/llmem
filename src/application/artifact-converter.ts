@@ -200,21 +200,52 @@ function resolveImportTarget(sourceFileId: string, imp: ImportSpec): string | nu
         return resolved + defaultExt;
     }
 
-    // External/node_modules imports - return module name as-is
-    // This allows us to create module nodes and track dependencies
-    // Filter out node_modules paths (keep only package names)
+    // Absolute / workspace imports - anchor the dotted module at the importing
+    // file's own source root.
+    //
+    // For an absolute Python import like `from aipr.domain.models.contact import X`
+    // the dotted module (`aipr.domain.models.contact`) must be rewritten to the
+    // file node that actually exists in the graph. Under a `src/` (or any other)
+    // source layout that node is `src/aipr/domain/models/contact.py` — the bare
+    // `aipr/domain/models/contact.py` (no source-root prefix) never matches and
+    // the edge is dropped downstream.
+    //
+    // Heuristic (pure — uses ONLY sourceFileId, no FS access): take the import's
+    // top segment T (`aipr`). If T appears as a DIRECTORY segment in the
+    // importer's own path, the prefix before it is the importer's source root;
+    // anchor the dotted module there. If T is NOT one of the importer's
+    // directory segments, the import refers to an external package (e.g.
+    // `sqlalchemy.ext.asyncio`, top `sqlalchemy`) → return T as a bare external
+    // module id.
+    //
+    // KNOWN LIMITATION: cross-top-package internal imports within a single
+    // source root (an importer under `src/aipr` importing a sibling top-level
+    // package such as `src/other`) are classified external, because `other`
+    // never appears in the importer's own path. This is acceptable: the common
+    // case (and aipr specifically) has a single top-level package per source
+    // root, for which importer-path anchoring is exact.
     if (!imp.source.includes('node_modules')) {
-        // Check if this looks like a workspace import with dot notation (e.g., src.db.models.ticker)
-        // Multi-part names (2+ segments) suggest workspace structure, not external packages
-        const parts = imp.source.split('.');
+        if (!imp.source.startsWith('.')) {
+            const moduleParts = imp.source.split('.');
+            const top = moduleParts[0];
 
-        if (parts.length >= 2 && !imp.source.startsWith('.')) {
-            // Convert dot notation to file path for workspace imports
-            // e.g., src.db.models.ticker → src/db/models/ticker.py
-            const sourceExt = path.extname(sourceFileId);
-            const defaultExt = sourceExt || '.ts';
-            const filePath = parts.join('/') + defaultExt;
-            return filePath;
+            // Importer path segments, excluding the final basename (we only
+            // anchor on DIRECTORY segments). Use the FIRST/outermost match.
+            const segments = sourceFileId.split('/');
+            const dirSegments = segments.slice(0, -1);
+            const idx = dirSegments.indexOf(top);
+
+            if (idx >= 0) {
+                const prefix = segments.slice(0, idx); // source root before `top`
+                const sourceExt = path.extname(sourceFileId) || '.ts';
+                const resolved = [...prefix, ...moduleParts].join('/') + sourceExt;
+                return normalizePath(resolved);
+            }
+
+            // `top` is not part of the importer's path → external package.
+            // Return the bare top segment so isExternalModuleId() classifies it
+            // as external (no '/' and no '::').
+            return top;
         }
 
         return imp.source; // Return module name (e.g., 'pathlib', 'os', 'json')

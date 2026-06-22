@@ -59,7 +59,12 @@ describe('python imports — absolute', { skip: SKIP_REASON }, () => {
 
     before(() => {
         workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-py-abs-'));
-        const fixturesDir = path.join(workspaceRoot, 'fixtures');
+        // The importer lives UNDER the `src/` source root so that the absolute
+        // resolver can anchor dotted `src.*` modules at the importer's own root
+        // (it finds the `src` directory segment in the importer's path). A file
+        // outside any `src/` package would, by design, leave `src.*` imports
+        // classified external.
+        const fixturesDir = path.join(workspaceRoot, 'src', 'app');
         fs.mkdirSync(fixturesDir, { recursive: true });
         testFile = path.join(fixturesDir, 'absolute_test.py');
         fs.writeFileSync(testFile, [
@@ -87,7 +92,7 @@ describe('python imports — absolute', { skip: SKIP_REASON }, () => {
         const artifact = await extractor.extract(testFile);
         assert.ok(artifact, 'Python extractor returned an artifact');
 
-        const fileId = 'fixtures/absolute_test.py';
+        const fileId = 'src/app/absolute_test.py';
         const { importEdges } = artifactToEdgeList(artifact!, fileId);
 
         // Workspace imports: `src.db.models` -> some `src/db/models{.py,/ticker.py,/__init__.py}`.
