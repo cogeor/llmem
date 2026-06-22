@@ -5,6 +5,7 @@
  */
 
 import { buildGraphsFromSplitEdgeLists } from './index';
+import { computeInCycleEdgeKeys } from './scc';
 import { ColorGenerator } from './utils';
 import { EdgeListData } from './edgelist';
 import type { ImportGraph, CallGraph } from './types';
@@ -62,9 +63,12 @@ function transformGraphsToVisData(importGraph: ImportGraph, callGraph: CallGraph
         color: importColors.get(n.id)
     }));
 
+    const cycleKeys = computeInCycleEdgeKeys(importGraph);
+
     const importEdges: VisEdge[] = importGraph.edges.map((e) => ({
         from: e.source,
-        to: e.target
+        to: e.target,
+        ...(cycleKeys.has(`${e.source}->${e.target}`) ? { inCycle: true } : {})
     }));
 
     // Prepare Call Graph

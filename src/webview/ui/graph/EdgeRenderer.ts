@@ -31,6 +31,10 @@ export class EdgeRenderer {
                     markerWidth="6" markerHeight="6" orient="auto">
                 <path d="M0,-5L10,0L0,5" fill="var(--edge-highlight-color, #007acc)" />
             </marker>
+            <marker id="arrowhead-cycle" viewBox="0 -5 10 10" refX="15" refY="0"
+                    markerWidth="6" markerHeight="6" orient="auto">
+                <path d="M0,-5L10,0L0,5" fill="var(--edge-cycle-color, #e5484d)" />
+            </marker>
         `;
 
         parentSvg.insertBefore(this.defs, parentSvg.firstChild);
@@ -75,16 +79,17 @@ export class EdgeRenderer {
         from: { x: number; y: number },
         to: { x: number; y: number }
     ): void {
+        const inCycle = edge.inCycle === true;
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        path.setAttribute('class', 'edge-path');
+        path.setAttribute('class', inCycle ? 'edge-path in-cycle' : 'edge-path');
         path.setAttribute('data-from', edge.from);
         path.setAttribute('data-to', edge.to);
         path.setAttribute('d', this.generatePath(from, to));
         path.setAttribute('fill', 'none');
-        path.setAttribute('stroke', 'var(--edge-color, #999)');
+        path.setAttribute('stroke', inCycle ? 'var(--edge-cycle-color, #e5484d)' : 'var(--edge-color, #999)');
         path.setAttribute('stroke-width', '1');
         path.setAttribute('stroke-opacity', '0.5');
-        path.setAttribute('marker-end', 'url(#arrowhead)');
+        path.setAttribute('marker-end', inCycle ? 'url(#arrowhead-cycle)' : 'url(#arrowhead)');
 
         this.svg.appendChild(path);
     }
@@ -147,10 +152,11 @@ export class EdgeRenderer {
         const paths = this.svg.querySelectorAll('.edge-path');
         paths.forEach(path => {
             path.classList.remove('highlighted', 'faded');
-            path.setAttribute('stroke', 'var(--edge-color, #999)');
+            const inCycle = path.classList.contains('in-cycle');
+            path.setAttribute('stroke', inCycle ? 'var(--edge-cycle-color, #e5484d)' : 'var(--edge-color, #999)');
             path.setAttribute('stroke-width', '1');
             path.setAttribute('stroke-opacity', '0.5');
-            path.setAttribute('marker-end', 'url(#arrowhead)');
+            path.setAttribute('marker-end', inCycle ? 'url(#arrowhead-cycle)' : 'url(#arrowhead)');
         });
     }
 

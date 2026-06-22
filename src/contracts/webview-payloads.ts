@@ -35,6 +35,15 @@ export interface VisEdge {
     to: string;
     /** vis-network arrow spec (e.g. `'to'`); set on import/call edges. */
     arrows?: string;
+    /**
+     * Loop 02: set to `true` only when this import edge sits inside a non-trivial
+     * import SCC (a dependency cycle), as computed server-side by
+     * `computeInCycleEdgeKeys` in `src/graph/webview-data.ts`. Omitted (undefined)
+     * for acyclic edges and for ALL call-graph edges — the browser never computes
+     * cycle membership itself. Drives the red stroke + `arrowhead-cycle` marker in
+     * `EdgeRenderer`.
+     */
+    inCycle?: boolean;
 }
 
 export interface GraphData {

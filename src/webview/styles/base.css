@@ -15,6 +15,7 @@
   --edge-color: #000000;
   --node-label-color: #ffffff;
   --edge-highlight-color: #ffffff;
+  --edge-cycle-color: #e5484d;
 
   --spacing-xs: 4px;
   --spacing-sm: 8px;
@@ -36,6 +37,7 @@ body.light {
   --edge-color: #555555;
   --node-label-color: #222222;
   --edge-highlight-color: #000000;
+  --edge-cycle-color: #e5484d;
 }
 
 /* Ensure body uses valid variables */
