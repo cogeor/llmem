@@ -147,6 +147,22 @@
     opacity: 0.1;
 }
 
+/* In-cycle (circular-dependency) edges.
+   A cycle is a GLOBAL property of the graph, so it must stay visible
+   regardless of transient node/folder selection. These rules are placed
+   AFTER `.highlighted`/`.faded` and use `!important` so the selection
+   highlight cannot repaint a cycle edge blue (`.highlighted`) or fade it to
+   near-invisible (`.faded`). They also override the inline stroke/opacity
+   attributes the renderer sets. Result: cycle edges are always a prominent
+   red with the red arrowhead, in every interaction state. */
+.edges-layer path.in-cycle {
+    stroke: var(--edge-cycle-color, #e5484d) !important;
+    stroke-width: 2.5px !important;
+    stroke-opacity: 0.95 !important;
+    opacity: 0.95 !important;
+    marker-end: url(#arrowhead-cycle) !important;
+}
+
 /* Markers */
 #arrow-head path {
     fill: var(--edge-color);
