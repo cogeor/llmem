@@ -26,7 +26,7 @@ export async function scanFile(
     ctx: WorkspaceContext,
     req: ScanFileRequest,
 ): Promise<ScanResult> {
-    const { workspaceRoot, artifactRoot: artifactDir, io, logger } = ctx;
+    const { workspaceRoot, artifactRoot: artifactDir, io, logger, config } = ctx;
     const { filePath } = req;
 
     // L24: io.exists performs textual + realpath containment checks.
@@ -71,6 +71,7 @@ export async function scanFile(
         rel: filePath,
         absPath: absoluteFile,
         workspaceRoot,
+        internalOnly: config.internalOnly,
     });
 
     if (!result.ok && result.kind === 'init-error') {

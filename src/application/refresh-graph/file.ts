@@ -172,6 +172,7 @@ export async function refreshFileGraph(
             absPath: absoluteFile,
             workspaceRoot: ctx.workspaceRoot,
             logProgress: false,
+            internalOnly: ctx.config.internalOnly,
         });
         if (result.ok) {
             applyArtifactToStores(result.conversion, callStore, importStore);

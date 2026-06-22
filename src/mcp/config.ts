@@ -7,6 +7,7 @@
 
 import type { Config } from '../core/config-types';
 import { DEFAULT_CONFIG, ENV_VARS, MAX_FILES_PER_FOLDER_CAP, MAX_FILE_SIZE_KB_CAP, MAX_FILE_LINES_CAP } from '../config-defaults';
+import { parseInternalOnly } from '../core/internal-only';
 
 /**
  * Load configuration for the MCP server
@@ -35,6 +36,10 @@ export function getMcpConfig(): Config {
             process.env[ENV_VARS.MAX_FILE_LINES] ||
                 String(DEFAULT_CONFIG.maxFileLines),
             10
+        ),
+        internalOnly: parseInternalOnly(
+            process.env[ENV_VARS.INTERNAL_ONLY],
+            DEFAULT_CONFIG.internalOnly,
         ),
     };
 

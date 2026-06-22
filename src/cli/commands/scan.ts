@@ -24,6 +24,7 @@ import { CliError } from '../errors';
 const scanArgs = z.object({
     workspace: z.string().optional().describe('Workspace root directory (auto-detected if omitted)'),
     folder: z.string().default('.').describe('Workspace-relative folder to scan (defaults to the whole workspace)'),
+    external: z.boolean().default(false).describe('Include external-module import edges (default: internal-only)'),
 });
 
 export const scanCommand: CommandSpec<typeof scanArgs> = {
@@ -39,7 +40,15 @@ export const scanCommand: CommandSpec<typeof scanArgs> = {
 
         console.log(`Workspace: ${workspace}`);
 
-        const ctx = await cli.createWorkspace(workspace);
+        // Internal-only is the default; `--external` opts back into emitting
+        // external-module import edges/nodes. The CLI's createWorkspace loose
+        // path seeds config from DEFAULT_CONFIG (internalOnly=true), so the
+        // override here is what flips it: effective internalOnly = default &&
+        // !args.external. Threaded onto ctx.config so it reaches RunParserInput
+        // via scanFolder → runParser.
+        const ctx = await cli.createWorkspace(workspace, {
+            internalOnly: !args.external,
+        });
 
         console.log(`Scanning ${args.folder}...`);
 

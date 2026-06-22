@@ -25,6 +25,7 @@
 
 import { DEFAULT_CONFIG, ENV_VARS, MAX_FILES_PER_FOLDER_CAP, MAX_FILE_SIZE_KB_CAP, MAX_FILE_LINES_CAP } from '../config-defaults';
 import type { Config } from '../core/config-types';
+import { parseInternalOnly } from '../core/internal-only';
 
 /**
  * Re-export the canonical `Config` interface from `src/core/config-types.ts`.
@@ -49,7 +50,7 @@ let configInstance: Config | null = null;
  */
 export function loadConfig(): Config {
     // Read VS Code workspace settings (silently ignored outside VS Code)
-    let vsCodeConfig: { artifactRoot?: string; maxFilesPerFolder?: number; maxFileSizeKB?: number; maxFileLines?: number } = {};
+    let vsCodeConfig: { artifactRoot?: string; maxFilesPerFolder?: number; maxFileSizeKB?: number; maxFileLines?: number; internalOnly?: boolean } = {};
     try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const vscode = require('vscode');
@@ -59,6 +60,7 @@ export function loadConfig(): Config {
             maxFilesPerFolder: ws.get('maxFilesPerFolder') as number | undefined,
             maxFileSizeKB: ws.get('maxFileSizeKB') as number | undefined,
             maxFileLines: ws.get('maxFileLines') as number | undefined,
+            internalOnly: ws.get('internalOnly') as boolean | undefined,
         };
     } catch {
         // Not running inside VS Code — ignore
@@ -82,6 +84,10 @@ export function loadConfig(): Config {
             process.env[ENV_VARS.MAX_FILE_LINES]
                 || String(vsCodeConfig.maxFileLines ?? DEFAULT_CONFIG.maxFileLines),
             10
+        ),
+        internalOnly: parseInternalOnly(
+            process.env[ENV_VARS.INTERNAL_ONLY],
+            vsCodeConfig.internalOnly ?? DEFAULT_CONFIG.internalOnly,
         ),
     };
 

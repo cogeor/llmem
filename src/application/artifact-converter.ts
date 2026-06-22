@@ -22,14 +22,35 @@ export interface ConversionResult {
     callEdges: EdgeEntry[];    // kind: 'call' - entity-to-entity
 }
 
+/** Options for {@link artifactToEdgeList}. */
+export interface ArtifactToEdgeListOptions {
+    /**
+     * When true, omit external-module import edges/nodes entirely: the
+     * external-import branch is skipped, so no external module node is created
+     * and no external import edge is pushed. The file node, entity nodes,
+     * INTERNAL import edges, and ALL call edges are emitted unchanged.
+     *
+     * DEFAULT `false` (back-compat): direct/script/test/viewer callers keep
+     * emitting externals unless they opt in. The scan path threads the
+     * workspace config (`internalOnly`, default true) through to flip this on.
+     */
+    internalOnly?: boolean;
+}
+
 /**
  * Convert a FileArtifact to edge list entries.
- * 
+ *
  * @param artifact The parsed file artifact from an extractor
  * @param fileId The normalized file ID (relative path)
+ * @param options Optional conversion knobs ({@link ArtifactToEdgeListOptions}).
  * @returns Nodes and edges for the edge list
  */
-export function artifactToEdgeList(artifact: FileArtifact, fileId: string): ConversionResult {
+export function artifactToEdgeList(
+    artifact: FileArtifact,
+    fileId: string,
+    options: ArtifactToEdgeListOptions = {},
+): ConversionResult {
+    const { internalOnly = false } = options;
     const nodes: NodeEntry[] = [];
     const importEdges: EdgeEntry[] = [];
     const callEdges: EdgeEntry[] = [];
@@ -90,6 +111,15 @@ export function artifactToEdgeList(artifact: FileArtifact, fileId: string): Conv
         if (targetFileId) {
             // Loop 16: route through the contract's external classifier.
             const isExternal = isExternalModuleId(targetFileId);
+
+            if (isExternal && internalOnly) {
+                // internal-only mode (Loop 03): drop external-module import
+                // edges/nodes entirely. No external node, no external edge,
+                // and crucially NOT routed into the internal branch below
+                // (an external id like `react` has no '/' so it would
+                // otherwise be mistaken for an internal target).
+                continue;
+            }
 
             if (isExternal) {
                 // External module import (e.g., pathlib, os, json)

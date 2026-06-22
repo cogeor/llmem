@@ -39,6 +39,15 @@ export interface RunParserInput {
      * exact prior behavior.
      */
     logProgress?: boolean;
+    /**
+     * When true, the converter omits external-module import edges/nodes
+     * (internal workspace edges + all call edges only). Threaded from
+     * `ctx.config.internalOnly` by the scan/refresh callers. Defaults to
+     * `false` here so the runner's own back-compat (and any caller that
+     * does not set it) keeps emitting externals, matching
+     * `artifactToEdgeList`'s default.
+     */
+    internalOnly?: boolean;
 }
 
 /**
@@ -76,7 +85,7 @@ export async function runParser(
     logger: Logger,
     input: RunParserInput,
 ): Promise<RunParserResult> {
-    const { rel, absPath, workspaceRoot, logProgress = true } = input;
+    const { rel, absPath, workspaceRoot, logProgress = true, internalOnly = false } = input;
 
     let parser;
     try {
@@ -105,7 +114,7 @@ export async function runParser(
         if (!artifact) {
             return { ok: false, kind: 'no-artifact' };
         }
-        const conversion = artifactToEdgeList(artifact, rel);
+        const conversion = artifactToEdgeList(artifact, rel, { internalOnly });
         return { ok: true, conversion };
     } catch (e: unknown) {
         return { ok: false, kind: 'extract-error', error: e };

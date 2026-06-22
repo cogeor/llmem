@@ -15,6 +15,7 @@ export const DEFAULT_CONFIG: Config = {
     maxFilesPerFolder: 20,
     maxFileSizeKB: 512,
     maxFileLines: 2000,
+    internalOnly: true,
 };
 
 /**
@@ -27,6 +28,7 @@ export const ENV_VARS = {
     MAX_FILES_PER_FOLDER: 'LLMEM_MAX_FILES_PER_FOLDER',
     MAX_FILE_SIZE_KB: 'LLMEM_MAX_FILE_SIZE_KB',
     MAX_FILE_LINES: 'LLMEM_MAX_FILE_LINES',
+    INTERNAL_ONLY: 'LLMEM_INTERNAL_ONLY',
 } as const;
 
 /** Upper-bound cap for maxFilesPerFolder */

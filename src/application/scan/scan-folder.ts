@@ -152,6 +152,7 @@ export async function scanFolder(
             rel: relativePath,
             absPath: absoluteFilePath,
             workspaceRoot,
+            internalOnly: config.internalOnly,
         });
 
         if (!result.ok && result.kind === 'init-error') {

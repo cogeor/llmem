@@ -16,4 +16,12 @@ export interface Config {
     maxFileSizeKB: number;
     /** Maximum file length in lines to include when scanning */
     maxFileLines: number;
+    /**
+     * When true (the default), omit external-module import edges/nodes (deps
+     * like react / sqlalchemy); only internal workspace file→file import edges
+     * are emitted. All call edges are emitted regardless. Set false (env
+     * `LLMEM_INTERNAL_ONLY=0`/`false`, or CLI `scan --external`) to include
+     * external import edges/nodes.
+     */
+    internalOnly: boolean;
 }

@@ -300,5 +300,6 @@ test('defaultRuntimeConfig matches DEFAULT_CONFIG shape', () => {
         maxFilesPerFolder: 20,
         maxFileSizeKB: 512,
         maxFileLines: 2000,
+        internalOnly: true,
     });
 });
