@@ -1,7 +1,8 @@
 // tests/arch/parser-descriptor-purity.test.ts
 //
-// Loop 10 (K1) — keep `src/parser/language-descriptors.ts` PURE static
-// metadata.
+// Loop 10 (K1) — keep `src/core/language-descriptors.ts` PURE static
+// metadata. (Relocated parser -> core so the graph layer can read the
+// extension list without importing the parser layer.)
 //
 // Purpose
 // -------
@@ -38,7 +39,7 @@ import * as path from 'node:path';
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 
 const DESCRIPTORS_FILE = path.join(
-    REPO_ROOT, 'src', 'parser', 'language-descriptors.ts',
+    REPO_ROOT, 'src', 'core', 'language-descriptors.ts',
 );
 const CONFIG_FILE = path.join(REPO_ROOT, 'src', 'parser', 'config.ts');
 
@@ -101,7 +102,7 @@ test('parser-descriptor-purity: language-descriptors.ts is pure static metadata'
         }
         assert.fail(
             `${offenders.length} impurity/-ies found in ` +
-                `src/parser/language-descriptors.ts — it must contain NO ` +
+                `src/core/language-descriptors.ts — it must contain NO ` +
                 `require()/import()/adapter-import/grammar specifier. Move ` +
                 `runtime loaders into src/parser/language-loaders.ts.`,
         );
@@ -113,7 +114,7 @@ test('parser-descriptor-purity: config.ts does not import an adapter-coupled mod
     const offenders: Offender[] = [];
 
     // config.ts is metadata-only: its language import must be the pure
-    // `./language-descriptors`, never `./languages` (composed w/ loaders),
+    // `../core/language-descriptors`, never `./languages` (composed w/ loaders),
     // `./adapter`, or a grammar package.
     const COUPLED_IMPORTS: ReadonlyArray<{ re: RegExp; why: string }> = [
         { re: /from\s+['"]\.\/languages['"]/, why: "imports './languages' (carries loaders)" },
@@ -143,7 +144,7 @@ test('parser-descriptor-purity: config.ts does not import an adapter-coupled mod
         assert.fail(
             `${offenders.length} adapter-coupled import(s) in ` +
                 `src/parser/config.ts — it must import language metadata from ` +
-                `'./language-descriptors', never from './languages'/'./adapter'.`,
+                `'../core/language-descriptors', never from './languages'/'./adapter'.`,
         );
     }
 });

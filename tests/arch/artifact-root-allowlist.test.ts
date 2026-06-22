@@ -355,6 +355,9 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     { file: 'src/parser/ts-service.ts',
       phase: 'permanent',
       reason: 'TS-specific skip set used by the TypeScript service walker.' },
+    { file: 'src/parser/tsconfig-registry.ts',
+      phase: 'permanent',
+      reason: 'SKIP_DIRECTORIES set (mirrors ts-service.ts) so tsconfig discovery does not descend into the artifacts output tree.' },
     // PH-07: worktree.ts no longer keeps its own ignore set with a `.artifacts`
     // literal — it consumes parser/config IGNORED_FOLDERS as the single source.
 

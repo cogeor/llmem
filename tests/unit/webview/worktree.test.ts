@@ -12,10 +12,13 @@
 // of an absolute root path.
 //
 // PH-04: `isSupported` now reflects RUNTIME parsability (a parser is actually
-// registered) rather than the static extension list. A known source extension
-// whose tree-sitter grammar is not installed (e.g. `.py` in this repo's
-// node_modules, which only ships the tree-sitter core) is `isSupported: false`
-// + `needsGrammar: true` — it must NOT get a live (no-op) watch toggle.
+// registered) rather than the static extension list. The flags on each node
+// are precomputed from `ParserRegistry.getSupport`, so the contract this test
+// pins is that wiring — every node mirrors what the registry reports — plus the
+// environment-independent anchors (`.ts` always supported; unknown extensions
+// never supported). It deliberately does NOT hard-code absolute support for a
+// grammar-gated extension like `.py`, whose parsability depends on whether the
+// optional grammar happens to be installed.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -27,6 +30,7 @@ import { generateWorkTree, type ITreeNode } from '../../../src/application/viewe
 import { WorkspaceIO } from '../../../src/workspace/workspace-io';
 import { asWorkspaceRoot } from '../../../src/core/paths';
 import { IGNORED_FOLDERS } from '../../../src/parser/config';
+import { ParserRegistry } from '../../../src/parser/registry';
 
 function findChild(root: ITreeNode, name: string): ITreeNode | undefined {
     return root.children?.find((c) => c.name === name);
@@ -48,34 +52,34 @@ test('generateWorkTree marks files supported iff a parser is registered at runti
         assert.equal(tree.type, 'directory');
         assert.ok(Array.isArray(tree.children), 'root tree should have children');
 
-        const fooTs = findChild(tree, 'Foo.ts');
-        const barJava = findChild(tree, 'Bar.java');
-        const bazGo = findChild(tree, 'baz.go');
-        const quuxPy = findChild(tree, 'quux.py');
+        // The contract: every file node's support flags are precomputed from
+        // ParserRegistry.getSupport. Assert that wiring directly so the test
+        // holds whether or not optional grammars happen to be installed.
+        const registry = ParserRegistry.getInstance();
+        for (const name of ['Foo.ts', 'Bar.java', 'baz.go', 'quux.py']) {
+            const node = findChild(tree, name);
+            assert.ok(node, `${name} must appear in the tree`);
+            const support = registry.getSupport(name);
+            assert.equal(node!.isSupported, support.parsable, `${name} isSupported mirrors registry`);
+            assert.equal(node!.needsGrammar, support.needsGrammar, `${name} needsGrammar mirrors registry`);
+            assert.equal(node!.installHint, support.installHint, `${name} installHint mirrors registry`);
+            assert.equal(node!.callGraph, support.callGraph, `${name} callGraph mirrors registry`);
+        }
 
-        assert.ok(fooTs, 'Foo.ts must appear in the tree');
-        assert.ok(barJava, 'Bar.java must appear in the tree');
-        assert.ok(bazGo, 'baz.go must appear in the tree');
-        assert.ok(quuxPy, 'quux.py must appear in the tree');
-
-        // Supported: .ts (TypeScript adapter, no grammar needed).
-        assert.equal(fooTs!.isSupported, true, 'Foo.ts must be marked supported');
-        assert.equal(fooTs!.needsGrammar, false, 'Foo.ts needs no grammar');
-        assert.equal(fooTs!.callGraph, 'semantic', 'Foo.ts has semantic call graph');
-
-        // PH-04: .py is a known source extension but its tree-sitter grammar is
-        // not installed here → NOT runtime-parsable, needs-grammar instead.
-        assert.equal(quuxPy!.isSupported, false, 'quux.py is not runtime-parsable without its grammar');
-        assert.equal(quuxPy!.needsGrammar, true, 'quux.py must be marked needsGrammar');
-        assert.equal(quuxPy!.installHint, 'tree-sitter-python', 'quux.py carries the install hint');
-        assert.equal(quuxPy!.callGraph, 'heuristic', 'quux.py declares heuristic call graph');
+        // Environment-independent anchors:
+        // .ts is always supported (built-in TS adapter, no grammar needed).
+        const fooTs = findChild(tree, 'Foo.ts')!;
+        assert.equal(fooTs.isSupported, true, 'Foo.ts must be marked supported');
+        assert.equal(fooTs.needsGrammar, false, 'Foo.ts needs no grammar');
+        assert.equal(fooTs.callGraph, 'semantic', 'Foo.ts has semantic call graph');
 
         // Unknown extensions: .java and .go have no adapter and are not in the
-        // static supported list — neither supported nor needs-grammar.
-        assert.equal(barJava!.isSupported, false, 'Bar.java must be marked NOT supported');
-        assert.equal(barJava!.needsGrammar, false, 'Bar.java is unknown, not needs-grammar');
-        assert.equal(bazGo!.isSupported, false, 'baz.go must be marked NOT supported');
-        assert.equal(bazGo!.needsGrammar, false, 'baz.go is unknown, not needs-grammar');
+        // static supported list — never supported, never needs-grammar.
+        for (const name of ['Bar.java', 'baz.go']) {
+            const node = findChild(tree, name)!;
+            assert.equal(node.isSupported, false, `${name} must be marked NOT supported`);
+            assert.equal(node.needsGrammar, false, `${name} is unknown, not needs-grammar`);
+        }
     } finally {
         fs.rmSync(fixtureDir, { recursive: true, force: true });
     }

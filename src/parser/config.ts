@@ -7,7 +7,18 @@
 
 import * as path from 'path';
 
-import { LANGUAGE_DESCRIPTORS, type CallGraphCapability } from './language-descriptors';
+import {
+    LANGUAGE_DESCRIPTORS,
+    type CallGraphCapability,
+    ALL_SUPPORTED_EXTENSIONS,
+    SUPPORTED_EXTENSIONS_SET,
+} from '../core/language-descriptors';
+
+// Re-export the extension surface so existing parser/application consumers keep
+// importing it from `parser/config` unchanged. The canonical definitions now
+// live in `src/core/language-descriptors` so the `graph` layer can read them
+// without importing the `parser` layer (tests/arch/layer-matrix.test.ts).
+export { ALL_SUPPORTED_EXTENSIONS, SUPPORTED_EXTENSIONS_SET };
 
 // ============================================================================
 // Line Count Thresholds
@@ -38,26 +49,6 @@ export const LAZY_CODEBASE_LINE_THRESHOLD = 10000;
  * to derive them from.
  */
 export const TYPESCRIPT_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx'];
-
-/**
- * All extensions supported for parsing and graph generation.
- *
- * Derived from the `LANGUAGES` descriptor array (the single source of
- * truth for supported languages and their extensions). Runtime support is
- * gated separately by `ParserRegistry.isSupported(filePath)`, which only
- * returns `true` for adapters whose tree-sitter package was successfully
- * `require()`d at registry-construction time.
- *
- * TypeScript/JavaScript supports both imports and call graphs.
- * Other languages (Python, C/C++, Rust, R) support import graphs only.
- */
-export const ALL_SUPPORTED_EXTENSIONS: readonly string[] =
-    LANGUAGE_DESCRIPTORS.flatMap((l) => l.extensions);
-
-/**
- * Set version for efficient O(1) lookups
- */
-export const SUPPORTED_EXTENSIONS_SET: ReadonlySet<string> = new Set(ALL_SUPPORTED_EXTENSIONS);
 
 /**
  * Check if a file extension is supported for parsing

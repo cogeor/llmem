@@ -6,7 +6,7 @@
  * `formatUnsupportedSourceHints`.
  */
 
-import { LANGUAGE_DESCRIPTORS } from '../../parser/language-descriptors';
+import { LANGUAGE_DESCRIPTORS } from '../../core/language-descriptors';
 
 /**
  * Source-like extension → install-hint package, derived from the

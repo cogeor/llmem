@@ -11,7 +11,7 @@
 import { ImportGraph, CallGraph, EntityNode, ImportEdge, CallEdge, ImportGraphNode } from './types';
 import { EdgeListData } from './edgelist';
 import { parseGraphId, isExternalModuleId } from '../core/ids';
-import { ALL_SUPPORTED_EXTENSIONS } from '../parser/config';
+import { ALL_SUPPORTED_EXTENSIONS } from '../core/language-descriptors';
 export { savePlot } from './plot/generator';
 
 /**

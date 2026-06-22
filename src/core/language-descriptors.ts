@@ -8,11 +8,16 @@
  * This file is PURE: it imports NOTHING with a runtime side effect — no
  * adapter modules, no tree-sitter grammar `require()`s. It is just data, so
  * config-only / metadata consumers (`src/parser/config.ts`,
- * `src/application/scan/hints.ts`) can read the language metadata WITHOUT
- * transitively pulling in adapter loaders or native grammars.
+ * `src/application/scan/hints.ts`, `src/graph/index.ts`) can read the language
+ * metadata WITHOUT transitively pulling in adapter loaders or native grammars.
  *
- * The lazy adapter loaders live in `./language-loaders` (keyed by `id`).
- * The composed registry view (descriptor + loader) lives in `./languages`.
+ * It lives in `src/core/` (the bottom layer every other layer may import)
+ * precisely so the `graph` layer can read `ALL_SUPPORTED_EXTENSIONS` without
+ * importing the `parser` layer (forbidden by tests/arch/layer-matrix.test.ts).
+ *
+ * The lazy adapter loaders live in `src/parser/language-loaders` (keyed by
+ * `id`). The composed registry view (descriptor + loader) lives in
+ * `src/parser/languages`.
  *
  * Enforced by `tests/arch/parser-descriptor-purity.test.ts`.
  */
@@ -34,8 +39,9 @@ export type CallGraphCapability = 'semantic' | 'heuristic' | 'none';
  *
  * Deliberately has NO `load` field: constructing an adapter is a runtime
  * concern that would couple this metadata to grammar `require()`s. The
- * runtime loader for each language lives in `./language-loaders`, keyed by
- * `id`, and is joined back onto the descriptor in `./languages`.
+ * runtime loader for each language lives in `src/parser/language-loaders`,
+ * keyed by `id`, and is joined back onto the descriptor in
+ * `src/parser/languages`.
  */
 export interface LanguageDescriptor {
     /** Unique language identifier (lowercase). Matches the adapter's `id`. */
@@ -82,8 +88,8 @@ export interface LanguageDescriptor {
 /**
  * Single source of truth for supported-language STATIC metadata.
  *
- * No `load` here — see `./language-loaders` for the lazy adapter
- * constructors and `./languages` for the composed `LANGUAGES` view.
+ * No `load` here — see `src/parser/language-loaders` for the lazy adapter
+ * constructors and `src/parser/languages` for the composed `LANGUAGES` view.
  */
 export const LANGUAGE_DESCRIPTORS: readonly LanguageDescriptor[] = [
     {
@@ -128,3 +134,23 @@ export const LANGUAGE_DESCRIPTORS: readonly LanguageDescriptor[] = [
         highlightId: 'r',
     },
 ];
+
+/**
+ * All extensions supported for parsing and graph generation.
+ *
+ * Derived from {@link LANGUAGE_DESCRIPTORS} (the single source of truth for
+ * supported languages and their extensions). Runtime support is gated
+ * separately by `ParserRegistry.isSupported(filePath)`, which only returns
+ * `true` for adapters whose tree-sitter package was successfully `require()`d
+ * at registry-construction time.
+ *
+ * TypeScript/JavaScript supports both imports and call graphs.
+ * Other languages (Python, C/C++, Rust, R) support import graphs only.
+ */
+export const ALL_SUPPORTED_EXTENSIONS: readonly string[] =
+    LANGUAGE_DESCRIPTORS.flatMap((l) => l.extensions);
+
+/**
+ * Set version of {@link ALL_SUPPORTED_EXTENSIONS} for efficient O(1) lookups.
+ */
+export const SUPPORTED_EXTENSIONS_SET: ReadonlySet<string> = new Set(ALL_SUPPORTED_EXTENSIONS);

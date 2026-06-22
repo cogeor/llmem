@@ -1,13 +1,13 @@
 /**
  * Languages (composed registry view)
  *
- * Joins the PURE STATIC metadata in `./language-descriptors` with the lazy
+ * Joins the PURE STATIC metadata in `../core/language-descriptors` with the lazy
  * adapter loaders in `./language-loaders` to produce `LANGUAGES`: the
  * registry's single source of truth, where each entry carries both the
  * static fields AND a `load()` that constructs its adapter.
  *
  * This split exists so config-only / metadata consumers can import the pure
- * descriptors directly (`./language-descriptors`) WITHOUT transitively pulling
+ * descriptors directly (`../core/language-descriptors`) WITHOUT transitively pulling
  * in adapter modules or native tree-sitter grammars. Only the registry (which
  * actually needs `load()`) imports from here.
  *
@@ -20,7 +20,7 @@ import {
     LANGUAGE_DESCRIPTORS,
     type CallGraphCapability,
     type LanguageDescriptor,
-} from './language-descriptors';
+} from '../core/language-descriptors';
 import { LANGUAGE_LOADERS } from './language-loaders';
 
 // Re-export the static metadata types so existing importers of `./languages`
@@ -43,7 +43,7 @@ export interface Language extends LanguageDescriptor {
 /**
  * Single source of truth for supported languages, composed from the static
  * descriptors and their lazy loaders. The registry consumes this; metadata-only
- * consumers should import `LANGUAGE_DESCRIPTORS` from `./language-descriptors`.
+ * consumers should import `LANGUAGE_DESCRIPTORS` from `../core/language-descriptors`.
  */
 export const LANGUAGES: readonly Language[] = LANGUAGE_DESCRIPTORS.map((d) => ({
     ...d,

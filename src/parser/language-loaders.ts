@@ -8,7 +8,7 @@
  * `registry.ts`'s `tryRegisterOptional` blocks). TypeScript needs no grammar,
  * so its loader constructs the adapter eagerly inside the arrow.
  *
- * The pure static metadata lives in `./language-descriptors`. The composed
+ * The pure static metadata lives in `../core/language-descriptors`. The composed
  * view (descriptor + loader) lives in `./languages`. Keeping the loaders here,
  * away from the descriptors, lets metadata-only consumers read language data
  * without transitively pulling in adapters or native grammars.
