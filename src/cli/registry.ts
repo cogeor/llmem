@@ -33,6 +33,7 @@ import { scanCommand } from './commands/scan';          // Loop 05
 import { documentCommand } from './commands/document';  // Loop 06
 import { initCommand } from './commands/init';          // Loop 07
 import { installCommand } from './commands/install';    // LI-03
+import { findCyclesCommand } from './commands/find-cycles'; // cycle-detection L03
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const REGISTRY: CommandSpec<any>[] = [
@@ -40,6 +41,7 @@ export const REGISTRY: CommandSpec<any>[] = [
     mcpCommand,
     generateCommand,
     statsCommand,
+    findCyclesCommand,  // cycle-detection L03
     describeCommand,    // Loop 04
     scanCommand,        // Loop 05
     documentCommand,    // Loop 06

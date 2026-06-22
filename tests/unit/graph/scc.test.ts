@@ -19,6 +19,7 @@ import {
     excludeAggregatorEdges,
     computeInCycleEdgeKeys,
     edgeInCycle,
+    shortestCyclePath,
 } from '../../../src/graph/scc';
 
 // import-edge literal with the required ImportEdge fields.
@@ -163,4 +164,63 @@ test('scc: edgeInCycle delegates to computeInCycleEdgeKeys (same membership)', (
     assert.equal(pred('src/a.ts', 'src/b.ts'), keys.has('src/a.ts->src/b.ts'));
     assert.equal(pred('src/a.ts', 'src/zzz.ts'), keys.has('src/a.ts->src/zzz.ts'));
     assert.equal(pred('src/a.ts', 'src/b.ts'), true);
+});
+
+test('shortestCyclePath: 2-node cycle returns closed a->b->a from smallest id', () => {
+    const graph = g(
+        ['src/a.ts', 'src/b.ts'],
+        [ie('src/a.ts', 'src/b.ts'), ie('src/b.ts', 'src/a.ts')],
+    );
+    const hops = shortestCyclePath(graph, ['src/a.ts', 'src/b.ts']);
+    assert.equal(hops.length, 2);
+    // closed chain start (smallest id 'a') -> b -> a.
+    assert.deepEqual(
+        [hops[0].source, ...hops.map(h => h.target)],
+        ['src/a.ts', 'src/b.ts', 'src/a.ts'],
+    );
+});
+
+test('shortestCyclePath: size-1 self-loop returns the single self-edge', () => {
+    const selfEdge = ie('src/a.ts', 'src/a.ts');
+    const graph = g(['src/a.ts'], [selfEdge]);
+    const hops = shortestCyclePath(graph, ['src/a.ts']);
+    assert.equal(hops.length, 1);
+    assert.equal(hops[0].source, 'src/a.ts');
+    assert.equal(hops[0].target, 'src/a.ts');
+});
+
+test('shortestCyclePath: size-1 non-self-loop / acyclic returns []', () => {
+    // lone node with no self-loop.
+    const graph = g(['src/a.ts'], []);
+    assert.deepEqual(shortestCyclePath(graph, ['src/a.ts']), []);
+});
+
+test('shortestCyclePath: 3-node cycle returns closed a->b->c->a', () => {
+    const graph = g(
+        ['src/a.ts', 'src/b.ts', 'src/c.ts', 'src/d.ts'],
+        [
+            ie('src/a.ts', 'src/b.ts'),
+            ie('src/b.ts', 'src/c.ts'),
+            ie('src/c.ts', 'src/a.ts'),
+            ie('src/c.ts', 'src/d.ts'), // dangling tail, must not appear
+        ],
+    );
+    const hops = shortestCyclePath(graph, ['src/a.ts', 'src/b.ts', 'src/c.ts']);
+    assert.deepEqual(
+        [hops[0].source, ...hops.map(h => h.target)],
+        ['src/a.ts', 'src/b.ts', 'src/c.ts', 'src/a.ts'],
+    );
+});
+
+test('shortestCyclePath: deterministic across repeated calls', () => {
+    const graph = g(
+        ['src/a.ts', 'src/b.ts', 'src/c.ts'],
+        [
+            ie('src/a.ts', 'src/b.ts'),
+            ie('src/b.ts', 'src/c.ts'),
+            ie('src/c.ts', 'src/a.ts'),
+        ],
+    );
+    const scc = ['src/a.ts', 'src/b.ts', 'src/c.ts'];
+    assert.deepEqual(shortestCyclePath(graph, scc), shortestCyclePath(graph, scc));
 });

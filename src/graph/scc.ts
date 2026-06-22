@@ -29,8 +29,13 @@
 //   `[...graph.nodes.keys()].sort()`, each component sorted ascending, and the
 //   component list ordered by each component's smallest id.
 //
-// shortestCyclePath (aipr lines 168-207) is DEFERRED to Loop 03; if added it
-// returns ImportEdge[] node-id hops (ImportEdge has no file/line).
+// shortestCyclePath (aipr lines 168-207) SHIPS here (Loop 03). It returns an
+// ImportEdge[] of node-id hops walking one cycle through an SCC. ImportEdge has
+// no file/line, so callers print the node ids only (never file:line). It is
+// deterministic: the BFS starts from the SCC's smallest node id and walks the
+// sorted/deduped successor adjacency (buildSuccessorMap), and the edge looked up
+// for each hop is the FIRST occurrence of that source->target pair in
+// graph.edges.
 
 import { ImportGraph, ImportEdge } from './types';
 
@@ -243,4 +248,82 @@ export function edgeInCycle(
 ): (source: string, target: string) => boolean {
     const keys = computeInCycleEdgeKeys(graph);
     return (source: string, target: string) => keys.has(`${source}->${target}`);
+}
+
+/**
+ * One edge path that walks a cycle through the nodes of `scc`.
+ *
+ * Ports aipr `shortest_cycle_path` (`_depgraph.py` lines 168-207). Picks the
+ * SCC's smallest node id as the start, BFS-walks back to it staying INSIDE the
+ * component, and returns one `ImportEdge` per hop. The returned chain is closed:
+ * `hops[0].source` is `start`, each `hop.target` is the next member, and the
+ * last `hop.target` is `start` again.
+ *
+ * Cases:
+ * - size-1 SCC with a self-loop `node->node`: returns `[that self-edge]`.
+ * - size-1 SCC with no self-loop (a lone, non-cyclic node): returns `[]`.
+ * - size>1 cyclic SCC: returns the closed hop chain from the smallest id.
+ * - not actually cyclic (BFS exhausts without returning to start): returns `[]`.
+ *
+ * Determinism: smallest-id start, sorted successors (via `buildSuccessorMap`),
+ * and first-occurrence edge lookup from `graph.edges`. PURE — no node/fs/Date.
+ */
+export function shortestCyclePath(graph: ImportGraph, scc: string[]): ImportEdge[] {
+    // (source->target) -> first matching ImportEdge object. First occurrence
+    // wins so the lookup is deterministic (mirrors `edges_between(a,b)[0]`).
+    const edgeLookup = new Map<string, ImportEdge>();
+    for (const e of graph.edges) {
+        const key = `${e.source}->${e.target}`;
+        if (!edgeLookup.has(key)) {
+            edgeLookup.set(key, e);
+        }
+    }
+    const edgeBetween = (src: string, tgt: string): ImportEdge | undefined =>
+        edgeLookup.get(`${src}->${tgt}`);
+
+    if (scc.length === 1) {
+        const node = scc[0];
+        const loop = edgeBetween(node, node);
+        return loop ? [loop] : [];
+    }
+
+    const members = new Set(scc);
+    const start = [...scc].sort()[0];
+    const successors = buildSuccessorMap(graph);
+
+    // edge taken to reach each node (for path reconstruction).
+    const prevEdge = new Map<string, ImportEdge>();
+    const visited = new Set<string>([start]);
+    const queue: string[] = [start];
+
+    while (queue.length > 0) {
+        const cur = queue.shift()!;
+        for (const nxt of successors.get(cur) ?? []) {
+            if (!members.has(nxt)) {
+                continue;
+            }
+            const edge = edgeBetween(cur, nxt);
+            if (!edge) {
+                continue;
+            }
+            if (nxt === start) {
+                // Reconstruct start -> ... -> cur, then close with cur -> start.
+                const path: ImportEdge[] = [edge];
+                let back = cur;
+                while (back !== start) {
+                    const e = prevEdge.get(back)!;
+                    path.push(e);
+                    back = e.source;
+                }
+                path.reverse();
+                return path;
+            }
+            if (!visited.has(nxt)) {
+                visited.add(nxt);
+                prevEdge.set(nxt, edge);
+                queue.push(nxt);
+            }
+        }
+    }
+    return [];
 }
