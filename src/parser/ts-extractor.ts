@@ -8,13 +8,23 @@ import {
     createInMemoryProgram,
 } from './ts-extractor/program-builder';
 import { extractFromSource } from './ts-extractor/extract-from-source';
+import { TsconfigRegistry } from './tsconfig-registry';
 
 export class TypeScriptExtractor implements ArtifactExtractor {
     private workspaceRoot: string;
 
     constructor(
         private programProvider: () => ts.Program | undefined,
-        workspaceRoot?: string
+        workspaceRoot?: string,
+        /**
+         * Loop 02 — nearest-enclosing tsconfig registry. When provided, the
+         * options/cache handed to the per-file module resolver come from the
+         * NEAREST ancestor tsconfig of the file being extracted, so `paths`/
+         * `baseUrl` resolve even on a monorepo whose `@/*` aliases live in a
+         * subdirectory tsconfig (not at the workspace root). The workspace
+         * `ts.Program` (type checker / call graph) is unaffected.
+         */
+        private tsconfigRegistry?: TsconfigRegistry
     ) {
         // Use provided workspace root, or fall back to cwd
         this.workspaceRoot = workspaceRoot || process.cwd();
@@ -84,6 +94,20 @@ export class TypeScriptExtractor implements ArtifactExtractor {
 
         if (!sourceFile || !checker || !resolveCtx) {
             return null;
+        }
+
+        // Loop 02 — correct the import-edge resolver options/cache for THIS
+        // file using its nearest-enclosing tsconfig. The workspace program's
+        // options (used above for the type checker / call graph) are left
+        // intact; only the `resolveModule` call inside extractFromSource sees
+        // these per-file options. The cache is options-sensitive, so it comes
+        // from the same registry entry to avoid cross-config contamination.
+        if (this.tsconfigRegistry) {
+            resolveCtx = {
+                ...resolveCtx,
+                options: this.tsconfigRegistry.optionsForFile(filePath),
+                cache: this.tsconfigRegistry.cacheForFile(filePath),
+            };
         }
 
         return extractFromSource(this.workspaceRoot, sourceFile, checker, resolveCtx);
