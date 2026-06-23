@@ -191,6 +191,12 @@ export const IGNORED_FOLDERS = new Set([
     '.artifacts',
     '.arch',
     '.llmem',
+    // Agent/tooling work-artifact trees (gitignored scratch dirs). These are
+    // not source and must never enter the graph — a stray .delegate/ leaked
+    // tool-run artifacts into the edge list (whole-graph metrics were computed
+    // over gitignored junk). NOTE: this is a name-denylist stopgap; honoring
+    // .gitignore wholesale is the general fix (tracked as data-hygiene work).
+    '.delegate',
     // JS / TS
     'node_modules',
     'dist',
