@@ -128,6 +128,15 @@ export class EdgeRenderer {
     highlightEdgesForNode(nodeId: string): void {
         const paths = this.svg.querySelectorAll('.edge-path');
         paths.forEach(path => {
+            // Cycle edges are a GLOBAL property of the graph and must stay red
+            // regardless of transient selection. Leave them entirely untouched
+            // so selection never toggles `.highlighted`/`.faded` on them — that
+            // toggle would otherwise drag a cycle edge into the `stroke` CSS
+            // transition and flicker it red<->highlight. (Previously the
+            // `.in-cycle !important` CSS won the static cascade but still let
+            // the class be applied; immunity here is the robust fix.)
+            if (path.classList.contains('in-cycle')) return;
+
             const from = path.getAttribute('data-from');
             const to = path.getAttribute('data-to');
             const isConnected = from === nodeId || to === nodeId;
@@ -178,6 +187,9 @@ export class EdgeRenderer {
     highlightEdgesForNodes(nodeIds: Set<string>): void {
         const paths = this.svg.querySelectorAll('.edge-path');
         paths.forEach(path => {
+            // See `highlightEdgesForNode`: cycle edges are immune to selection.
+            if (path.classList.contains('in-cycle')) return;
+
             const from = path.getAttribute('data-from');
             const to = path.getAttribute('data-to');
             const isConnected = nodeIds.has(from || '') || nodeIds.has(to || '');
