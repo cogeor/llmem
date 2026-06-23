@@ -178,36 +178,12 @@ export class CameraController {
         // Margin to keep visible (in pixels)
         const margin = 100;
 
-        // Content bounds in screen coordinates
-        // x-range: [translateX + bounds.x * scale, translateX + (bounds.x + bounds.width) * scale]
-        // y-range: [translateY + bounds.y * scale, translateY + (bounds.y + bounds.height) * scale]
-
+        // Overlap clamp: keep at least `margin` px of content inside the
+        // viewport on every side. Content edges in screen space are
+        // (translate + bounds.{x,y} * scale); we nudge the left/top edge back
+        // when it drifts past the viewport-minus-margin box.
         const scaledWidth = this.contentBounds.width * this.scale;
         const scaledHeight = this.contentBounds.height * this.scale;
-
-        const minTranslateX = this.width - scaledWidth - this.contentBounds.x * this.scale - margin;
-        const maxTranslateX = -this.contentBounds.x * this.scale + margin;
-
-        const minTranslateY = this.height - scaledHeight - this.contentBounds.y * this.scale - margin;
-        const maxTranslateY = -this.contentBounds.y * this.scale + margin;
-
-        // Only clamp if content is larger than viewport + margin
-        // Or if we just generally want to prevent it going way off screen
-
-        // Let's implement a simpler overlap check
-        // The right edge of content must be > left edge of viewport + margin
-        // The left edge of content must be < right edge of viewport - margin
-        // The bottom edge of content must be > top edge of viewport + margin
-        // The top edge of content must be < bottom edge of viewport - margin
-
-        // Current content edges in screen space:
-        // Left: this.translateX + this.contentBounds.x * this.scale
-        // Right: Left + scaledWidth
-        // Top: this.translateY + this.contentBounds.y * this.scale
-        // Bottom: Top + scaledHeight
-
-        // Constraint 1: Right > margin  => Left + scaledWidth > margin => Left > margin - scaledWidth
-        // Constraint 2: Left < width - margin
 
         const currentLeft = this.translateX + this.contentBounds.x * this.scale;
         const currentTop = this.translateY + this.contentBounds.y * this.scale;
@@ -281,8 +257,7 @@ export class CameraController {
      */
     fitToWidth(
         bounds: { x: number; y: number; width: number; height: number },
-        padding: number = 40,
-        animate: boolean = true
+        padding: number = 40
     ): void {
         const availableWidth = this.width - padding * 2;
 
@@ -312,7 +287,25 @@ export class CameraController {
     }
 
     /**
-     * Pan camera to center on a folder region.
+     * Is a world-space point currently inside the viewport (minus a margin)?
+     *
+     * Used to make selection-driven pans REVEAL-IF-NEEDED rather than
+     * always-recenter: selecting an element that is already on screen must not
+     * shift the camera (that recenter-on-every-click was perceived as a flicker;
+     * graph-node clicks never pan at all, so the shift only ever came from the
+     * explorer-driven panTo* calls below).
+     */
+    private isWorldPointVisible(worldX: number, worldY: number, margin: number = 80): boolean {
+        const screenX = worldX * this.scale + this.translateX;
+        const screenY = worldY * this.scale + this.translateY;
+        return (
+            screenX >= margin && screenX <= this.width - margin &&
+            screenY >= margin && screenY <= this.height - margin
+        );
+    }
+
+    /**
+     * Pan camera to bring a folder region into view (only if off-screen).
      */
     panToFolder(folderPath: string, animate: boolean = true): void {
         const folder = this.folderRegions.find(f => f.path === folderPath);
@@ -320,6 +313,9 @@ export class CameraController {
 
         const centerX = (folder.x0 + folder.x1) / 2;
         const centerY = (folder.y0 + folder.y1) / 2;
+
+        // Already visible → don't shift the camera.
+        if (this.isWorldPointVisible(centerX, centerY)) return;
 
         // Calculate translation to center this point
         this.translateX = this.width / 2 - centerX * this.scale;
@@ -330,11 +326,14 @@ export class CameraController {
     }
 
     /**
-     * Pan camera to center on a node.
+     * Pan camera to bring a node into view (only if off-screen).
      */
     panToNode(nodeId: string, animate: boolean = true): void {
         const pos = this.nodePositions.get(nodeId);
         if (!pos) return;
+
+        // Already visible → don't shift the camera.
+        if (this.isWorldPointVisible(pos.x, pos.y)) return;
 
         // Calculate translation to center this point
         this.translateX = this.width / 2 - pos.x * this.scale;
