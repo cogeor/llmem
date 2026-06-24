@@ -36,8 +36,10 @@
  */
 
 import * as path from 'path';
+import * as crypto from 'crypto';
 import { writeFileAtomic } from '../graph/edgelist';
 import type { WorkspaceContext } from './workspace-context';
+import type { WorkspaceIO } from '../workspace/workspace-io';
 
 /** Filename of the manifest sidecar under the artifact root. */
 const MANIFEST_FILENAME = 'scan-manifest.json';
@@ -72,6 +74,14 @@ export interface ManifestEntry {
     lines: number;
     /** Filter/parse outcome for the file. */
     status: ManifestStatus;
+    /**
+     * Content sha256 (hex) of the file bytes. OPTIONAL: absent on entries
+     * written before content-hash freshness (a pre-Loop-10 v1 manifest) — such
+     * a hashless entry is treated as `changed` (recompute once) the next time
+     * its mtime/size moves, gaining a hash on the rewrite. Never bumps
+     * MANIFEST_VERSION, so an old manifest still validates.
+     */
+    hash?: string;
 }
 
 /** The v1 manifest envelope: a version tag plus a path → entry map. */
@@ -88,13 +98,33 @@ export interface Manifest {
 export interface FsStat {
     mtimeMs: number;
     size: number;
+    /**
+     * Content sha256 (hex). Supplied by the caller ONLY when mtime/size
+     * already differ from the manifest entry (the cheap pre-filter), so the
+     * diff never forces a hash read for an unchanged-fingerprint file. Left
+     * `undefined` for unchanged files — `diffManifest`'s mtime+size branch
+     * keeps them warm without ever reading bytes.
+     */
+    hash?: string;
+}
+
+/**
+ * Content sha256 (hex) of `rel`'s bytes. The SINGLE hashing impl for the
+ * manifest/refresh subsystem — byte-identical to `src/graph/worktree-state.ts`
+ * (`createHash('sha256').update(buf).digest('hex')`, buffer via the null
+ * encoding overload). Both `refreshFileGraph` and `refreshFolderGraph` consume
+ * it so the two change-detectors converge on ONE method.
+ */
+export async function hashFile(io: WorkspaceIO, rel: string): Promise<string> {
+    const buf = await io.readFile(rel, null);
+    return crypto.createHash('sha256').update(buf).digest('hex');
 }
 
 /** Classification result of `diffManifest`. */
 export interface ManifestDiff {
     /** Paths present in fsStats but absent from the manifest. */
     new: string[];
-    /** Paths present in both whose mtimeMs OR size differs. */
+    /** Paths present in both, classified changed by content hash (behind an mtime+size pre-filter). */
     changed: string[];
     /** Paths present in the manifest (under prefix) but absent from fsStats. */
     deleted: string[];
@@ -161,9 +191,11 @@ export async function readManifest(ctx: WorkspaceContext): Promise<Manifest> {
  * changed / deleted by comparing `fsStats` (the caller-provided current FS
  * snapshot) against `manifest`:
  *   - new     — in fsStats, not in manifest.
- *   - changed — in both, but mtimeMs OR size differs. BOTH are compared
- *               because mtimeMs precision varies by filesystem; size is the
- *               tie-breaker.
+ *   - changed — in both, decided by content HASH behind a CHEAP mtime+size
+ *               PRE-FILTER: identical mtime+size → unchanged (no hash read);
+ *               otherwise a hashless legacy entry → changed (recompute once),
+ *               equal hashes → WARM (a touch/checkout that did not edit bytes),
+ *               differing hashes (or no caller-supplied hash) → changed.
  *   - deleted — in manifest (under prefix), not in fsStats.
  *
  * Only paths under `subtreePrefix` are considered on BOTH sides, so a
@@ -192,7 +224,18 @@ export function diffManifest(
         const prev = manifest.files[p];
         if (!prev) {
             result.new.push(p);
-        } else if (prev.mtimeMs !== stat.mtimeMs || prev.size !== stat.size) {
+        } else if (prev.mtimeMs === stat.mtimeMs && prev.size === stat.size) {
+            // PRE-FILTER: mtime+size identical → assume unchanged, no hash needed.
+            // (unchanged: not pushed to any bucket)
+        } else if (prev.hash === undefined) {
+            // Hashless legacy entry whose mtime/size moved → recompute ONCE to
+            // gain a hash.
+            result.changed.push(p);
+        } else if (stat.hash !== undefined && prev.hash === stat.hash) {
+            // mtime/size moved (touch / checkout) but BYTES identical → WARM.
+            // (not pushed — this is the whole point of the loop)
+        } else {
+            // hash differs (or caller could not supply one) → real change.
             result.changed.push(p);
         }
     }

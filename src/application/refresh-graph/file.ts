@@ -16,6 +16,7 @@ import { applyArtifactToStores } from '../scan/edge-writer';
 import {
     readManifest,
     writeManifest,
+    hashFile,
     type Manifest,
     type ManifestStatus,
 } from '../scan-manifest';
@@ -52,11 +53,12 @@ export interface RefreshFileGraphOptions {
  * Warm vs cold path (single file)
  * -------------------------------
  *   - 'skip': no stat / read / parse / store write — return empty coverage.
- *   - WARM: the file is present in the manifest with an unchanged mtimeMs+size
- *     → return empty coverage WITHOUT re-parsing. (A previously gate-skipped
- *     file with an unchanged fingerprint stays skipped and emits no fresh
- *     caveat — the live freshness path only re-reports on change, matching the
- *     folder path's warm behavior.)
+ *   - WARM: the file is present in the manifest with an unchanged mtime+size
+ *     (the cheap pre-filter) OR a matching content hash → no re-parse, even if
+ *     mtime was bumped by a touch / checkout. (A previously gate-skipped file
+ *     with an unchanged fingerprint stays skipped and emits no fresh caveat —
+ *     the live freshness path only re-reports on change, matching the folder
+ *     path's warm behavior.)
  *   - COLD / CHANGED (new or fingerprint differs): remove this file's edges on
  *     BOTH stores (removeByFile, LS-07 — purges by SOURCE *and* TARGET),
  *     invalidate the cached parser state, apply the LS-03 gates to the single
@@ -101,10 +103,21 @@ export async function refreshFileGraph(
     // unchanged → WARM (no re-parse). New or changed → COLD/CHANGED.
     const manifest = await readManifest(ctx);
     const prev = manifest.files[rel];
-    const unchanged =
-        prev !== undefined && prev.mtimeMs === st.mtimeMs && prev.size === st.size;
-    if (unchanged) {
+    // CHEAP PRE-FILTER: identical mtime+size → warm without reading the file.
+    if (prev !== undefined && prev.mtimeMs === st.mtimeMs && prev.size === st.size) {
         return emptyCoverage();
+    }
+    // mtime/size moved (or new): hash to decide warm-vs-cold, but ONLY here —
+    // never on the unchanged-fingerprint fast path above.
+    let hash: string | undefined;
+    if (prev !== undefined) {
+        hash = await hashFile(io, rel);
+        // Same bytes despite a bumped mtime (touch / git checkout) AND the prior
+        // entry carried a hash → WARM, no re-parse. A hashless legacy entry falls
+        // through to COLD so it recomputes once and gains a hash.
+        if (prev.hash !== undefined && prev.hash === hash) {
+            return emptyCoverage();
+        }
     }
 
     // COLD / CHANGED PATH.
@@ -201,11 +214,18 @@ export async function refreshFileGraph(
         version: manifest.version,
         files: { ...manifest.files },
     };
+    // Carry the hash into the rewritten entry. Reuse the hash computed on the
+    // pre-filter path when present; a brand-new file (prev === undefined) skipped
+    // that path, so hash it now. (A skipped-* file was not read by the gates, but
+    // hashing it here is correct + cheap — the next refresh's mtime+size
+    // pre-filter then short-circuits it identically to today.)
+    const finalHash = hash ?? (await hashFile(io, rel));
     nextManifest.files[rel] = {
         mtimeMs: st.mtimeMs,
         size: st.size,
         lines,
         status,
+        hash: finalHash,
     };
     await writeManifest(ctx, nextManifest);
 

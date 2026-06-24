@@ -23,8 +23,10 @@
  * Warm vs cold path
  * -----------------
  *   - WARM (no diff): stat-walk the subtree + diff (empty) → return an empty
- *     coverage WITHOUT any file read / parse / store write. This is the steady
- *     state and must stay stat-only.
+ *     coverage WITHOUT any parse / store write. `changed` is hash-based behind
+ *     an mtime+size PRE-FILTER, so an unchanged-fingerprint file is never read;
+ *     only a file whose mtime/size moved is hashed to confirm warm-vs-cold.
+ *     This is the steady state and stays read-free for unchanged files.
  *   - COLD / CHANGED (any new/changed/deleted under the subtree): remove the
  *     changed+deleted files' source-side edges, run the filtered
  *     scanFolderRecursive over the subtree to repopulate (which re-gates and
@@ -53,6 +55,7 @@ import {
     readManifest,
     diffManifest,
     writeManifest,
+    hashFile,
     type Manifest,
     type ManifestEntry,
     type ManifestStatus,
@@ -98,6 +101,28 @@ export async function refreshFolderGraph(
     const fsStats = await walkFsStats(ctx, folderPath);
     const manifest = await readManifest(ctx);
     const subtreePrefix = folderPath.replace(/\\/g, '/');
+
+    // CHEAP PRE-FILTER → HASH: enrich ONLY the entries whose mtime/size moved
+    // from the manifest so we hash the minimal set. An unchanged-fingerprint
+    // file is left hash-undefined → diffManifest's mtime+size branch keeps it
+    // warm with no read. walkFsStats returns mutable plain objects, so mutating
+    // `st.hash` in place is safe.
+    for (const [rel, st] of Object.entries(fsStats)) {
+        const prev = manifest.files[rel];
+        const moved =
+            prev === undefined ||
+            prev.mtimeMs !== st.mtimeMs ||
+            prev.size !== st.size;
+        // Hash every new-or-moved file. We hash NEW files too (no
+        // `prev !== undefined` guard) so the cold scan persists a hash for them
+        // immediately — this is what lets a subsequent touch-without-edit stay
+        // WARM. Aligning with the single-file path, which also hashes new files.
+        // (Unchanged-fingerprint files are skipped → never read.)
+        if (moved) {
+            st.hash = await hashFile(ctx.io, rel);
+        }
+    }
+
     const diff = diffManifest(manifest, fsStats, subtreePrefix);
 
     const hasChanges =
@@ -195,10 +220,14 @@ export async function refreshFolderGraph(
             mtimeMs: st.mtimeMs,
             size: st.size,
             // The line count is not threaded back per-file from the scan;
-            // record 0 (the diff only compares mtimeMs + size, so this field
-            // is informational and never drives freshness).
+            // record 0 (this field is informational and never drives freshness).
             lines: 0,
             status: statusFor(rel),
+            // Prefer the freshly computed hash (new/changed files we hashed
+            // above); else carry forward the prior entry's hash (warm files we
+            // did NOT read). New files now gain a hash on the cold scan, so a
+            // later touch-without-edit on them stays WARM.
+            hash: st.hash ?? manifest.files[rel]?.hash,
         };
     }
     const nextManifest: Manifest = { version: manifest.version, files: nextFiles };
