@@ -62,15 +62,37 @@
  * untouched.
  */
 
+import type { WorkspaceContext } from '../workspace-context';
+import { ImportEdgeListStore, CallEdgeListStore } from '../../graph/edgelist';
+import { buildGraphsFromSplitEdgeLists } from '../../graph';
 import type { CallGraph, ImportGraph } from '../../graph/types';
 import type { InterfaceWidthFinding, Severity } from './types';
 
 /**
- * Loop-02 placeholder severity. Width findings RANK (they do not gate), so the
- * real signal is the metric numbers. Loop 04 replaces this constant with
- * percentile cutoffs over the live distribution.
+ * Default severity. Width findings RANK (they do not gate), so the real signal
+ * is the metric numbers; every finding starts 'low' and
+ * `calibrateInterfaceWidthSeverity` (Loop 04) promotes the shallow-wide folder
+ * outliers to 'medium' using percentile cutoffs over the live distribution.
  */
-const PLACEHOLDER_SEVERITY: Severity = 'low';
+const DEFAULT_SEVERITY: Severity = 'low';
+
+/**
+ * Calibration floor (Loop 04). Below this many folder findings with `w > 0`
+ * percentiles are not meaningful (a tiny repo), so calibration is skipped
+ * entirely and every finding stays 'low'. 8 mirrors the W_eff≈8 fixture size
+ * and keeps the Loop-02/03 micro-fixtures (which have < 8 folders) at 'low'.
+ */
+const MIN_CALIBRATION_N = 8;
+
+/**
+ * Floor on `wEff` before a folder can be flagged shallow-wide — avoids
+ * promoting a trivial 1–1.x "single door" folder even when the repo's p75 is
+ * tiny.
+ */
+const WEFF_FLOOR = 2;
+
+/** Floor on function cross-file inbound for the `[wide-utility]` note. */
+const FN_INBOUND_FLOOR = 5;
 
 /** Cap on `topEntryPoints` length (most-trafficked doors first). */
 const TOP_N = 5;
@@ -306,7 +328,7 @@ export function interfaceWidthFromGraph(
         const finding: InterfaceWidthFinding = {
             id,
             type: 'interface-width',
-            severity: PLACEHOLDER_SEVERITY,
+            severity: DEFAULT_SEVERITY,
             module,
             scope,
             treeDepth,
@@ -383,5 +405,148 @@ export function interfaceWidthFromGraph(
 
     // Determinism: stable order by id.
     findings.sort((a, b) => a.id.localeCompare(b.id));
+
+    // Loop 04: dynamic-percentile severity calibration. Order-preserving — only
+    // sets `.severity` and prepends a title note, never reorders.
+    return calibrateInterfaceWidthSeverity(findings);
+}
+
+/**
+ * Pure linear-interpolation quantile over an ASCENDING-sorted number array.
+ *
+ * `p` in [0,1]. Empty array ⇒ 0. Single element ⇒ that element. Matches the
+ * "type-7" / numpy-default interpolation (`rank = p·(n-1)`). Deterministic; no
+ * `Date` / `Math.random`. The caller is responsible for sorting ascending.
+ */
+export function quantile(sortedAsc: number[], p: number): number {
+    const n = sortedAsc.length;
+    if (n === 0) {
+        return 0;
+    }
+    if (n === 1) {
+        return sortedAsc[0];
+    }
+    const rank = p * (n - 1);
+    const lo = Math.floor(rank);
+    const hi = Math.ceil(rank);
+    if (lo === hi) {
+        return sortedAsc[lo];
+    }
+    const frac = rank - lo;
+    return sortedAsc[lo] + (sortedAsc[hi] - sortedAsc[lo]) * frac;
+}
+
+/**
+ * Pure: prepend a bracketed note to a finding's title exactly once (idempotent
+ * across a re-calibration of an already-noted finding — re-running calibration
+ * on its own output yields a byte-identical result, the determinism contract).
+ */
+function prependTitleNote(title: string, note: string): string {
+    const prefix = `[${note}] `;
+    return title.startsWith(prefix) ? title : prefix + title;
+}
+
+/**
+ * Loop 04 — dynamic-percentile severity calibration over a finished
+ * `InterfaceWidthFinding[]`.
+ *
+ * Computes cutoffs FROM THE RUN's OWN distribution (not hardcoded llmem
+ * numbers) so the report ranks the worst offenders in whatever repo it runs on:
+ *
+ *  - Gather FOLDER findings with `w > 0`. If fewer than `MIN_CALIBRATION_N`,
+ *    skip calibration — every finding stays 'low' (small-repo guard).
+ *  - `weffP75 = quantile(folderWEff, 0.75)`, `dmrP25 = quantile(folderDmr, 0.25)`.
+ *  - A FOLDER finding is **shallow-wide ⇒ 'medium'** (title prefix
+ *    `[shallow-wide]`) iff
+ *      `w > 0 && wEff >= max(weffP75, WEFF_FLOOR) && dmr <= dmrP25 && treeDepth >= 1`.
+ *    (`treeDepth >= 1` excludes the depth-0 root, reported-not-actionable.)
+ *  - `fnInboundP90 = quantile(functionInbound, 0.90)`. A FUNCTION finding with
+ *    `inbound >= max(fnInboundP90, FN_INBOUND_FLOOR)` gets a `[wide-utility]`
+ *    title note but stays 'low' (expected shared utilities — rank, don't gate).
+ *  - Everything else → 'low'.
+ *
+ * Order-preserving: returns the SAME array (mutated in place), so the id-sorted
+ * order from `interfaceWidthFromGraph` is untouched. Deterministic and
+ * idempotent (calibrating its own output is a no-op on title/severity). No
+ * `Date` / `Math.random`.
+ */
+export function calibrateInterfaceWidthSeverity(
+    findings: InterfaceWidthFinding[],
+): InterfaceWidthFinding[] {
+    // Folder findings with a real interface drive the folder percentiles.
+    const folderFindings = findings.filter(
+        f => f.scope === 'folder' && f.w > 0,
+    );
+
+    // Small-repo guard: too few folder points to percentile meaningfully.
+    if (folderFindings.length < MIN_CALIBRATION_N) {
+        for (const f of findings) {
+            f.severity = DEFAULT_SEVERITY;
+        }
+        return findings;
+    }
+
+    const folderWEff = folderFindings
+        .map(f => f.wEff)
+        .sort((a, b) => a - b);
+    const folderDmr = folderFindings
+        .map(f => f.dmr)
+        .sort((a, b) => a - b);
+    const weffP75 = quantile(folderWEff, 0.75);
+    const dmrP25 = quantile(folderDmr, 0.25);
+    const weffCut = Math.max(weffP75, WEFF_FLOOR);
+
+    // Function inbound percentile (the function's only entry point carries all
+    // its cross-file inbound; `w` is that distinct-entry count and the single
+    // topEntryPoints[0].inbound is the traffic). Use the inbound traffic count.
+    const functionInbound = findings
+        .filter(f => f.scope === 'function')
+        .map(f => f.topEntryPoints[0]?.inbound ?? 0)
+        .sort((a, b) => a - b);
+    const fnInboundP90 = quantile(functionInbound, 0.90);
+    const fnInboundCut = Math.max(fnInboundP90, FN_INBOUND_FLOOR);
+
+    for (const f of findings) {
+        if (
+            f.scope === 'folder' &&
+            f.w > 0 &&
+            f.wEff >= weffCut &&
+            f.dmr <= dmrP25 &&
+            f.treeDepth >= 1
+        ) {
+            f.severity = 'medium';
+            f.title = prependTitleNote(f.title, 'shallow-wide');
+        } else if (
+            f.scope === 'function' &&
+            (f.topEntryPoints[0]?.inbound ?? 0) >= fnInboundCut
+        ) {
+            // Rank-don't-gate: stays 'low', only annotated.
+            f.severity = DEFAULT_SEVERITY;
+            f.title = prependTitleNote(f.title, 'wide-utility');
+        } else {
+            f.severity = DEFAULT_SEVERITY;
+        }
+    }
+
     return findings;
+}
+
+/**
+ * ctx-in / data-out: load the import + call edge-list stores, build BOTH graphs
+ * once via `buildGraphsFromSplitEdgeLists`, and delegate to the pure
+ * `interfaceWidthFromGraph` (which calibrates severity before returning).
+ * Mirrors `computeHubReport` in metrics.ts.
+ */
+export async function computeInterfaceWidth(
+    ctx: WorkspaceContext,
+): Promise<InterfaceWidthFinding[]> {
+    const importStore = new ImportEdgeListStore(ctx.artifactRoot, ctx.io);
+    const callStore = new CallEdgeListStore(ctx.artifactRoot, ctx.io);
+    await importStore.load();
+    await callStore.load();
+    const { importGraph, callGraph } = buildGraphsFromSplitEdgeLists(
+        importStore.getData(),
+        callStore.getData(),
+    );
+    return interfaceWidthFromGraph(callGraph, importGraph);
 }
