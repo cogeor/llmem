@@ -24,8 +24,7 @@ import * as path from 'path';
 
 import { hasEdgeLists } from '../../viewer-generator';
 import { detectWorkspace } from '../../workspace';
-import { runHealthScan, renderHealthReport } from '../../application/analysis';
-import type { HealthReport } from '../../application/analysis';
+import { runHealthScan, renderHealthReport, reportHasFindingKind } from '../../application/analysis';
 import type { CommandSpec } from '../registry';
 import { CliError } from '../errors';
 
@@ -77,23 +76,6 @@ function resolveOutPaths(
     };
 }
 
-/**
- * True iff the report carries >=1 finding of `kind`. This loop only
- * `import-cycle` is populated; the other branches read the (stubbed) arrays so
- * they activate automatically once later loops fill them. An unrecognized kind
- * returns `false` (never fails the build on a typo this loop).
- */
-function reportHasKind(report: HealthReport, kind: string): boolean {
-    switch (kind) {
-        case 'import-cycle': return report.importCycles.length > 0;
-        case 'call-cycle':   return report.callCycles.length > 0;   // [] this loop
-        case 'clone':        return report.clones.length > 0;       // [] this loop
-        case 'hub':          return report.hubs.length > 0;         // [] this loop
-        case 'recursion':    return report.callCycles.some(c => c.type === 'recursion');
-        default: return false; // unknown kind -> never fails the build
-    }
-}
-
 export const healthCommand: CommandSpec<typeof healthArgs> = {
     name: 'health',
     description: 'Run the codebase health scan and write .llmem/health-report.{md,json}',
@@ -137,14 +119,20 @@ export const healthCommand: CommandSpec<typeof healthArgs> = {
         await fs.writeFile(jsonPath, JSON.stringify(report, null, 2), 'utf8');
 
         // M1: `--json` switches stdout to the JSON report but STILL writes both
-        // files (the durable artifact CI diffs).
+        // files (the durable artifact CI diffs). The emitted report carries no
+        // timestamp; `.vector` is byte-stable across runs (measurement-loop
+        // determinism).
         if (args.json) {
             console.log(JSON.stringify(report, null, 2));
         } else {
             console.log(md);
         }
 
-        if (args.failOn !== undefined && reportHasKind(report, args.failOn)) {
+        // `--fail-on <kind>` keys on the pure analysis-layer predicate. The
+        // full kind matrix (import-cycle|call-cycle|clone|hub|recursion) is
+        // wired in `reportHasFindingKind`; `import-cycle` is keyed on the
+        // RUNTIME cycle count, so a benign type-only cycle does NOT trip CI.
+        if (args.failOn !== undefined && reportHasFindingKind(report, args.failOn)) {
             // Silent non-zero exit: md/json already emitted. main.ts owns exit.
             throw new CliError('', 1);
         }

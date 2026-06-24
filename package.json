@@ -150,6 +150,7 @@
     "serve:dev": "npx ts-node src/cli/main.ts serve",
     "graph": "node ./bin/llmem generate",
     "graph:stats": "node ./bin/llmem stats",
+    "health:ci": "node ./bin/llmem health --fail-on import-cycle",
     "package": "vsce package",
     "package:dist": "echo 'Dist package - copy dist/* to deployment location'"
   },

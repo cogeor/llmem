@@ -16,7 +16,7 @@ export {
     HUB_DEGREE_THRESHOLD,
     KERNEL_INSTABILITY_MAX,
 } from './metrics';
-export { runHealthScan } from './health';
+export { runHealthScan, reportHasFindingKind } from './health';
 export type { HealthScanOptions } from './health';
 export { renderHealthReport } from './report-markdown';
 export { findClones, clusterClones, CLONE_MIN_TOKENS } from './clones';
