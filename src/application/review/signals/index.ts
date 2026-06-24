@@ -16,6 +16,7 @@ import { domSourceScanner } from './dom-source';
 import { interfaceWidthScanner } from './interface-width';
 import { listenerBalanceScanner } from './lifecycle';
 import { payloadOwnerScanner } from './payload-owners';
+import { routeLiteralScanner } from './routes';
 import { transportScanner } from './transport';
 
 /** Every signal scanner the recall wrapper runs. Append new scanners here. */
@@ -25,6 +26,7 @@ export const ALL_SCANNERS: SignalScanner[] = [
     interfaceWidthScanner,
     listenerBalanceScanner,
     payloadOwnerScanner,
+    routeLiteralScanner,
     transportScanner,
 ];
 
@@ -43,5 +45,6 @@ export { domSourceScanner } from './dom-source';
 export { interfaceWidthScanner } from './interface-width';
 export { listenerBalanceScanner } from './lifecycle';
 export { payloadOwnerScanner } from './payload-owners';
+export { routeLiteralScanner } from './routes';
 export { transportScanner } from './transport';
 export { mergeSignals } from '../recall';

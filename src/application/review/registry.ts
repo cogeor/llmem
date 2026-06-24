@@ -432,7 +432,7 @@ export const REVIEW_REGISTRY: readonly ChecklistItem[] = Object.freeze([
         scope: 'repo',
         recallStrength: '●●○',
         title: 'Unreachable routes/views',
-        recallQuery: 'instruction',
+        recallQuery: 'routes',
         promptInstruction:
             'Graph surfaces members of a route/view-name union with no matching registration call. LLM judges dormant-pending vs delete. (graph add: B3 route-literal reachability.)',
     },
