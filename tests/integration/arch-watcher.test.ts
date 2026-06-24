@@ -150,12 +150,13 @@ function setupTestWorkspace(): void {
 
     // Create minimal edge lists so server can start. Loop 16 introduced the
     // schemaVersion: 1 wire format; Loop 13 (codebase-quality-v2) bumped it to
-    // v2 + added the resolverVersion stamp; Loop 12 (this cycle) bumped it to
-    // v3 (NodeEntry gained the optional callGraph capability). We write the
-    // current shape so this test exercises what production now writes; the
-    // migrator now REJECTS pre-v3 shapes outright.
+    // v2 + added the resolverVersion stamp; Loop 12 bumped it to v3 (NodeEntry
+    // gained the optional callGraph capability); the health-analysis cycle
+    // bumped it to v4 (EdgeEntry gained the optional `typeOnly` flag). We write
+    // the current shape so this test exercises what production now writes; the
+    // migrator now REJECTS pre-v4 shapes outright.
     const emptyEdgeList = {
-        schemaVersion: 3,
+        schemaVersion: 4,
         resolverVersion: 'ts-resolveModuleName-v1',
         timestamp: new Date().toISOString(),
         nodes: [],

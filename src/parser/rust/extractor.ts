@@ -148,6 +148,7 @@ export class RustExtractor implements ArtifactExtractor {
             source,
             resolvedPath: null,
             specifiers: specifiers.length > 0 ? specifiers : [{ name: source }],
+            typeOnly: false,
             loc: this.getLoc(node)
         };
     }

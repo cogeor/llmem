@@ -37,12 +37,44 @@ export function importCyclesFromGraph(importGraph: ImportGraph): CycleFinding[] 
     const g = excludeAggregatorEdges(importGraph);
     const sccs = nonTrivialSccs(g);
 
+    // Recall-first: the SCCs above span ALL edges (type-only included). The
+    // runtime-vs-type-only split is a report-time derivation — re-run the SAME
+    // SCC engine over a node-preserving COPY with type-only edges filtered out
+    // (`tarjanSccs` reads only e.source/e.target, so the filter is safe). A node
+    // that still sits in some runtime SCC is a `runtimeCyclicNode`; intersecting
+    // those with each reported SCC yields its surviving runtime core.
+    const gRuntime: ImportGraph = {
+        nodes: new Map(g.nodes),
+        edges: g.edges.filter(e => !e.typeOnly),
+    };
+    const runtimeSccs = nonTrivialSccs(gRuntime);
+    const runtimeCyclicNodes = new Set<string>();
+    for (const component of runtimeSccs) {
+        for (const id of component) {
+            runtimeCyclicNodes.add(id);
+        }
+    }
+
     return sccs.map((scc): CycleFinding => {
         const hops = shortestCyclePath(g, scc);
         const path =
             hops.length > 0
                 ? [hops[0].source, ...hops.map(h => h.target)]
                 : [...scc];
+
+        // In-cycle edges of THIS scc: both endpoints in the scc member set.
+        const memberSet = new Set(scc);
+        const inCycleEdges = g.edges.filter(
+            e => memberSet.has(e.source) && memberSet.has(e.target),
+        );
+        const totalEdgeCount = inCycleEdges.length;
+        const typeOnlyEdgeCount = inCycleEdges.filter(e => e.typeOnly === true).length;
+
+        // Members surviving type-only edge removal, intersected with this scc.
+        // Sorted for determinism (the scc array is already sorted, but be explicit).
+        const runtimeMembers = scc
+            .filter(id => runtimeCyclicNodes.has(id))
+            .sort();
 
         return {
             id: 'import-cycle:' + scc.join('|'),
@@ -54,6 +86,9 @@ export function importCyclesFromGraph(importGraph: ImportGraph): CycleFinding[] 
             relatedFiles: scc,
             members: scc,
             shortestPath: path,
+            typeOnlyEdgeCount,
+            totalEdgeCount,
+            runtimeMembers,
         };
     });
 }

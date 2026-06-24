@@ -93,6 +93,7 @@ export class PythonImportParser {
                     source: moduleName,
                     resolvedPath: null,
                     specifiers: [{ name: moduleName }],
+                    typeOnly: false,
                     loc: this.getLoc(node)
                 });
             } else if (child.type === 'aliased_import') {
@@ -117,6 +118,7 @@ export class PythonImportParser {
                         source: moduleName,
                         resolvedPath: null,
                         specifiers: [{ name: moduleName, alias }],
+                        typeOnly: false,
                         loc: this.getLoc(node)
                     });
                 }
@@ -247,6 +249,7 @@ export class PythonImportParser {
             source: modulePath,
             resolvedPath: null,
             specifiers,
+            typeOnly: false,
             loc: this.getLoc(node)
         };
     }

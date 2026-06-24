@@ -12,6 +12,14 @@ export type ImportSpec = {
     source: string;
     resolvedPath: string | null;
     specifiers: Array<{ name: string; alias?: string }>;
+    /**
+     * True when this import is purely a TypeScript `import type` (erased at
+     * compile time): either a whole-clause `import type {...}` / `import type X`,
+     * or a named-import clause where EVERY specifier is `type`-qualified
+     * (`import { type A, type B }`). A mixed import (`import { type A, B }`) has a
+     * runtime binding and is `false`. Non-TS languages always set `false`.
+     */
+    typeOnly: boolean;
     loc: Loc;
 }
 

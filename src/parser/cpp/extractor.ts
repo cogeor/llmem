@@ -129,6 +129,7 @@ export class CppExtractor implements ArtifactExtractor {
             source,
             resolvedPath: null, // Could be resolved based on include paths
             specifiers: [{ name: source }],
+            typeOnly: false,
             loc: this.getLoc(node)
         };
     }

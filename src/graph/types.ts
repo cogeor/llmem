@@ -38,6 +38,13 @@ export interface ExternalModuleNode extends Node {
 export interface ImportEdge extends Edge {
     kind: 'import';
     specifiers: Array<{ name: string; alias?: string }>; // What is imported
+    /**
+     * True when this edge is a TypeScript `import type` (erased at compile
+     * time). Forwarded from the persisted `EdgeEntry.typeOnly`. The SCC engine
+     * ignores it (cycles are computed over ALL edges); the import-cycle analyzer
+     * uses it to derive the runtime-vs-type-only cycle split. Absent ⇒ `false`.
+     */
+    typeOnly?: boolean;
 }
 
 export type ImportGraphNode = FileNode | ExternalModuleNode;

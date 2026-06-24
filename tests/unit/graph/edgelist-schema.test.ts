@@ -27,8 +27,8 @@ const FILE = '/test/path/edgelist.json';
 test('edgelist-schema: createEmptyEdgeList round-trips through loadEdgeListData', () => {
     const empty = createEmptyEdgeList();
     const round = loadEdgeListData(JSON.parse(JSON.stringify(empty)), FILE);
-    assert.equal(round.schemaVersion, 3);
-    assert.equal(EDGELIST_SCHEMA_VERSION, 3);
+    assert.equal(round.schemaVersion, 4);
+    assert.equal(EDGELIST_SCHEMA_VERSION, 4);
     assert.equal(round.resolverVersion, 'ts-resolveModuleName-v1');
     assert.equal(EDGELIST_RESOLVER_VERSION, 'ts-resolveModuleName-v1');
     assert.deepEqual(round.nodes, []);

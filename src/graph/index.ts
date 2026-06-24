@@ -164,7 +164,12 @@ export function buildGraphsFromSplitEdgeLists(
                 source: edge.source,
                 target: effectiveTarget,
                 kind: 'import',
-                specifiers: []
+                specifiers: [],
+                // LOAD-BEARING: the ImportEdge is RECONSTRUCTED here (not passed
+                // through), so the persisted `typeOnly` flag must be forwarded
+                // explicitly or it is silently dropped for every downstream
+                // consumer (notably the import-cycle analyzer's runtime split).
+                typeOnly: edge.typeOnly
             });
         }
     }

@@ -9,10 +9,15 @@
  * Versioning
  * ----------
  * The persisted envelope carries TWO version fields:
- *   - `schemaVersion: 3` — monotonic integer for the on-disk shape.
+ *   - `schemaVersion: 4` — monotonic integer for the on-disk shape.
  *     Bumped 2→3 by Loop 12: NodeEntry gained an optional `callGraph`
  *     capability field (persisted so the graph builder stops importing
  *     parser/config to re-derive it).
+ *     Bumped 3→4 by the health-analysis cycle: EdgeEntry gained an optional
+ *     `typeOnly` flag tagging TypeScript `import type` edges (erased at
+ *     compile time) so the import-cycle analyzer can split runtime cycles
+ *     from type-only ones. The import RESOLVER is unchanged, so
+ *     `EDGELIST_RESOLVER_VERSION` stays `'ts-resolveModuleName-v1'`.
  *   - `resolverVersion: 'ts-resolveModuleName-v1'` — names the import
  *     resolver implementation that produced the file. Loop 12 swapped
  *     the heuristic resolver for `ts.resolveModuleName`, which changes
@@ -40,7 +45,7 @@
 
 import { z } from 'zod';
 
-export const EDGELIST_SCHEMA_VERSION = 3;
+export const EDGELIST_SCHEMA_VERSION = 4;
 export const EDGELIST_RESOLVER_VERSION = 'ts-resolveModuleName-v1';
 
 // ---------------------------------------------------------------------------
@@ -75,6 +80,11 @@ export const EdgeEntrySchema = z.object({
     source: z.string().min(1),
     target: z.string().min(1),
     kind: EdgeKindSchema,
+    // Schema v4: TypeScript `import type` edges are erased at compile time, so a
+    // cycle through only such edges is NOT a runtime import cycle. The converter
+    // stamps this from `ImportSpec.typeOnly`; the analyzer derives runtime-vs-
+    // type-only cycle counts from it. Optional + absent ⇒ treated as `false`.
+    typeOnly: z.boolean().optional(),
 });
 
 export const EdgeListV2Schema = z.object({

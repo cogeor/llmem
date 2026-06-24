@@ -38,6 +38,7 @@ function importSpec(source: string, names: string[]): ImportSpec {
         source,
         resolvedPath: null,
         specifiers: names.map((name) => ({ name })),
+        typeOnly: false,
         loc: LOC,
     };
 }
@@ -144,6 +145,7 @@ describe('PC-07 cross-file from-import call resolution (tier-2)', () => {
             source: '.util',
             resolvedPath: null,
             specifiers: [{ name: 'f', alias: 'g' }],
+            typeOnly: false,
             loc: LOC,
         };
 

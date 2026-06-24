@@ -15,7 +15,7 @@
  *
  * Cross-platform notes mirror cli-describe.test.ts: spawn `node` against the BIN
  * shim (not `.cmd`), `FORCE_COLOR=0`, and normalize CRLF→LF before assertions.
- * The edge-list envelope is `schemaVersion: 3` (Loop 03 bumps to 4).
+ * The edge-list envelope is `schemaVersion: 4` (bumped by Loop 03's typeOnly work).
  */
 
 import { test } from 'node:test';
@@ -71,7 +71,7 @@ function seedWorkspace(tmp: string, importEdges: EdgeLit[]): void {
     }));
 
     const importEnvelope = JSON.stringify({
-        schemaVersion: 3,
+        schemaVersion: 4,
         resolverVersion: 'ts-resolveModuleName-v1',
         timestamp: new Date().toISOString(),
         nodes: fileNodes,
@@ -82,7 +82,7 @@ function seedWorkspace(tmp: string, importEdges: EdgeLit[]): void {
         })),
     });
     const callEnvelope = JSON.stringify({
-        schemaVersion: 3,
+        schemaVersion: 4,
         resolverVersion: 'ts-resolveModuleName-v1',
         timestamp: new Date().toISOString(),
         nodes: [],

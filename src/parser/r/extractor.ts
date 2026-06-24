@@ -145,6 +145,7 @@ export class RExtractor implements ArtifactExtractor {
             source,
             resolvedPath: null,
             specifiers: [{ name: source }],
+            typeOnly: false,
             loc: this.getLoc(node)
         };
     }

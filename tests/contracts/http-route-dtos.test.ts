@@ -111,7 +111,7 @@ test('route DTO: GET /api/stats with seeded edge lists parses against schema', a
     const artifactDir = path.join(tmp, '.artifacts');
     fs.mkdirSync(artifactDir, { recursive: true });
     const empty = {
-        schemaVersion: 3,
+        schemaVersion: 4,
         resolverVersion: 'ts-resolveModuleName-v1',
         timestamp: new Date().toISOString(),
         nodes: [],

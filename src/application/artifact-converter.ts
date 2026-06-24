@@ -139,7 +139,8 @@ export function artifactToEdgeList(
                 importEdges.push({
                     source: fileId,
                     target: targetFileId,
-                    kind: 'import'
+                    kind: 'import',
+                    typeOnly: imp.typeOnly
                 });
 
                 // Create nodes for imported classes/functions from external modules
@@ -163,7 +164,8 @@ export function artifactToEdgeList(
                 importEdges.push({
                     source: fileId,
                     target: targetFileId,
-                    kind: 'import'
+                    kind: 'import',
+                    typeOnly: imp.typeOnly
                 });
             }
         }

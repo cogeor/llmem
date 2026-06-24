@@ -87,11 +87,30 @@ export function extractFromSource(
                 const hasNamespaceImport = specifiers.some(s => s.name === '*');
                 const importKind = hasNamespaceImport ? 'namespace' : 'es';
 
+                // `import type` detection (erased at compile time, so a cycle
+                // through only such edges is NOT a runtime import cycle):
+                //  - whole-clause `import type {A}` / `import type X` =>
+                //    `importClause.isTypeOnly === true`.
+                //  - named clause where EVERY specifier is `type`-qualified
+                //    (`import { type A, type B }`) and the list is non-empty.
+                //  - MIXED (`import { type A, B }`) has a runtime binding => false.
+                //  - default / namespace / plain named => false.
+                const wholeClauseTypeOnly = !!node.importClause?.isTypeOnly;
+                let allNamedAreType = false;
+                const namedBindings = node.importClause?.namedBindings;
+                if (namedBindings && ts.isNamedImports(namedBindings)) {
+                    allNamedAreType =
+                        namedBindings.elements.length > 0 &&
+                        namedBindings.elements.every(el => el.isTypeOnly);
+                }
+                const typeOnly = wholeClauseTypeOnly || allNamedAreType;
+
                 imports.push({
                     kind: importKind,
                     source,
                     resolvedPath,
                     specifiers,
+                    typeOnly,
                     loc: getLoc(node)
                 });
             }

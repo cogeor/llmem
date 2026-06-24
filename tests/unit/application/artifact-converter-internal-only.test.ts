@@ -33,6 +33,7 @@ function importSpec(source: string, names: string[]): ImportSpec {
         source,
         resolvedPath: null,
         specifiers: names.map((name) => ({ name })),
+        typeOnly: false,
         loc: LOC,
     };
 }

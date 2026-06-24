@@ -213,11 +213,11 @@ test('generate and stats remain callable despite being hidden', () => {
         const artifactDir = path.join(tmp, '.llmem', 'graph');
         fs.mkdirSync(artifactDir, { recursive: true });
         // Edge-list shape is the current wire shape from `edgelist-schema.ts`
-        // (schemaVersion: 3 + resolverVersion + nodes/edges arrays +
+        // (schemaVersion: 4 + resolverVersion + nodes/edges arrays +
         // timestamp). An empty edge list parses cleanly — `generate` will
         // render an empty webview, `stats` will report all zeros.
         const emptyEdgelist = JSON.stringify({
-            schemaVersion: 3,
+            schemaVersion: 4,
             resolverVersion: 'ts-resolveModuleName-v1',
             timestamp: new Date().toISOString(),
             nodes: [],

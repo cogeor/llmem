@@ -38,6 +38,12 @@ export interface CycleFinding extends Finding {
     kind: 'import-cycle'; // discriminator for THIS loop (call/recursion added Loop 04)
     members: string[]; // sorted SCC node ids
     shortestPath: string[]; // closed ordered node-id hop list (path[0] === path[last])
+    // Loop 03 (type-only annotation): edge-count split + runtime-member
+    // derivation. OPTIONAL so hand-built findings (Loop 01 determinism tests)
+    // still type-check and the renderer can fall back deterministically.
+    typeOnlyEdgeCount?: number; // in-cycle edges that are `import type` (erased)
+    totalEdgeCount?: number;    // total in-cycle edges of this SCC
+    runtimeMembers?: string[];  // members surviving type-only edge removal (sorted)
 }
 
 /** A node-attached smell (webview-only consumer in later loops; type defined now). */

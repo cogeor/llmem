@@ -40,9 +40,16 @@ export async function runHealthScan(
     const hubs: HealthReport['hubs'] = [];
 
     const vector: HealthVector = zeroHealthVector();
-    // Loop 03 splits runtime vs incl-type-only; for now both equal the count.
-    vector.importCyclesRuntime = importCycles.length;
+    // incl-type-only: ALL cycles over the full graph (the analyzer runs the SCC
+    // engine over every edge). runtime: only cycles whose runtime core still has
+    // >= 2 members after type-only edges are stripped — a cycle held together
+    // solely by `import type` edges collapses (runtimeMembers.length < 2) and is
+    // NOT a runtime cycle. (Self-loops don't occur for file imports; the >= 2
+    // test is correct here. Call-cycle recursion is Loop 04.)
     vector.importCyclesInclTypeOnly = importCycles.length;
+    vector.importCyclesRuntime = importCycles.filter(
+        c => (c.runtimeMembers?.length ?? c.members.length) >= 2,
+    ).length;
 
     // Basename label only (no timestamp). Split on both separators so it works
     // regardless of the OS-native form of `workspaceRoot`.

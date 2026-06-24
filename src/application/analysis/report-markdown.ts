@@ -42,7 +42,10 @@ export function renderHealthReport(report: HealthReport): string {
         cycles.forEach((f, i) => {
             lines.push('');
             lines.push(
-                `Cycle ${i + 1} (${f.members.length} files): ${f.members.join(', ')}`,
+                `Cycle ${i + 1}: ${f.members.length}-file cycle — ` +
+                    `${f.typeOnlyEdgeCount ?? 0} of ${f.totalEdgeCount ?? 0} ` +
+                    `edges are type-only (erased at compile time); ` +
+                    `runtime cycle is ${f.runtimeMembers?.length ?? f.members.length} files`,
             );
             lines.push(`  ${f.shortestPath.join(' -> ')}`);
         });
