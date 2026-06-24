@@ -19,3 +19,4 @@ export {
     runReviewRecall,
     ReviewRecallError,
 } from './recall';
+export { renderReviewChecklist } from './render';
