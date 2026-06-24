@@ -20,3 +20,10 @@ export {
     ReviewRecallError,
 } from './recall';
 export { renderReviewChecklist } from './render';
+export { validateCompleteness } from './validate';
+export type { SubmittedItem, CompletenessResult } from './validate';
+export {
+    reviewArtifactRelPath,
+    renderFilledReview,
+    persistReviewMarkdown,
+} from './persist';

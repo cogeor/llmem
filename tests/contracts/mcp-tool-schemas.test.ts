@@ -27,6 +27,8 @@ import {
     ReportFileInfoSchema,
     FolderInfoSchema,
     ReportFolderInfoSchema,
+    ReviewSchema,
+    ReportReviewSchema,
     OpenWindowSchema,
 } from '../../src/mcp/tools';
 
@@ -274,6 +276,113 @@ describe('mcp tool schema: report_folder_info', () => {
             key_files: [{ name: 'foo.ts' /* missing summary */ }],
         };
         assert.throws(() => ReportFolderInfoSchema.parse(bad), z.ZodError);
+    });
+});
+
+// =============================================================================
+// review
+// =============================================================================
+
+describe('mcp tool schema: review', () => {
+    const KNOWN_GOOD = {
+        workspaceRoot: '/abs/path/to/project',
+        path: 'src/webview',
+    };
+
+    test('parses a known-good payload (ruleset defaults to both)', () => {
+        const got = ReviewSchema.parse(KNOWN_GOOD);
+        assert.deepEqual(got, { ...KNOWN_GOOD, ruleset: 'both' });
+    });
+
+    test('ruleset defaults to both when omitted', () => {
+        assert.equal(ReviewSchema.parse(KNOWN_GOOD).ruleset, 'both');
+    });
+
+    test("accepts ruleset: 'general' and 'frontend'", () => {
+        assert.equal(ReviewSchema.parse({ ...KNOWN_GOOD, ruleset: 'general' }).ruleset, 'general');
+        assert.equal(ReviewSchema.parse({ ...KNOWN_GOOD, ruleset: 'frontend' }).ruleset, 'frontend');
+    });
+
+    test('rejects an unknown ruleset value', () => {
+        assert.throws(
+            () => ReviewSchema.parse({ ...KNOWN_GOOD, ruleset: 'backend' }),
+            z.ZodError,
+        );
+    });
+
+    test('property set is exactly [path, ruleset, workspaceRoot]', () => {
+        const parsed = ReviewSchema.parse(KNOWN_GOOD);
+        assert.deepEqual(
+            Object.keys(parsed).sort(),
+            ['path', 'ruleset', 'workspaceRoot'],
+        );
+    });
+
+    test('rejects payload missing workspaceRoot', () => {
+        assert.throws(() => ReviewSchema.parse({ path: 'src/webview' }), z.ZodError);
+    });
+
+    test('rejects payload missing path', () => {
+        assert.throws(() => ReviewSchema.parse({ workspaceRoot: '/abs/path' }), z.ZodError);
+    });
+});
+
+// =============================================================================
+// report_review
+// =============================================================================
+
+describe('mcp tool schema: report_review', () => {
+    const KNOWN_GOOD = {
+        workspaceRoot: '/abs/path/to/project',
+        path: 'src/webview',
+        checklist: [
+            { id: 'D1', status: 'issue-validated', note: 'owner is X' },
+            { id: 'DC1', status: 'non-issue' },
+        ],
+    };
+
+    test('parses a known-good payload (ruleset defaults to both)', () => {
+        const got = ReportReviewSchema.parse(KNOWN_GOOD);
+        assert.deepEqual(got, { ...KNOWN_GOOD, ruleset: 'both' });
+    });
+
+    test('ruleset defaults to both when omitted', () => {
+        assert.equal(ReportReviewSchema.parse(KNOWN_GOOD).ruleset, 'both');
+    });
+
+    test('property set is exactly [checklist, path, ruleset, workspaceRoot]', () => {
+        const parsed = ReportReviewSchema.parse(KNOWN_GOOD);
+        assert.deepEqual(
+            Object.keys(parsed).sort(),
+            ['checklist', 'path', 'ruleset', 'workspaceRoot'],
+        );
+    });
+
+    test('checklist[].property set is exactly [id, note, status] (with note) / [id, status] (without)', () => {
+        const parsed = ReportReviewSchema.parse(KNOWN_GOOD);
+        assert.deepEqual(Object.keys(parsed.checklist[0]).sort(), ['id', 'note', 'status']);
+        assert.deepEqual(Object.keys(parsed.checklist[1]).sort(), ['id', 'status']);
+    });
+
+    test('rejects an unknown checklist item status', () => {
+        const bad = {
+            ...KNOWN_GOOD,
+            checklist: [{ id: 'D1', status: 'maybe' }],
+        };
+        assert.throws(() => ReportReviewSchema.parse(bad), z.ZodError);
+    });
+
+    test('rejects a checklist item missing required id', () => {
+        const bad = {
+            ...KNOWN_GOOD,
+            checklist: [{ status: 'non-issue' }],
+        };
+        assert.throws(() => ReportReviewSchema.parse(bad), z.ZodError);
+    });
+
+    test('rejects payload missing checklist', () => {
+        const { checklist, ...bad } = KNOWN_GOOD;
+        assert.throws(() => ReportReviewSchema.parse(bad), z.ZodError);
     });
 });
 

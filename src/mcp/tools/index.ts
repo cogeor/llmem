@@ -11,6 +11,8 @@ import { fileInfoTool } from './file-info';
 import { reportFileInfoTool } from './report-file-info';
 import { folderInfoTool } from './folder-info';
 import { reportFolderInfoTool } from './report-folder-info';
+import { reviewTool } from './review';
+import { reportReviewTool } from './report-review';
 import { openWindowTool } from './open-window';
 
 // Per-tool re-exports (schemas, handlers, tool definitions)
@@ -43,6 +45,20 @@ export {
 export type { ReportFolderInfoInput } from './report-folder-info';
 
 export {
+    reviewTool,
+    ReviewSchema,
+    handleReview,
+} from './review';
+export type { ReviewInput } from './review';
+
+export {
+    reportReviewTool,
+    ReportReviewSchema,
+    handleReportReview,
+} from './report-review';
+export type { ReportReviewInput } from './report-review';
+
+export {
     openWindowTool,
     OpenWindowSchema,
     handleOpenWindow,
@@ -56,6 +72,8 @@ export const toolDefinitions = [
     reportFileInfoTool,
     folderInfoTool,
     reportFolderInfoTool,
+    reviewTool,
+    reportReviewTool,
     openWindowTool,
 ];
 
