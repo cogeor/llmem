@@ -26,6 +26,10 @@ const STATUS_NOT_YET_CHECKED = 'NOT YET CHECKED';
 /** The sentinel line for a graph-blind / zero-candidate entry. */
 const GRAPH_BLIND_LINE = '      0 candidates — graph blind here, read for it';
 
+/** Builds the deterministic cap line from a precomputed count (M = total - shown). */
+const capLine = (total: number, shown: number): string =>
+    `        … +${total - shown} more (capped)`;
+
 /** Render a `ReviewChecklist` as deterministic, timestamp-free markdown. */
 export function renderReviewChecklist(checklist: ReviewChecklist): string {
     const lines: string[] = [];
@@ -47,7 +51,7 @@ export function renderReviewChecklist(checklist: ReviewChecklist): string {
     // first entry, in first-seen (registry) order. EVERY entry is emitted.
     let lastCategory: string | null = null;
     for (const entry of checklist.entries) {
-        const { item, candidates, graphBlind } = entry;
+        const { item, candidates, graphBlind, capped } = entry;
 
         if (item.category !== lastCategory) {
             lines.push('');
@@ -67,6 +71,9 @@ export function renderReviewChecklist(checklist: ReviewChecklist): string {
             for (const candidate of candidates) {
                 const note = candidate.note ? ` — ${candidate.note}` : '';
                 lines.push(`        - ${candidate.ref}${note}`);
+            }
+            if (capped) {
+                lines.push(capLine(capped.total, capped.shown));
             }
         }
     }

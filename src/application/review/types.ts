@@ -57,6 +57,15 @@ export interface ChecklistEntry {
     readonly candidates: readonly RecallCandidate[];
     readonly status: ChecklistStatus; // defaults 'not-yet-checked'
     readonly graphBlind: boolean; // true => "0 candidates — read for it"
+    /**
+     * Set ONLY when the recall pass capped this entry's candidate list to the
+     * top-N most salient. `shown` = candidates actually emitted (== candidates.length),
+     * `total` = the true pre-cap count. The renderer emits a single
+     * "… +(total-shown) more (capped)" line from these numbers — never Date/IO,
+     * never recomputed. Omitted (undefined) when no cap applied, so JSON.stringify
+     * stays byte-stable for uncapped entries.
+     */
+    readonly capped?: { readonly shown: number; readonly total: number };
 }
 
 /** The composed checklist for one reviewed unit. */

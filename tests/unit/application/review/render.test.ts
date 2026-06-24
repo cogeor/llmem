@@ -14,6 +14,8 @@ import { ImportGraph, ImportEdge } from '../../../../src/graph/types';
 import type {
     HealthReport,
     CycleFinding,
+    InterfaceWidthFinding,
+    Severity,
 } from '../../../../src/application/analysis/types';
 import { zeroHealthVector } from '../../../../src/application/analysis/types';
 import { reviewRecallFromReport } from '../../../../src/application/review/recall';
@@ -72,6 +74,42 @@ const fixtureGraph = (): ImportGraph =>
             ie('src/webview/b.ts', 'src/webview/a.ts'),
         ],
     );
+
+const widthFinding = (
+    module: string,
+    severity: Severity = 'high',
+): InterfaceWidthFinding => ({
+    id: `width:${module}`,
+    type: 'interface-width',
+    severity,
+    title: `interface width ${module}`,
+    detail: `${module} surface`,
+    relatedFiles: [module],
+    module,
+    scope: 'file',
+    treeDepth: 1,
+    w: 4,
+    wEff: 4,
+    moduleDepth: 10,
+    dmr: 2.5,
+    topEntryPoints: [],
+});
+
+// A ruleset 'frontend' checklist over src/webview with 20 surviving (high) width
+// findings so FI1 is capped to 15 and emits a "… +5 more (capped)" line.
+const buildCappedChecklist = () => {
+    const findings: InterfaceWidthFinding[] = [];
+    for (let i = 0; i < 20; i++) {
+        const n = String(i).padStart(2, '0');
+        findings.push(widthFinding(`src/webview/m${n}.ts`));
+    }
+    return reviewRecallFromReport(
+        emptyReport({ interfaceWidth: findings }),
+        fixtureGraph(),
+        'src/webview',
+        'frontend',
+    );
+};
 
 // A ruleset 'both' checklist over src/webview with one in-subtree cycle so at
 // least one entry (DEP1) carries candidates and the rest are graph-blind.
@@ -159,4 +197,40 @@ test('every checkbox line status reads NOT YET CHECKED (none pre-ticked)', () =>
     }
     // No ticked box ever appears.
     assert.ok(!md.includes('- [x]'), 'no pre-ticked box in the output');
+});
+
+// ---- Case 5: capped entry renders the deterministic cap line --------------
+
+test('a capped entry renders the exact "… +M more (capped)" line; uncapped has none', () => {
+    const md = renderReviewChecklist(buildCappedChecklist());
+    const lines = md.split('\n');
+
+    const fi1Idx = lines.findIndex(l => l.startsWith('- [ ] FI1 — '));
+    assert.ok(fi1Idx !== -1, 'FI1 checkbox line is present');
+
+    // The cap line names the true overflow (20 surviving - 15 shown = 5).
+    const capIdx = lines.indexOf('        … +5 more (capped)');
+    assert.ok(capIdx !== -1, 'cap line with the real total appears');
+    assert.ok(capIdx > fi1Idx, 'cap line follows the FI1 checkbox');
+
+    // Exactly 15 candidate lines precede the cap line for FI1.
+    const fi1Candidates = lines
+        .slice(fi1Idx, capIdx)
+        .filter(l => l.startsWith('        - '));
+    assert.equal(fi1Candidates.length, 15, 'FI1 shows exactly 15 candidate lines');
+
+    // No OTHER entry (uncapped) emits a cap line.
+    const capLines = lines.filter(l => l.endsWith('more (capped)'));
+    assert.equal(capLines.length, 1, 'only the single capped entry emits a cap line');
+});
+
+// ---- Case 6: capped checklist renders byte-identically twice --------------
+
+test('rendering the capped checklist twice is byte-identical', () => {
+    const checklist = buildCappedChecklist();
+    assert.equal(
+        renderReviewChecklist(checklist),
+        renderReviewChecklist(checklist),
+        'capped checklist in → identical markdown out',
+    );
 });
