@@ -77,9 +77,29 @@ export function renderHealthReport(report: HealthReport): string {
         recursion.forEach(f => lines.push(`  ${f.title}`));
     }
 
-    // §3 Duplication is Loop 06; emit the spec's fixed section number `## 4`
-    // here even with the §3 gap. Order-preserving: the array is already sorted
-    // by metrics.ts (degree desc, id asc) — do NOT re-sort.
+    // §3 Duplication (Loop 06). Clusters are already sorted by `findClones`
+    // (by id); the renderer must NOT re-sort. Deterministic, no timestamp.
+    lines.push('');
+    lines.push('## 3. Duplication');
+    const clones = report.clones;
+    if (clones.length === 0) {
+        lines.push('No duplication found.');
+    } else {
+        lines.push(`Found ${clones.length} clone cluster(s):`);
+        clones.forEach((c, i) => {
+            lines.push('');
+            const note =
+                c.severity === 'low' ? ' [sibling-boilerplate]' : '';
+            lines.push(
+                `Cluster ${i + 1} (${c.severity})${note}: ${c.members.length} members`,
+            );
+            lines.push(`  members: ${c.members.join(', ')}`);
+            lines.push(`  files: ${c.relatedFiles.join(', ')}`);
+        });
+    }
+
+    // Order-preserving: the hubs array is already sorted by metrics.ts (degree
+    // desc, id asc) — do NOT re-sort.
     lines.push('');
     lines.push('## 4. Hubs & instability');
     const hubs = report.hubs;

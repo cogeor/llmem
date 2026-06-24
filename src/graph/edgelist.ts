@@ -38,3 +38,12 @@ export { withWriteLock } from './edge-list/lock';
 
 // Concrete edge stores.
 export { ImportEdgeListStore, CallEdgeListStore } from './edge-list/stores';
+
+// Standalone clone store (Loop 06) — own schema/version, separate JSON file.
+export {
+    CloneEdgeListStore,
+    CLONE_EDGELIST_SCHEMA_VERSION,
+    type CloneEdge,
+    type CloneType,
+    type CloneEdgeListData,
+} from './edge-list/clone-store';

@@ -1,10 +1,9 @@
 /**
  * Health-scan composer.
  *
- * Composes the analysis dimensions into a single `HealthReport`. This loop only
- * wires `findImportCycles`; call-cycles / hubs / clones are stubbed `[]` with
- * TODOs referencing the loops that fill them in. The measurement vector's
- * import-cycle dims are populated; everything else is zeroed.
+ * Composes the analysis dimensions into a single `HealthReport`: import cycles
+ * (L03), call cycles + recursion (L04), hubs (L05) and clones (L06). The
+ * measurement vector is populated from each dimension's findings.
  *
  * Determinism: no timestamps. `repo` is a stable basename label derived from
  * `ctx.workspaceRoot`.
@@ -14,6 +13,7 @@ import type { WorkspaceContext } from '../workspace-context';
 import type { HealthReport, HealthVector } from './types';
 import { zeroHealthVector } from './types';
 import { findImportCycles, findCallCycles } from './cycles';
+import { findClones } from './clones';
 import { computeHubReport } from './metrics';
 
 /** Options for `runHealthScan`. Reserved for Loop 02+ (refresh toggle, severity floor). */
@@ -35,8 +35,7 @@ export async function runHealthScan(
     const importCycles = await findImportCycles(ctx);
     const { cycles: callCycles, recursion } = await findCallCycles(ctx);
 
-    // TODO(Loop 06): findClones.
-    const clones: HealthReport['clones'] = [];
+    const clones = await findClones(ctx);
     const { hubs, maxFanIn } = await computeHubReport(ctx);
 
     const vector: HealthVector = zeroHealthVector();
@@ -59,6 +58,11 @@ export async function runHealthScan(
     // nodes (not just flagged outliers); `hubOutliers` is the count of flagged.
     vector.maxFanIn = maxFanIn;
     vector.hubOutliers = hubs.length;
+
+    // Loop 06: exact-body clone clusters. `cloneClustersHigh` counts the
+    // cross-layer (high-severity) clusters; total counts every cluster.
+    vector.cloneClustersTotal = clones.length;
+    vector.cloneClustersHigh = clones.filter(c => c.severity === 'high').length;
 
     // Basename label only (no timestamp). Split on both separators so it works
     // regardless of the OS-native form of `workspaceRoot`.

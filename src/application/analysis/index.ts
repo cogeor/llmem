@@ -19,5 +19,9 @@ export {
 export { runHealthScan } from './health';
 export type { HealthScanOptions } from './health';
 export { renderHealthReport } from './report-markdown';
+export { findClones, clusterClones, CLONE_MIN_TOKENS } from './clones';
+export type { EntityHash } from './clones';
+export { normalizeBody, sha256Hex } from './clones-normalize';
+export type { NormalizedBody } from './clones-normalize';
 export { loadAnalysisCache, saveAnalysisCache } from './cache';
-export type { AnalysisCache } from './cache';
+export type { AnalysisCache, CachedFile, CachedEntity } from './cache';

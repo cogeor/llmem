@@ -46,6 +46,14 @@ export interface CycleFinding extends Finding {
     runtimeMembers?: string[];  // members surviving type-only edge removal (sorted)
 }
 
+/** Clone-cluster finding (Loop 06). `members` are sorted entity ids. */
+export interface CloneFinding extends Finding {
+    type: 'clone';
+    cloneType: 'exact-body'; // widened in Loop 07 (sharedKind etc.)
+    similarity: number; // 1 for exact-body
+    members: string[]; // sorted entity ids
+}
+
 /** Label distinguishing a healthy shared dependency from a risky hub. */
 export type HubLabel = 'kernel' | 'unstable-hub';
 
@@ -91,7 +99,7 @@ export interface HealthReport {
     importCycles: CycleFinding[];
     callCycles: CycleFinding[]; // multi-node call SCCs (Loop 04)
     recursion?: Finding[]; // Loop 04: direct self-recursion bucket (low priority)
-    clones: Finding[]; // [] this loop (stub)
+    clones: CloneFinding[]; // Loop 06: exact-body clone clusters
     hubs: HubFinding[]; // Loop 05: hub / instability outliers (kernel|unstable-hub)
 }
 

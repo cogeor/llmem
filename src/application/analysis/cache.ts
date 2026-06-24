@@ -6,8 +6,9 @@
  * WORKSPACE ROOT's `.llmem/` — a sibling of `.llmem/graph` (the artifactRoot) —
  * NOT under `ctx.artifactRoot`.
  *
- * This loop is a stub: no hashing, the `files` map is opaque/empty. Loop 06
- * wires real per-file fingerprinting. Read tolerance mirrors
+ * Loop 06 wires real per-file fingerprinting: each `files[fileId]` holds the
+ * file's content sha256 plus per-entity normalized-body hashes, so an unchanged
+ * file is never re-parsed/re-normalized. Read tolerance mirrors
  * `scan-manifest.ts`: a MISSING or CORRUPT cache returns an empty cache rather
  * than throwing.
  */
@@ -25,11 +26,34 @@ const CACHE_FILENAME = 'analysis-cache.json';
 /** Current cache schema version. */
 const CACHE_VERSION = 1 as const;
 
+/**
+ * Per-entity cached analysis product. `literalHashes` is added by Loop 07.
+ */
+export interface CachedEntity {
+    /** Entity id (`<fileId>::<name>[@offset]`). */
+    id: string;
+    /** Tier-1 normalized-body sha256. */
+    normalizedHash: string;
+    /**
+     * Token count of the entity's body — cached so a HIT can still apply the
+     * noise floor without re-reading/normalizing the body.
+     */
+    tokenCount: number;
+    // literalHashes?: string[];  // Loop 07 — declared then, not here
+}
+
+/** Per-file cached analysis product. */
+export interface CachedFile {
+    /** sha256 of the file bytes. */
+    contentHash: string;
+    entities: CachedEntity[];
+}
+
 /** The v1 analysis-cache envelope. */
 export interface AnalysisCache {
     version: typeof CACHE_VERSION;
-    /** Per-file analysis products — empty/opaque this loop. */
-    files: Record<string, unknown>;
+    /** Per-file analysis products (keyed by workspace-relative POSIX fileId). */
+    files: Record<string, CachedFile>;
 }
 
 /** A fresh, empty cache — used for missing/corrupt files. */
@@ -58,6 +82,12 @@ function cacheRelPath(ctx: WorkspaceContext): string {
 /**
  * Validate that a parsed value is a well-formed v1 cache. Returns it typed as
  * `AnalysisCache` when valid, else `null`.
+ *
+ * LENIENT by design: we validate only `version === 1` and that `files` is an
+ * object. We do NOT deep-validate each `CachedFile` — a partially-written or
+ * future-shaped record should degrade to "miss → recompute", never crash. A
+ * malformed record simply won't `contentHash`-equal the current file hash in
+ * `clones.ts`, so it is naturally treated as a miss and overwritten.
  */
 function asValidCache(value: unknown): AnalysisCache | null {
     if (typeof value !== 'object' || value === null) return null;
@@ -66,7 +96,7 @@ function asValidCache(value: unknown): AnalysisCache | null {
     if (typeof obj.files !== 'object' || obj.files === null) return null;
     return {
         version: CACHE_VERSION,
-        files: obj.files as Record<string, unknown>,
+        files: obj.files as Record<string, CachedFile>,
     };
 }
 
