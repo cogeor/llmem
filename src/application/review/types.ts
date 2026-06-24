@@ -74,4 +74,12 @@ export interface ReviewChecklist {
     readonly scope: ItemScope; // the unit scope this checklist was built for
     readonly ruleset: 'general' | 'frontend' | 'both';
     readonly entries: readonly ChecklistEntry[];
+    /**
+     * Preformatted ISO timestamp of the import-edgelist the recall read; the
+     * renderer prints it verbatim as a header note. Captured on the IO side
+     * (`runReviewRecall`, from `EdgeListData.timestamp`) — NEVER a `Date`
+     * computed here. Optional + last so a snapshot-less checklist serializes
+     * byte-identically to today (mirrors `ChecklistEntry.capped`).
+     */
+    readonly graphSnapshot?: string;
 }

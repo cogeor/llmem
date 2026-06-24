@@ -143,6 +143,7 @@ export function reviewRecallFromReport(
     importGraph: ImportGraph,
     path: string,
     ruleset: 'general' | 'frontend' | 'both',
+    graphSnapshot?: string,
 ): ReviewChecklist {
     const normalized = normalizeReviewPath(path);
     const pathKind = detectPathKind(importGraph, normalized);
@@ -234,7 +235,7 @@ export function reviewRecallFromReport(
         });
     }
 
-    return { path: normalized, scope: pathKind, ruleset, entries };
+    return { path: normalized, scope: pathKind, ruleset, entries, graphSnapshot };
 }
 
 /**
@@ -305,12 +306,22 @@ export async function runReviewRecall(
         );
     }
 
+    // The import-edgelist JSON already carries an ISO `timestamp`; surface it as
+    // the graph-snapshot note. Deterministic-by-data — no `fs.stat`, no `Date`.
+    const graphSnapshot = importData.timestamp;
+
     const { importGraph } = buildGraphsFromSplitEdgeLists(
         importData,
         callStore.getData(),
     );
     const report = await runHealthScan(ctx);
-    const checklist = reviewRecallFromReport(report, importGraph, path, ruleset);
+    const checklist = reviewRecallFromReport(
+        report,
+        importGraph,
+        path,
+        ruleset,
+        graphSnapshot,
+    );
 
     // WS-4: review-time text-scan signals over the in-scope source files. The
     // sources are loaded once (the harness's only IO) and folded in purely.

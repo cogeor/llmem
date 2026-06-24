@@ -450,3 +450,39 @@ test('two runs byte-identical with capped FI1 + D1 (capped field included)', () 
     assert.deepEqual(fi1?.capped, { shown: 15, total: 20 }, 'FI1 capped at 15/20');
     assert.deepEqual(d1?.capped, { shown: 15, total: 20 }, 'D1 capped at 15/20');
 });
+
+// ---- Case 12: a fixed graphSnapshot arg flows through unchanged ------------
+
+test('graphSnapshot 5th arg is stored verbatim on the checklist', () => {
+    const checklist = reviewRecallFromReport(
+        emptyReport(),
+        fixtureGraph(),
+        'src/webview',
+        'both',
+        '2026-01-02T03:04:05.000Z',
+    );
+    assert.equal(
+        checklist.graphSnapshot,
+        '2026-01-02T03:04:05.000Z',
+        'the fixed ISO snapshot flows through unchanged',
+    );
+});
+
+// ---- Case 13: omitting the arg leaves graphSnapshot undefined --------------
+
+test('graphSnapshot is undefined (and absent under JSON) when the arg is omitted', () => {
+    const checklist = reviewRecallFromReport(
+        emptyReport(),
+        fixtureGraph(),
+        'src/webview',
+        'both',
+    );
+    assert.equal(checklist.graphSnapshot, undefined, 'omitted snapshot stays undefined');
+    assert.ok(
+        !Object.prototype.hasOwnProperty.call(
+            JSON.parse(JSON.stringify(checklist)),
+            'graphSnapshot',
+        ),
+        'no graphSnapshot key in serialized snapshot-less checklist (byte-stable)',
+    );
+});

@@ -234,3 +234,51 @@ test('rendering the capped checklist twice is byte-identical', () => {
         'capped checklist in → identical markdown out',
     );
 });
+
+// ---- Case 7: graph-snapshot header note (present) -------------------------
+
+// FIXED ISO literal — never `new Date()` — so the header assertion is stable.
+const FIXED_SNAPSHOT = '2026-01-02T03:04:05.000Z';
+
+test('emits the `graph snapshot: <ISO>` header line when graphSnapshot is set', () => {
+    const checklist = { ...buildChecklist(), graphSnapshot: FIXED_SNAPSHOT };
+    const md = renderReviewChecklist(checklist);
+    const lines = md.split('\n');
+
+    // The exact, pinned header wording.
+    const noteLine = `graph snapshot: ${FIXED_SNAPSHOT}`;
+    const noteIdx = lines.indexOf(noteLine);
+    assert.ok(noteIdx !== -1, 'graph-snapshot note line is present with exact wording');
+
+    // It sits in the HEADER region: directly after the `scope: … ruleset: …`
+    // line and before any `## ` category heading.
+    const scopeIdx = lines.findIndex(l => l.startsWith('scope: '));
+    assert.ok(scopeIdx !== -1, 'scope header line is present');
+    assert.equal(noteIdx, scopeIdx + 1, 'snapshot note immediately follows the scope line');
+
+    const firstCategoryIdx = lines.findIndex(l => l.startsWith('## '));
+    assert.ok(firstCategoryIdx !== -1, 'at least one category heading is present');
+    assert.ok(noteIdx < firstCategoryIdx, 'snapshot note sits before the first category heading');
+});
+
+// ---- Case 8: graph-snapshot header note (omitted) -------------------------
+
+test('omits any `graph snapshot:` line when graphSnapshot is undefined', () => {
+    const md = renderReviewChecklist(buildChecklist());
+    const lines = md.split('\n');
+    assert.ok(
+        !lines.some(l => l.startsWith('graph snapshot:')),
+        'no snapshot note line for a snapshot-less checklist',
+    );
+});
+
+// ---- Case 9: snapshot-bearing render is byte-stable (Date-free) -----------
+
+test('rendering a snapshot-bearing checklist twice is byte-identical', () => {
+    const checklist = { ...buildChecklist(), graphSnapshot: FIXED_SNAPSHOT };
+    assert.equal(
+        renderReviewChecklist(checklist),
+        renderReviewChecklist(checklist),
+        'snapshot-bearing checklist in → identical markdown out',
+    );
+});

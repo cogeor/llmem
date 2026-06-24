@@ -38,6 +38,13 @@ export function renderReviewChecklist(checklist: ReviewChecklist): string {
     lines.push(
         `scope: ${checklist.scope}   ruleset: ${checklist.ruleset}   items: ${checklist.entries.length}`,
     );
+    // `graphSnapshot` is a passed-in PREFORMATTED ISO string (sourced once on the
+    // IO side from the import-edgelist's `timestamp`), NOT a computed timestamp —
+    // the renderer stays Date-free. Omitted entirely when absent so snapshot-less
+    // output is byte-identical to before.
+    if (checklist.graphSnapshot) {
+        lines.push(`graph snapshot: ${checklist.graphSnapshot}`);
+    }
     lines.push('');
     lines.push(
         'Status legend: tick EVERY box — issue-validated | non-issue | not-yet-checked.',
