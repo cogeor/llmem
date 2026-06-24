@@ -95,6 +95,10 @@ export interface InterfaceWidthFinding extends Finding {
     util?: number;         // W5  (E-exp; absent this loop)
     topEntryPoints: { entity: string; inbound: number }[];
     severity: Severity;    // placeholder constant this loop (loop 04 sets cutoffs)
+    // Loop 03 (annotation-only): true iff the file module is a structural barrel
+    // (0 own entities + ≥1 inbound import edge). PROXY, never a gate. Only set
+    // when true (omitted/undefined otherwise → JSON.stringify stays byte-stable).
+    isBarrel?: boolean;
 }
 
 /** Label distinguishing a healthy shared dependency from a risky hub. */

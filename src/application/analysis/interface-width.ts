@@ -33,6 +33,33 @@
  * Findings sorted by `id` ascending. `wEff`/`dmr` stored as raw numbers
  * (`toFixed` is only applied in the title/detail STRINGS). `JSON.stringify` of
  * the result is byte-stable across runs on the same input.
+ *
+ * ---- Loop 03: barrel annotation + the re-export-invisibility caveat ----
+ *
+ * RE-EXPORTS ARE NOT IMPORT EDGES. `export { X } from './edge-list/stores'` is
+ * recorded by the TS extractor on `FileArtifact.exports[]` (type `'reexport'`),
+ * NEVER as a file→file import edge. Therefore a barrel has ZERO OUTBOUND import
+ * edges, and the `barrel→target` half of every `consumer→barrel→target` chain
+ * DOES NOT EXIST in the import graph. There is nothing to fold — the
+ * transparent-folding mechanism originally planned for this loop is MOOT and was
+ * not built (measurement-driven; see PLAN 03).
+ *
+ * Consequence (load-bearing when interpreting ANY import/folder-level width):
+ * the import graph systematically UNDER-counts module coupling wherever a
+ * `export … from` barrel sits between consumer and implementation. A barrel
+ * scores W=0 not because it is narrow but because it is INVISIBLE at the
+ * import/file level. The real coupling is visible only in the CALL graph (e.g.
+ * `edge-list/stores.ts` inbound ≈ 26). The true fix — emit re-export edges — is
+ * a parser/converter change (E1-adjacent) and is deferred OUT OF SCOPE here.
+ *
+ * `isBarrel` is therefore an ANNOTATION ONLY (never a gate) so the report can
+ * LABEL a 0-depth / high-inbound conduit (e.g. `edgelist.ts`, W=1 depth=0 with
+ * many importers) as a barrel rather than have it read as an anomaly. It is a
+ * PROXY: without export data we cannot distinguish a re-export barrel from a
+ * pure type-declaration file imported for its types (both are "0 entities,
+ * imported"); that ambiguity is acceptable for a non-gating label. W / W_eff /
+ * depth / DMR are NOT changed by this annotation. `isAggregatorNode` is left
+ * untouched.
  */
 
 import type { CallGraph, ImportGraph } from '../../graph/types';
@@ -105,6 +132,30 @@ function fileTreeDepth(fileId: string): number {
 }
 
 /**
+ * Module-private: structural barrel proxy for a FILE module. True iff the file
+ * is a real import-graph file node, declares ZERO own entities, AND has ≥1
+ * INBOUND import edge (something imports it). A 0-entity file that is consumed
+ * but declares nothing is, structurally, a pure conduit / re-export surface /
+ * type-only declaration file. The signal is INBOUND (not outbound) because a
+ * pure `export…from` barrel has 0 OUTBOUND import edges (re-exports are not
+ * import edges — see header). Annotation-only PROXY; never gates anything.
+ */
+function isBarrelModule(
+    fileId: string,
+    isFileNode: (id: string) => boolean,
+    entityCountByFile: Map<string, number>,
+    inboundCountByFile: Map<string, number>,
+): boolean {
+    if (!isFileNode(fileId)) {
+        return false;
+    }
+    if ((entityCountByFile.get(fileId) ?? 0) !== 0) {
+        return false;
+    }
+    return (inboundCountByFile.get(fileId) ?? 0) >= 1;
+}
+
+/**
  * Pure: derive interface-width findings from already-built graphs.
  *
  * File & folder width over the import graph; function width over the call
@@ -155,6 +206,11 @@ export function interfaceWidthFromGraph(
     const fileEin = new Map<string, Map<string, number>>(); // module → (entry → Ein)
     const folderEin = new Map<string, Map<string, number>>();
 
+    // fileId → total inbound file→file import edges (including self-loops).
+    // Drives the barrel proxy (B2': a 0-entity file with ≥1 importer is a
+    // conduit). Distinct from `fileEin`, which excludes the self-edge.
+    const inboundCountByFile = new Map<string, number>();
+
     const bump = (
         store: Map<string, Map<string, number>>,
         module: string,
@@ -176,6 +232,13 @@ export function interfaceWidthFromGraph(
         if (!isFileNode(e.source) || !isFileNode(e.target)) {
             continue;
         }
+
+        // Inbound import count (barrel proxy). Counts every file→file edge into
+        // the target — a barrel's signal is being imported, not what it imports.
+        inboundCountByFile.set(
+            e.target,
+            (inboundCountByFile.get(e.target) ?? 0) + 1,
+        );
 
         // File module: target's own file is the entry point when source differs.
         if (e.source !== e.target) {
@@ -233,13 +296,14 @@ export function interfaceWidthFromGraph(
         treeDepth: number,
         metrics: WidthMetrics,
         moduleDepth: number,
+        isBarrel?: boolean,
     ): void => {
         const { w, wEff, topEntryPoints } = metrics;
         const dmr = wEff === 0 ? 0 : moduleDepth / wEff;
         const top = topEntryPoints
             .map(t => `${t.entity}(${t.inbound})`)
             .join(', ');
-        findings.push({
+        const finding: InterfaceWidthFinding = {
             id,
             type: 'interface-width',
             severity: PLACEHOLDER_SEVERITY,
@@ -260,10 +324,15 @@ export function interfaceWidthFromGraph(
                 `W_eff=${wEff.toFixed(2)} (effective doors), ` +
                 `subtree=${moduleDepth} entities, DMR=${dmr.toFixed(2)}` +
                 (top ? ` — top: ${top}` : ''),
-        });
+        };
+        // Annotation-only: set ONLY when true so JSON.stringify stays byte-stable.
+        if (isBarrel) {
+            finding.isBarrel = true;
+        }
+        findings.push(finding);
     };
 
-    // File modules (always emitted).
+    // File modules (always emitted; barrel-annotated when the proxy holds).
     for (const fileId of fileModules) {
         const metrics = widthMetrics(fileEin.get(fileId) ?? new Map());
         push(
@@ -273,6 +342,12 @@ export function interfaceWidthFromGraph(
             fileTreeDepth(fileId),
             metrics,
             fileDepth(fileId),
+            isBarrelModule(
+                fileId,
+                isFileNode,
+                entityCountByFile,
+                inboundCountByFile,
+            ),
         );
     }
 
