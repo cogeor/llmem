@@ -216,6 +216,19 @@ const WRITE_ALLOWLIST_ENTRIES: readonly WriteAllowlistEntry[] = [
       'to discover the workspace root.',
   },
   {
+    file: 'src/cli/commands/health.ts',
+    phase: 'permanent',
+    reason:
+      'The `llmem health` command writes the durable report artifact ' +
+      '(`health-report.{md,json}`) to the WORKSPACE-ROOT `.llmem/` dir ' +
+      '(NOT `ctx.artifactRoot`, which is `.llmem/graph`). This is a ' +
+      'top-level workspace-root write outside any WorkspaceIO sandbox — ' +
+      'it targets `path.join(detectWorkspace(...), \'.llmem\', ...)` and ' +
+      'mirrors the proven `init.ts` plain-`fs` pattern (the report is a ' +
+      'host artifact CI diffs, not a graph-store file). `--out` overrides ' +
+      'the destination; all paths derive from the resolved workspace root.',
+  },
+  {
     file: 'src/install/claude-code.ts',
     phase: 'permanent',
     reason:

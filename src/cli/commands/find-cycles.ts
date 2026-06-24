@@ -19,11 +19,7 @@ import { hasEdgeLists } from '../../viewer-generator';
 import { buildGraphsFromSplitEdgeLists } from '../../graph';
 import { ImportEdgeListStore, CallEdgeListStore } from '../../graph/edgelist';
 import { ImportGraph } from '../../graph/types';
-import {
-    excludeAggregatorEdges,
-    nonTrivialSccs,
-    shortestCyclePath,
-} from '../../graph/scc';
+import { importCyclesFromGraph } from '../../application/analysis';
 import { detectWorkspace } from '../../workspace';
 import type { CommandSpec } from '../registry';
 import { CliError } from '../errors';
@@ -31,34 +27,40 @@ import { CliError } from '../errors';
 /**
  * Render an `ImportGraph` into the printable cycle report.
  *
- * PURE + deterministic. Runs `excludeAggregatorEdges` then `nonTrivialSccs`
- * (consistent with `computeInCycleEdgeKeys`). If there are no cycles, returns
- * exactly `No import cycles found.`. Otherwise emits a header plus one block per
- * SCC (in the engine's already-sorted order): the sorted member list and the
- * closed hop chain from `shortestCyclePath` (`id0 -> id1 -> ... -> id0`).
+ * PURE + deterministic. Delegates the SCC pipeline to the shared analyzer
+ * (`importCyclesFromGraph` in `src/application/analysis/cycles.ts`) — which runs
+ * the same `excludeAggregatorEdges -> nonTrivialSccs -> shortestCyclePath` —
+ * and formats its `CycleFinding[]` identically to the pre-Loop-02 inline
+ * version. If there are no cycles, returns exactly `No import cycles found.`.
+ * Otherwise emits a header plus one block per SCC (engine's already-sorted
+ * order): the sorted member list and the closed hop chain
+ * (`id0 -> id1 -> ... -> id0`).
+ *
+ * Byte-identity: the analyzer builds `shortestPath` as
+ * `[hops[0].source, ...hops.map(h => h.target)]` — exactly the old hop join —
+ * and falls back to `[...scc]` (length === members) when there are zero hops, so
+ * guarding on `shortestPath.length > 1` reproduces the old `(members: ...)`
+ * branch for that degenerate case. `tests/unit/cli/find-cycles.test.ts` pins it.
  */
 export function buildCycleReport(importGraph: ImportGraph): string {
-    const g = excludeAggregatorEdges(importGraph);
-    const sccs = nonTrivialSccs(g);
+    const cycles = importCyclesFromGraph(importGraph);
 
-    if (sccs.length === 0) {
+    if (cycles.length === 0) {
         return 'No import cycles found.';
     }
 
     const lines: string[] = [];
-    lines.push(`Found ${sccs.length} import cycle(s):`);
+    lines.push(`Found ${cycles.length} import cycle(s):`);
 
-    sccs.forEach((scc, i) => {
+    cycles.forEach((c, i) => {
         lines.push('');
-        lines.push(`Cycle ${i + 1} (${scc.length} files): ${scc.join(', ')}`);
+        lines.push(`Cycle ${i + 1} (${c.members.length} files): ${c.members.join(', ')}`);
 
-        const hops = shortestCyclePath(g, scc);
-        if (hops.length > 0) {
-            const path = [hops[0].source, ...hops.map(h => h.target)].join(' -> ');
-            lines.push(`  ${path}`);
+        if (c.shortestPath.length > 1) {
+            lines.push(`  ${c.shortestPath.join(' -> ')}`);
         } else {
             // Defensive: a non-trivial SCC should always yield a closed chain.
-            lines.push(`  (members: ${scc.join(', ')})`);
+            lines.push(`  (members: ${c.members.join(', ')})`);
         }
     });
 

@@ -88,6 +88,62 @@
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false,
         "properties": {
+          "failOn": {
+            "description": "Exit non-zero if the report has >=1 finding of this kind (e.g. import-cycle)",
+            "type": "string"
+          },
+          "json": {
+            "default": false,
+            "description": "Emit the JSON HealthReport to stdout instead of the markdown",
+            "type": "boolean"
+          },
+          "out": {
+            "description": "Override the report output directory or .md path (default: <workspace>/.llmem)",
+            "type": "string"
+          },
+          "refresh": {
+            "default": true,
+            "description": "Refresh edge lists before scanning (use --no-refresh to skip)",
+            "type": "boolean"
+          },
+          "severity": {
+            "description": "Minimum severity floor (reserved; forwarded to runHealthScan)",
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ],
+            "type": "string"
+          },
+          "workspace": {
+            "description": "Workspace root directory (auto-detected if omitted)",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "description": "Run the codebase health scan and write .llmem/health-report.{md,json}",
+      "examples": [
+        {
+          "command": "llmem health",
+          "scenario": "Scan the auto-detected workspace and print the report"
+        },
+        {
+          "command": "llmem health --fail-on import-cycle",
+          "scenario": "Fail the build if any import cycle exists"
+        },
+        {
+          "command": "llmem health --json",
+          "scenario": "Emit the machine-readable report to stdout"
+        }
+      ],
+      "name": "health"
+    },
+    {
+      "args": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
           "json": {
             "default": false,
             "type": "boolean"
