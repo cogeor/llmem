@@ -1,5 +1,6 @@
 /**
- * Clone analyzer — Tier-1 normalized-body hash (Loop 06).
+ * Clone analyzer — Tier-1 normalized-body hash (Loop 06) + Tier-1.5
+ * shared-literal payload (Loop 07).
  *
  * `findClones(ctx)` detects Type-1/2 clones across the in-scope files:
  *   1. In-scope file list = the call-edgelist `kind:'file'` nodes (the same
@@ -8,10 +9,13 @@
  *   2. For each file: content-hash the bytes. On a cache HIT (same contentHash)
  *      reuse the cached per-entity hashes — NO parse, NO normalize. On a MISS,
  *      parse the file's entities via the shared-`ts.Program` `TypeScriptExtractor`,
- *      slice each callable body by `loc.startByte/endByte`, normalize
- *      (comments+whitespace stripped; identifiers AND literals placeholdered),
- *      sha256 the canonical text, and refresh the cache record.
- *   3. Bucket entity hashes; a bucket of size > 1 is a clone cluster.
+ *      slice each callable body by `loc.startByte/endByte`, normalize, sha256, and
+ *      in the SAME MISS branch (same `body` slice) a SECOND cheap scanner extracts
+ *      the literal PAYLOAD hashes (`extractLiteralHashes`) — no new parse/Program;
+ *      both products are cached so a warm run reuses both with zero re-parse.
+ *   3. Bucket entity hashes (size > 1 ⇒ exact-body cluster). Separately bucket
+ *      literal-payload hashes (shared by >=2 distinct functions ⇒ shared-literal
+ *      cluster, `clusterSharedLiterals`). Combine + rank (severity → strength → id).
  *   4. Persist clone edges to the standalone `clone-edgelist.json` and the
  *      refreshed analysis cache (evicting entries for out-of-scope files).
  *
@@ -19,9 +23,8 @@
  * and ONCE, only on the FIRST cache miss, so a fully-warm `health` parses ZERO
  * files (spec §6).
  *
- * Granularity: only `function | method | arrow` entities are compared (the
- * spec's function/method granularity). `class` entities — whole-class bodies —
- * are excluded to avoid class-vs-class noise.
+ * Granularity: only `function | method | arrow` entities are compared (spec's
+ * function/method granularity); `class` bodies are excluded (class-vs-class noise).
  *
  * Layer: application. Imports parser (`TypeScriptService`/`TypeScriptExtractor`)
  * + graph (`CallEdgeListStore`/`CloneEdgeListStore`/`makeEntityId`) — both
@@ -36,6 +39,19 @@ import {
     type CachedEntity,
 } from './cache';
 import { normalizeBody, sha256Hex } from './clones-normalize';
+import {
+    extractLiteralHashes,
+    clusterSharedLiterals,
+    clusterSeverity,
+    distanceNote,
+    chainEdges,
+    sortFindingsEdges,
+    type EntityHash,
+} from './clones-literals';
+
+// Re-export so existing `clones.ts` consumers (tests) keep importing `EntityHash`
+// from here even though the type now lives in `clones-literals.ts`.
+export type { EntityHash } from './clones-literals';
 import { CallEdgeListStore, CloneEdgeListStore, type CloneEdge } from '../../graph/edgelist';
 import { makeEntityId } from '../../core/ids';
 import { TypeScriptService } from '../../parser/ts-service';
@@ -51,42 +67,6 @@ const CLONEABLE_KINDS: ReadonlySet<EntityKind> = new Set<EntityKind>([
     'method',
     'arrow',
 ]);
-
-/** Minimal per-entity shape the PURE bucketing fn needs (testable w/o parse/IO). */
-export interface EntityHash {
-    entityId: string; // <fileId>::<name>[@offset]
-    fileId: string; // workspace-rel POSIX
-    normalizedHash: string; // sha256 of normalizeBody().text
-    tokenCount: number; // for the noise floor
-}
-
-/**
- * Top-level module of a workspace-relative fileId for the distance dimension:
- * the first TWO path segments (e.g. `src/application`), so two files under the
- * SAME capability area count as same-module. Files outside `src/` fall back to
- * their first segment.
- */
-function moduleOf(fileId: string): string {
-    const parts = fileId.split('/');
-    if (parts[0] === 'src' && parts.length >= 2) {
-        return parts.slice(0, 2).join('/');
-    }
-    return parts[0] ?? fileId;
-}
-
-/**
- * Severity = strength × distance (RANKING ONLY). Strength is fixed for Tier-1
- * (`exact-body`); distance clamps it:
- *   - all members in the SAME file        → `same-file`   → `low`  (sibling boilerplate)
- *   - different files, SAME top-level mod  → `same-module` → `medium`
- *   - members span DIFFERENT modules       → `cross-layer` → `high`
- */
-function clusterSeverity(members: EntityHash[]): Severity {
-    const files = new Set(members.map(m => m.fileId));
-    if (files.size <= 1) return 'low'; // same-file
-    const modules = new Set([...files].map(moduleOf));
-    return modules.size <= 1 ? 'medium' : 'high'; // same-module : cross-layer
-}
 
 /** PURE: bucket entity hashes into clone clusters + clone edges. No IO, no parse. */
 export function clusterClones(entities: EntityHash[]): {
@@ -115,12 +95,6 @@ export function clusterClones(entities: EntityHash[]): {
         const memberIds = members.map(m => m.entityId); // already entityId-sorted
         const relatedFiles = [...new Set(members.map(m => m.fileId))].sort();
         const id = 'clone:' + memberIds.join('|');
-        const distanceNote =
-            severity === 'low'
-                ? ' (same-file sibling-boilerplate)'
-                : severity === 'medium'
-                  ? ' (same-module)'
-                  : ' (cross-layer)';
 
         findings.push({
             id,
@@ -128,36 +102,33 @@ export function clusterClones(entities: EntityHash[]): {
             cloneType: 'exact-body',
             similarity: 1,
             severity,
-            title: `${memberIds.length}-member exact-body clone${distanceNote}`,
+            title: `${memberIds.length}-member exact-body clone${distanceNote(severity)}`,
             detail:
                 `Exact-body (Type-1/2) clone across ${memberIds.length} entities: ` +
                 memberIds.join(', '),
             relatedFiles,
             members: memberIds,
         });
-
-        // Consecutive-chain edges (n-1, deterministic, avoids O(n²) on large
-        // boilerplate clusters).
-        for (let i = 0; i + 1 < members.length; i++) {
-            edges.push({
-                source: memberIds[i],
-                target: memberIds[i + 1],
-                kind: 'clone',
-                similarity: 1,
-                cloneType: 'exact-body',
-                severity,
-            });
-        }
+        edges.push(...chainEdges(memberIds, severity, 'exact-body'));
     }
 
-    // 4. Deterministic order.
-    findings.sort((a, b) => a.id.localeCompare(b.id));
-    edges.sort(
-        (a, b) =>
-            a.source.localeCompare(b.source) || a.target.localeCompare(b.target),
-    );
-
+    sortFindingsEdges(findings, edges);
     return { findings, edges };
+}
+
+/**
+ * Combined-finding sort (the single ranking authority — the renderer must NOT
+ * re-sort): severity band high→low, then STRENGTH (exact-body before
+ * shared-literal at equal severity), then id.
+ */
+const SEVERITY_RANK: Record<Severity, number> = { high: 0, medium: 1, low: 2 };
+function compareClones(a: CloneFinding, b: CloneFinding): number {
+    const strength = (t: CloneFinding['cloneType']) => (t === 'exact-body' ? 0 : 1);
+    return (
+        SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] ||
+        strength(a.cloneType) - strength(b.cloneType) ||
+        a.id.localeCompare(b.id)
+    );
 }
 
 /**
@@ -171,6 +142,8 @@ function entitiesFromCache(cached: CachedEntity[], fileId: string): EntityHash[]
         fileId,
         normalizedHash: e.normalizedHash,
         tokenCount: e.tokenCount,
+        // HIT path reuses the cached literal hashes — zero re-parse.
+        literalHashes: e.literalHashes,
     }));
 }
 
@@ -239,6 +212,9 @@ export async function findClones(ctx: WorkspaceContext): Promise<CloneFinding[]>
                 const body = source.slice(ent.loc.startByte, ent.loc.endByte);
                 const { text, tokenCount } = normalizeBody(body);
                 const normalizedHash = sha256Hex(text);
+                // SAME body slice, SAME MISS branch — a second cheap scanner, no
+                // new parse/Program (warm cache parses zero files; spec §6).
+                const literalHashes = extractLiteralHashes(body);
 
                 // Disambiguate same-name entities (e.g. overloads) by byte offset
                 // so clone-store-local ids stay unique + stable.
@@ -248,7 +224,7 @@ export async function findClones(ctx: WorkspaceContext): Promise<CloneFinding[]>
                     count === 0 ? ent.name : `${ent.name}@${ent.loc.startByte}`;
                 const entityId = makeEntityId(fileId, name);
 
-                records.push({ id: entityId, normalizedHash, tokenCount });
+                records.push({ id: entityId, normalizedHash, tokenCount, literalHashes });
             }
         }
 
@@ -261,11 +237,18 @@ export async function findClones(ctx: WorkspaceContext): Promise<CloneFinding[]>
         if (!inScopeSet.has(key)) delete cache.files[key];
     }
 
-    // Deterministic input order for clusterClones.
+    // Deterministic input order for both bucketing passes.
     allEntities.sort((a, b) => a.entityId.localeCompare(b.entityId));
-    const { findings, edges } = clusterClones(allEntities);
+    const exact = clusterClones(allEntities); // Tier-1 exact-body
+    const shared = clusterSharedLiterals(allEntities); // Tier-1.5 shared-literal
 
-    // Persist clone edges + refreshed cache.
+    // Combine both signals: concatenate findings + edges, re-sort the findings
+    // deterministically (severity band → strength → id) so the report reads
+    // high→low and the renderer never re-sorts.
+    const findings = [...exact.findings, ...shared.findings].sort(compareClones);
+    const edges = [...exact.edges, ...shared.edges];
+
+    // Persist clone edges + refreshed cache (the store sorts edges itself).
     const cloneStore = new CloneEdgeListStore(ctx.artifactRoot, ctx.io);
     await cloneStore.load();
     cloneStore.setEdges(edges);

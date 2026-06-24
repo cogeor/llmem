@@ -27,21 +27,28 @@ import { WorkspaceIO } from '../../workspace/workspace-io';
 import { createLogger, type StructuredLogger } from '../../common/logger';
 import { writeFileAtomic } from './atomic-write';
 
-/** Own schema version — independent of `EDGELIST_SCHEMA_VERSION`. */
-export const CLONE_EDGELIST_SCHEMA_VERSION = 1;
+/**
+ * Own schema version — independent of `EDGELIST_SCHEMA_VERSION`. Bumped 1 → 2 by
+ * Loop 07: the edge shape gained `cloneType:'shared-literal'` + `sharedKind`. A
+ * stale v1 file fails the `schemaVersion` literal check and degrades to empty
+ * (recomputed next run) — consistent with the analysis-cache v1→v2 migration.
+ */
+export const CLONE_EDGELIST_SCHEMA_VERSION = 2;
 
 /** Clone filename under the artifact root. */
 const CLONE_EDGELIST_FILENAME = 'clone-edgelist.json';
 
-/** Tier-1 only this loop; widened in Loop 07. */
-export type CloneType = 'exact-body';
+/** Clone strength dimension. Widened in Loop 07 (shared-literal payload). */
+export type CloneType = 'exact-body' | 'shared-literal';
 
 export const CloneEdgeSchema = z.object({
     source: z.string().min(1), // entity id <fileId>::<name>
     target: z.string().min(1),
     kind: z.literal('clone'),
     similarity: z.number(), // 1 for exact-body
-    cloneType: z.enum(['exact-body']),
+    cloneType: z.enum(['exact-body', 'shared-literal']),
+    /** For `shared-literal` edges: which payload kind is shared (Loop 07). */
+    sharedKind: z.enum(['string', 'array', 'regex', 'numeric']).optional(),
     severity: z.enum(['high', 'medium', 'low']),
 });
 export type CloneEdge = z.infer<typeof CloneEdgeSchema>;

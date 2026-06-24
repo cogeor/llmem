@@ -337,6 +337,9 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     { file: 'src/workspace/detect.ts',
       phase: 'permanent',
       reason: 'Workspace-marker walker + JSDoc listing the markers checked (moved from the original CLI workspace helper in G2).' },
+    { file: 'tests/unit/application/analysis/clones-literal.test.ts',
+      phase: 'permanent',
+      reason: 'Loop 07 shared-literal test mirrors the VERIFIED real `markers` array (incl. `.artifacts`) byte-for-byte to prove the cross-layer duplicate is re-found; the literal IS the fixture.' },
     // VS-BUGFIX: src/http-server/index.ts now defaults to
     // `DEFAULT_CONFIG.artifactRoot` (not `'.artifacts'`) — row removed.
     // VS-BUGFIX: src/viewer-generator/graph-stats.ts `hasEdgeLists` default

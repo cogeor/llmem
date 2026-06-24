@@ -11,6 +11,14 @@
  * file is never re-parsed/re-normalized. Read tolerance mirrors
  * `scan-manifest.ts`: a MISSING or CORRUPT cache returns an empty cache rather
  * than throwing.
+ *
+ * Loop 07 makes `literalHashes` a first-class cached product per entity (the
+ * shared-literal payload hashes — see `clones-literals.ts`) and BUMPS
+ * `CACHE_VERSION` 1 → 2. A v1 record has no `literalHashes`, so `asValidCache`
+ * now rejects the whole v1 envelope (`version !== 2`) and degrades to empty —
+ * exactly the "stale → recompute once" contract Loop 06 already relies on. After
+ * the first Loop-07 `health` run every entity carries `literalHashes`, so the
+ * bucketing pass never sees a record missing them (no crash, no silent miss).
  */
 
 import * as path from 'path';
@@ -23,11 +31,11 @@ const CACHE_DIR = '.llmem';
 /** Cache filename under `<workspaceRoot>/.llmem/`. */
 const CACHE_FILENAME = 'analysis-cache.json';
 
-/** Current cache schema version. */
-const CACHE_VERSION = 1 as const;
+/** Current cache schema version. Bumped 1 → 2 by Loop 07 (adds `literalHashes`). */
+const CACHE_VERSION = 2 as const;
 
 /**
- * Per-entity cached analysis product. `literalHashes` is added by Loop 07.
+ * Per-entity cached analysis product. `literalHashes` added by Loop 07 (required).
  */
 export interface CachedEntity {
     /** Entity id (`<fileId>::<name>[@offset]`). */
@@ -39,7 +47,12 @@ export interface CachedEntity {
      * noise floor without re-reading/normalizing the body.
      */
     tokenCount: number;
-    // literalHashes?: string[];  // Loop 07 — declared then, not here
+    /**
+     * Loop 07: sorted, kind-prefixed sha256 hashes of the entity's literal
+     * payloads (`extractLiteralHashes`). Cached so a HIT reuses them with no
+     * re-parse — the shared-literal bucketing runs purely from the cache.
+     */
+    literalHashes: string[];
 }
 
 /** Per-file cached analysis product. */
@@ -80,10 +93,11 @@ function cacheRelPath(ctx: WorkspaceContext): string {
 }
 
 /**
- * Validate that a parsed value is a well-formed v1 cache. Returns it typed as
- * `AnalysisCache` when valid, else `null`.
+ * Validate that a parsed value is a well-formed v2 cache. Returns it typed as
+ * `AnalysisCache` when valid, else `null`. A stale v1 envelope fails the
+ * `version` check and degrades to empty (recompute once — Loop 07 migration).
  *
- * LENIENT by design: we validate only `version === 1` and that `files` is an
+ * LENIENT by design: we validate only `version === 2` and that `files` is an
  * object. We do NOT deep-validate each `CachedFile` — a partially-written or
  * future-shaped record should degrade to "miss → recompute", never crash. A
  * malformed record simply won't `contentHash`-equal the current file hash in

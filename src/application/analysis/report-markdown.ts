@@ -77,8 +77,9 @@ export function renderHealthReport(report: HealthReport): string {
         recursion.forEach(f => lines.push(`  ${f.title}`));
     }
 
-    // §3 Duplication (Loop 06). Clusters are already sorted by `findClones`
-    // (by id); the renderer must NOT re-sort. Deterministic, no timestamp.
+    // §3 Duplication (Loop 06 exact-body + Loop 07 shared-literal). Clusters are
+    // already combined + ranked by `findClones` (severity band → strength → id);
+    // the renderer must NOT re-sort. Deterministic, no timestamp.
     lines.push('');
     lines.push('## 3. Duplication');
     const clones = report.clones;
@@ -90,8 +91,12 @@ export function renderHealthReport(report: HealthReport): string {
             lines.push('');
             const note =
                 c.severity === 'low' ? ' [sibling-boilerplate]' : '';
+            const kind =
+                c.cloneType === 'shared-literal'
+                    ? ` [shared-literal: ${c.sharedKind}]`
+                    : '';
             lines.push(
-                `Cluster ${i + 1} (${c.severity})${note}: ${c.members.length} members`,
+                `Cluster ${i + 1} (${c.severity})${kind}${note}: ${c.members.length} members`,
             );
             lines.push(`  members: ${c.members.join(', ')}`);
             lines.push(`  files: ${c.relatedFiles.join(', ')}`);

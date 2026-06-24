@@ -27,7 +27,7 @@ const eh = (
     fileId: string,
     normalizedHash: string,
     tokenCount: number,
-): EntityHash => ({ entityId, fileId, normalizedHash, tokenCount });
+): EntityHash => ({ entityId, fileId, normalizedHash, tokenCount, literalHashes: [] });
 
 test('two functions identical modulo identifier/literal names ⇒ one cluster', () => {
     const bodyA = 'function f(){const x = 1; return g(x) + h(2, "a");}';

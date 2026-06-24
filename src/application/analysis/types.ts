@@ -46,10 +46,20 @@ export interface CycleFinding extends Finding {
     runtimeMembers?: string[];  // members surviving type-only edge removal (sorted)
 }
 
-/** Clone-cluster finding (Loop 06). `members` are sorted entity ids. */
+/**
+ * Clone-cluster finding (Loop 06; `sharedKind` + shared-literal added Loop 07).
+ * `members` are sorted entity ids.
+ */
 export interface CloneFinding extends Finding {
     type: 'clone';
-    cloneType: 'exact-body'; // widened in Loop 07 (sharedKind etc.)
+    /**
+     * Clone strength dimension (Loop 06 → 07): `exact-body` (Type-1/2 identical
+     * normalized body) or `shared-literal` (same literal payload across distinct
+     * functions). Strength order: exact-body > shared-literal.
+     */
+    cloneType: 'exact-body' | 'shared-literal';
+    /** For `shared-literal`: which kind of payload is shared (Loop 07). */
+    sharedKind?: 'string' | 'array' | 'regex' | 'numeric';
     similarity: number; // 1 for exact-body
     members: string[]; // sorted entity ids
 }
