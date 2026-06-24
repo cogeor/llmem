@@ -12,6 +12,7 @@
 
 import type { SignalScanner } from './source-scan';
 import { ambientScanner } from './ambient';
+import { domSourceScanner } from './dom-source';
 import { interfaceWidthScanner } from './interface-width';
 import { listenerBalanceScanner } from './lifecycle';
 import { payloadOwnerScanner } from './payload-owners';
@@ -19,6 +20,7 @@ import { payloadOwnerScanner } from './payload-owners';
 /** Every signal scanner the recall wrapper runs. Append new scanners here. */
 export const ALL_SCANNERS: SignalScanner[] = [
     ambientScanner,
+    domSourceScanner,
     interfaceWidthScanner,
     listenerBalanceScanner,
     payloadOwnerScanner,
@@ -35,6 +37,7 @@ export {
     sortDedupeCandidates,
 } from './source-scan';
 export { ambientScanner } from './ambient';
+export { domSourceScanner } from './dom-source';
 export { interfaceWidthScanner } from './interface-width';
 export { listenerBalanceScanner } from './lifecycle';
 export { payloadOwnerScanner } from './payload-owners';

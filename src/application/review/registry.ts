@@ -653,7 +653,7 @@ export const REVIEW_REGISTRY: readonly ChecklistItem[] = Object.freeze([
         scope: 'file',
         recallStrength: '●●○',
         title: 'DOM-as-source-of-truth',
-        recallQuery: 'instruction',
+        recallQuery: 'dom-source',
         promptInstruction:
             'Graph surfaces render-layer entities reading model facts back out of the DOM (querySelector(...).textContent, .dataset reads). LLM judges DOM should be output, not source → read from the model/view-model. (graph add: A4 DOM-read attribute.)',
     },
