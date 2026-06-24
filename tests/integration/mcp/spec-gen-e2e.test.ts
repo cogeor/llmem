@@ -278,7 +278,7 @@ function unwrapToolResult(
 // Tests
 // ============================================================================
 
-test('MCP spec-gen e2e: tools/list returns exactly the 5 trimmed tools', async (t) => {
+test('MCP spec-gen e2e: tools/list returns exactly the 7 trimmed tools', async (t) => {
     const { client, stderrBuf } = await setupSpecGenE2E(t);
 
     const { tools } = await client.listTools();
@@ -286,7 +286,15 @@ test('MCP spec-gen e2e: tools/list returns exactly the 5 trimmed tools', async (
 
     assert.deepEqual(
         names,
-        ['file_info', 'folder_info', 'open_window', 'report_file_info', 'report_folder_info'],
+        [
+            'file_info',
+            'folder_info',
+            'open_window',
+            'report_file_info',
+            'report_folder_info',
+            'report_review',
+            'review',
+        ],
         `tools/list returned unexpected name set. Child stderr:\n${stderrBuf.value}`,
     );
 

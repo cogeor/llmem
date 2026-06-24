@@ -146,6 +146,58 @@
         "properties": {
           "json": {
             "default": false,
+            "description": "Emit the JSON ReviewChecklist to stdout instead of the markdown",
+            "type": "boolean"
+          },
+          "out": {
+            "description": "Override the checklist output directory or .md path (default: <workspace>/.llmem/review)",
+            "type": "string"
+          },
+          "path": {
+            "description": "File id or folder prefix to review (default: whole repo)",
+            "type": "string"
+          },
+          "ruleset": {
+            "default": "both",
+            "description": "Which checklist ruleset to recall (default: both)",
+            "enum": [
+              "general",
+              "frontend",
+              "both"
+            ],
+            "type": "string"
+          },
+          "workspace": {
+            "description": "Workspace root directory (auto-detected if omitted)",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "description": "Recall the architecture-review checklist and write .llmem/review/<path>.{md,json}",
+      "examples": [
+        {
+          "command": "llmem review",
+          "scenario": "Review the whole repo (both rulesets) and print the checklist"
+        },
+        {
+          "command": "llmem review --path src/webview --ruleset frontend",
+          "scenario": "Review one subtree with the frontend ruleset"
+        },
+        {
+          "command": "llmem review --json",
+          "scenario": "Emit the machine-readable checklist to stdout"
+        }
+      ],
+      "name": "review"
+    },
+    {
+      "args": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "json": {
+            "default": false,
             "type": "boolean"
           }
         },
