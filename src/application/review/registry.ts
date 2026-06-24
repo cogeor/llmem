@@ -537,7 +537,7 @@ export const REVIEW_REGISTRY: readonly ChecklistItem[] = Object.freeze([
         scope: 'file',
         recallStrength: '●●○',
         title: 'Untyped transport boundary',
-        recallQuery: 'instruction',
+        recallQuery: 'transport',
         promptInstruction:
             'Graph surfaces message/event sinks whose payload is any/unknown with no validator before dispatch. LLM judges serialized transport needs a runtime codec (it is data, not a trusted call). Platform: VS Code/WebSocket/static-bootstrap all cross a serialization boundary. (graph add: B1 transport-boundary nodes.)',
     },
