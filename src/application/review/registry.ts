@@ -502,7 +502,7 @@ export const REVIEW_REGISTRY: readonly ChecklistItem[] = Object.freeze([
         scope: 'folder',
         recallStrength: '●●○',
         title: 'Multi-owned server payload',
-        recallQuery: 'instruction',
+        recallQuery: 'payload-owners',
         promptInstruction:
             'Graph surfaces a server DTO (GraphData, worktree, docs) held as a long-lived field by ≥2 modules. LLM judges authoritative copies that must each be refreshed vs deliberate memoized projections. (graph add: A3 payload-owner map.)',
     },
