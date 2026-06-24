@@ -20,7 +20,8 @@ export type FindingKind =
     | 'call-cycle'
     | 'clone'
     | 'hub'
-    | 'recursion';
+    | 'recursion'
+    | 'interface-width';
 
 /** Base finding shared by all analyzers. */
 export interface Finding {
@@ -62,6 +63,38 @@ export interface CloneFinding extends Finding {
     sharedKind?: 'string' | 'array' | 'regex' | 'numeric';
     similarity: number; // 1 for exact-body
     members: string[]; // sorted entity ids
+}
+
+/**
+ * Interface-width finding for a file / folder / function module (Loop 02).
+ *
+ * Measures the "surface area" through which a module is reached from outside:
+ * - `w`   = W1, |EP(M)| — count of distinct external entry points.
+ * - `wEff` = W2, inverse-Simpson `1 / Σ p_e²` over inbound-traffic shares — the
+ *           EFFECTIVE number of doors (1 when one entry takes all traffic,
+ *           ≈N when N entries share traffic evenly).
+ * - `moduleDepth` = W3, entity-count of the module's full subtree.
+ * - `dmr` = W4, `moduleDepth / wEff` — depth-to-(effective)-width ratio
+ *           (deep-narrow modules rank above shallow-wide ones).
+ *
+ * Substrate: file/folder scope is measured over the IMPORT graph (file→file
+ * edges); function scope over the CALL graph (cross-file caller edges).
+ *
+ * `severity` is a loop-02 PLACEHOLDER constant — loop 04 replaces it with
+ * percentile cutoffs over the live distribution.
+ */
+export interface InterfaceWidthFinding extends Finding {
+    type: 'interface-width';
+    module: string;        // file id, folder prefix, or entity id
+    scope: 'file' | 'folder' | 'function';
+    treeDepth: number;     // src/=0, src/graph/=1, src/graph/edge-list/=2
+    w: number;             // W1  |EP(M)|
+    wEff: number;          // W2  1 / Σ p_e²   (inverse-Simpson)
+    moduleDepth: number;   // W3  entity-count of the full subtree
+    dmr: number;           // W4  moduleDepth / wEff
+    util?: number;         // W5  (E-exp; absent this loop)
+    topEntryPoints: { entity: string; inbound: number }[];
+    severity: Severity;    // placeholder constant this loop (loop 04 sets cutoffs)
 }
 
 /** Label distinguishing a healthy shared dependency from a risky hub. */
