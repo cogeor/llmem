@@ -118,9 +118,14 @@ test('FB1 (instruction) is graph-blind with no candidates', () => {
 
     const fb1 = entryFor(checklist, 'FB1');
     assert.ok(fb1, 'FB1 entry present');
-    assert.equal(fb1.item.recallQuery, 'instruction', 'FB1 is instruction-as-recall');
-    assert.equal(fb1.graphBlind, true, 'instruction item is graph-blind');
-    assert.equal(fb1.candidates.length, 0, 'instruction item has no candidates');
+    // FB1's recallQuery is now 'ambient' (WS-4, Loop 07). The PURE
+    // reviewRecallFromReport runs NO signal scanners — 'ambient' is not a
+    // BUILT_QUERIES analyzer key — so the pure core still leaves FB1 graph-blind
+    // with zero candidates. The ambient candidates are folded in only by the
+    // `runReviewRecall` wrapper via `mergeSignals` (see signal-ambient.test.ts).
+    assert.equal(fb1.item.recallQuery, 'ambient', 'FB1 recallQuery is the ambient signal');
+    assert.equal(fb1.graphBlind, true, 'pure core leaves FB1 graph-blind (no signal pass)');
+    assert.equal(fb1.candidates.length, 0, 'pure core attaches no candidates to FB1');
 });
 
 // ---- Case 3: a finding OUTSIDE the review path does NOT attach -------------

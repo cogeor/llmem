@@ -17,8 +17,21 @@ export {
 export {
     reviewRecallFromReport,
     runReviewRecall,
+    mergeSignals,
     ReviewRecallError,
 } from './recall';
+export {
+    ALL_SCANNERS,
+    ambientScanner,
+    loadScopedSources,
+    runSignalScanners,
+    sortDedupeCandidates,
+} from './signals';
+export type {
+    ScopedSource,
+    SignalResult,
+    SignalScanner,
+} from './signals';
 export { renderReviewChecklist } from './render';
 export { validateCompleteness } from './validate';
 export type { SubmittedItem, CompletenessResult } from './validate';

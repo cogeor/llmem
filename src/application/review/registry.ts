@@ -132,7 +132,7 @@ export const REVIEW_REGISTRY: readonly ChecklistItem[] = Object.freeze([
         scope: 'file',
         recallStrength: '●●○',
         title: 'Boundary/adapter bypass',
-        recallQuery: 'instruction',
+        recallQuery: 'ambient',
         promptInstruction:
             'Graph surfaces host/boundary modules importing infrastructure/persistence directly instead of an application service. LLM judges should route through a service; which command/query it becomes.',
     },
@@ -467,7 +467,7 @@ export const REVIEW_REGISTRY: readonly ChecklistItem[] = Object.freeze([
         scope: 'file',
         recallStrength: '●●○',
         title: 'Ambient-global bypass',
-        recallQuery: 'instruction',
+        recallQuery: 'ambient',
         promptInstruction:
             'Graph surfaces modules reading injected globals (window.GRAPH_DATA, window.DESIGN_DOCS, window.<INJECTED>) that aren\'t the designated bootstrap/adapter. LLM judges boundary violation vs sanctioned single entry. Instruction (until A2 ships): grep the injected-global allow-list and read each non-adapter reader.',
     },
