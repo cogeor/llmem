@@ -35,7 +35,7 @@ export interface Finding {
 /** Import / call cycle finding. */
 export interface CycleFinding extends Finding {
     type: 'import-cycle' | 'call-cycle' | 'recursion';
-    kind: 'import-cycle'; // discriminator for THIS loop (call/recursion added Loop 04)
+    kind: 'import-cycle' | 'call-cycle' | 'recursion'; // discriminator (call/recursion added Loop 04)
     members: string[]; // sorted SCC node ids
     shortestPath: string[]; // closed ordered node-id hop list (path[0] === path[last])
     // Loop 03 (type-only annotation): edge-count split + runtime-member
@@ -44,6 +44,12 @@ export interface CycleFinding extends Finding {
     typeOnlyEdgeCount?: number; // in-cycle edges that are `import type` (erased)
     totalEdgeCount?: number;    // total in-cycle edges of this SCC
     runtimeMembers?: string[];  // members surviving type-only edge removal (sorted)
+}
+
+/** Result of `findCallCycles`: mutual-recursion cycles vs the low-priority self-recursion bucket. */
+export interface CallCycleResult {
+    cycles: CycleFinding[]; // multi-node SCCs (kind:'call-cycle')
+    recursion: Finding[]; // size-1 self-loop SCCs (type/kind:'recursion')
 }
 
 /** A node-attached smell (webview-only consumer in later loops; type defined now). */
@@ -71,7 +77,8 @@ export interface HealthReport {
     repo: string; // repo label (basename of workspace root)
     vector: HealthVector; // the scorecard
     importCycles: CycleFinding[];
-    callCycles: CycleFinding[]; // [] this loop (stub)
+    callCycles: CycleFinding[]; // multi-node call SCCs (Loop 04)
+    recursion?: Finding[]; // Loop 04: direct self-recursion bucket (low priority)
     clones: Finding[]; // [] this loop (stub)
     hubs: Finding[]; // [] this loop (stub)
 }

@@ -18,13 +18,17 @@
 import type { WorkspaceContext } from '../workspace-context';
 import { ImportEdgeListStore, CallEdgeListStore } from '../../graph/edgelist';
 import { buildGraphsFromSplitEdgeLists } from '../../graph';
-import type { ImportGraph } from '../../graph/types';
+import type { ImportGraph, CallGraph } from '../../graph/types';
 import {
     excludeAggregatorEdges,
     nonTrivialSccs,
     shortestCyclePath,
 } from '../../graph/scc';
-import type { CycleFinding } from './types';
+import {
+    excludeExternalCallEdges,
+    adaptCallGraphForScc,
+} from '../../graph/call-cycle';
+import type { CycleFinding, Finding, CallCycleResult } from './types';
 
 /**
  * Pure: derive import `CycleFinding`s from an already-built `ImportGraph`.
@@ -110,4 +114,87 @@ export async function findImportCycles(
         callStore.getData(),
     );
     return importCyclesFromGraph(importGraph);
+}
+
+/**
+ * Pure: derive call-cycle / recursion findings from an already-built CallGraph.
+ *
+ * External/library entities are dropped BEFORE the SCC (via the shared
+ * graph-layer `excludeExternalCallEdges` — the call-graph analog of
+ * `excludeAggregatorEdges`) so library calls do not manufacture cycles. The
+ * call graph is adapted to the SCC engine (typed against `ImportGraph`) through
+ * the documented `adaptCallGraphForScc` cast; the engine reads ONLY
+ * `nodes.keys()` + `edge.source`/`edge.target`, never `ImportEdge.specifiers`.
+ *
+ * Partition of `nonTrivialSccs`: a size-1 non-trivial SCC is necessarily a
+ * direct self-loop `f->f` ⇒ the RECURSION bucket (severity 'low', never counted
+ * as a cycle); a size>1 SCC is mutual recursion ⇒ a `call-cycle` finding
+ * (severity 'medium', lower priority than import cycles).
+ *
+ * Determinism: `nonTrivialSccs` returns sorted components in stable order and
+ * each `scc` array is sorted ascending. Do NOT re-sort. No timestamps.
+ */
+export function callCyclesFromGraph(callGraph: CallGraph): CallCycleResult {
+    const keptEdges = excludeExternalCallEdges(callGraph);
+    const adapted = adaptCallGraphForScc(callGraph, keptEdges);
+
+    const sccs = nonTrivialSccs(adapted);
+
+    const cycles: CycleFinding[] = [];
+    const recursion: Finding[] = [];
+
+    for (const scc of sccs) {
+        if (scc.length === 1) {
+            // Size-1 non-trivial SCC == a direct self-loop f->f (the only way
+            // size-1 is non-trivial). This is RECURSION, not a cycle.
+            const id = scc[0];
+            recursion.push({
+                id: 'recursion:' + id,
+                type: 'recursion',
+                severity: 'low',
+                title: `direct self-recursion in ${id}`,
+                detail: `${id} calls itself directly`,
+                relatedFiles: [id],
+            });
+            continue;
+        }
+        // Multi-node SCC == mutual recursion == a call cycle.
+        const hops = shortestCyclePath(adapted, scc);
+        const path =
+            hops.length > 0
+                ? [hops[0].source, ...hops.map(h => h.target)]
+                : [...scc];
+        cycles.push({
+            id: 'call-cycle:' + scc.join('|'),
+            type: 'call-cycle',
+            kind: 'call-cycle',
+            severity: 'medium',
+            title: `${scc.length}-entity call cycle`,
+            detail: 'Call cycle through ' + path.join(' -> '),
+            relatedFiles: scc,
+            members: scc,
+            shortestPath: path,
+        });
+    }
+
+    return { cycles, recursion };
+}
+
+/**
+ * ctx-in / data-out: load the import + call edge-list stores, build the call
+ * graph via `buildGraphsFromSplitEdgeLists`, and delegate to
+ * `callCyclesFromGraph`.
+ */
+export async function findCallCycles(
+    ctx: WorkspaceContext,
+): Promise<CallCycleResult> {
+    const importStore = new ImportEdgeListStore(ctx.artifactRoot, ctx.io);
+    const callStore = new CallEdgeListStore(ctx.artifactRoot, ctx.io);
+    await importStore.load();
+    await callStore.load();
+    const { callGraph } = buildGraphsFromSplitEdgeLists(
+        importStore.getData(),
+        callStore.getData(),
+    );
+    return callCyclesFromGraph(callGraph);
 }

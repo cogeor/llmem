@@ -13,7 +13,7 @@
 import type { WorkspaceContext } from '../workspace-context';
 import type { HealthReport, HealthVector } from './types';
 import { zeroHealthVector } from './types';
-import { findImportCycles } from './cycles';
+import { findImportCycles, findCallCycles } from './cycles';
 
 /** Options for `runHealthScan`. Reserved for Loop 02+ (refresh toggle, severity floor). */
 export interface HealthScanOptions {
@@ -32,10 +32,9 @@ export async function runHealthScan(
 ): Promise<HealthReport> {
     void opts; // reserved for Loop 02+ (no options consumed yet)
     const importCycles = await findImportCycles(ctx);
+    const { cycles: callCycles, recursion } = await findCallCycles(ctx);
 
-    // TODO(Loop 04): findCallCycles. TODO(Loop 05): computeHubMetrics.
-    // TODO(Loop 06): findClones.
-    const callCycles: HealthReport['callCycles'] = [];
+    // TODO(Loop 05): computeHubMetrics. TODO(Loop 06): findClones.
     const clones: HealthReport['clones'] = [];
     const hubs: HealthReport['hubs'] = [];
 
@@ -51,10 +50,14 @@ export async function runHealthScan(
         c => (c.runtimeMembers?.length ?? c.members.length) >= 2,
     ).length;
 
+    // Loop 04: mutual-recursion call cycles vs the direct self-recursion bucket.
+    vector.callCyclesMutual = callCycles.length;
+    vector.callCyclesRecursion = recursion.length;
+
     // Basename label only (no timestamp). Split on both separators so it works
     // regardless of the OS-native form of `workspaceRoot`.
     const repo =
         ctx.workspaceRoot.split(/[\\/]/).pop() ?? ctx.workspaceRoot;
 
-    return { repo, vector, importCycles, callCycles, clones, hubs };
+    return { repo, vector, importCycles, callCycles, recursion, clones, hubs };
 }

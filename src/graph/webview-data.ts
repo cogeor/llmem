@@ -6,6 +6,7 @@
 
 import { buildGraphsFromSplitEdgeLists } from './index';
 import { computeInCycleEdgeKeys } from './scc';
+import { computeCallInCycleEdgeKeys } from './call-cycle';
 import { ColorGenerator } from './utils';
 import { EdgeListData } from './edgelist';
 import type { ImportGraph, CallGraph } from './types';
@@ -87,9 +88,17 @@ function transformGraphsToVisData(importGraph: ImportGraph, callGraph: CallGraph
         callGraph: n.callGraph
     }));
 
+    // Loop 04: tag call edges that sit in a non-trivial call SCC. Uses the
+    // SAME shared graph-layer helper (`computeCallInCycleEdgeKeys`) the health
+    // analyzer (`analysis/cycles.ts`) uses, so `llmem health` and the webview
+    // agree exactly on which call edges are in-cycle. Acyclic call edges omit
+    // the flag (undefined), matching import-edge behavior.
+    const callCycleKeys = computeCallInCycleEdgeKeys(callGraph);
+
     const callEdges: VisEdge[] = callGraph.edges.map((e) => ({
         from: e.source,
-        to: e.target
+        to: e.target,
+        ...(callCycleKeys.has(`${e.source}->${e.target}`) ? { inCycle: true } : {})
     }));
 
     return {

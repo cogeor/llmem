@@ -51,5 +51,31 @@ export function renderHealthReport(report: HealthReport): string {
         });
     }
 
+    lines.push('');
+    lines.push('## 2. Call cycles');
+    const callCycles = report.callCycles;
+    if (callCycles.length === 0) {
+        lines.push('No mutual call cycles found.');
+    } else {
+        lines.push(`Found ${callCycles.length} mutual call cycle(s):`);
+        callCycles.forEach((f, i) => {
+            lines.push('');
+            lines.push(
+                `Cycle ${i + 1} (${f.members.length} entities): ${f.members.join(', ')}`,
+            );
+            lines.push(`  ${f.shortestPath.join(' -> ')}`);
+        });
+    }
+
+    const recursion = report.recursion ?? [];
+    lines.push('');
+    lines.push('### Direct self-recursion');
+    if (recursion.length === 0) {
+        lines.push('No direct self-recursion found.');
+    } else {
+        lines.push(`Found ${recursion.length} self-recursive entit(ies):`);
+        recursion.forEach(f => lines.push(`  ${f.title}`));
+    }
+
     return lines.join('\n');
 }
