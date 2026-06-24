@@ -35,6 +35,7 @@ import { initCommand } from './commands/init';          // Loop 07
 import { installCommand } from './commands/install';    // LI-03
 import { findCyclesCommand } from './commands/find-cycles'; // cycle-detection L03
 import { healthCommand } from './commands/health'; // health-analysis L02
+import { reviewCommand } from './commands/review'; // review-checklist L06
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const REGISTRY: CommandSpec<any>[] = [
@@ -44,6 +45,7 @@ export const REGISTRY: CommandSpec<any>[] = [
     statsCommand,
     findCyclesCommand,  // cycle-detection L03
     healthCommand,      // health-analysis L02
+    reviewCommand,      // review-checklist L06
     describeCommand,    // Loop 04
     scanCommand,        // Loop 05
     documentCommand,    // Loop 06
