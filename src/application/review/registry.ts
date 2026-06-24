@@ -200,7 +200,7 @@ export const REVIEW_REGISTRY: readonly ChecklistItem[] = Object.freeze([
         scope: 'file',
         recallStrength: '●●○',
         title: 'Fat / optional-method interfaces (ISP)',
-        recallQuery: 'instruction',
+        recallQuery: 'interface-decl',
         promptInstruction:
             'Graph surfaces interfaces with many members and/or optional methods that force capability discovery by callers. LLM judges split into role interfaces.',
     },

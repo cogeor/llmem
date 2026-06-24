@@ -12,9 +12,13 @@
 
 import type { SignalScanner } from './source-scan';
 import { ambientScanner } from './ambient';
+import { interfaceWidthScanner } from './interface-width';
 
 /** Every signal scanner the recall wrapper runs. Append new scanners here. */
-export const ALL_SCANNERS: SignalScanner[] = [ambientScanner];
+export const ALL_SCANNERS: SignalScanner[] = [
+    ambientScanner,
+    interfaceWidthScanner,
+];
 
 export type {
     ScopedSource,
@@ -27,4 +31,5 @@ export {
     sortDedupeCandidates,
 } from './source-scan';
 export { ambientScanner } from './ambient';
+export { interfaceWidthScanner } from './interface-width';
 export { mergeSignals } from '../recall';
