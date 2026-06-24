@@ -14,6 +14,7 @@ import type { WorkspaceContext } from '../workspace-context';
 import type { HealthReport, HealthVector } from './types';
 import { zeroHealthVector } from './types';
 import { findImportCycles, findCallCycles } from './cycles';
+import { computeHubReport } from './metrics';
 
 /** Options for `runHealthScan`. Reserved for Loop 02+ (refresh toggle, severity floor). */
 export interface HealthScanOptions {
@@ -34,9 +35,9 @@ export async function runHealthScan(
     const importCycles = await findImportCycles(ctx);
     const { cycles: callCycles, recursion } = await findCallCycles(ctx);
 
-    // TODO(Loop 05): computeHubMetrics. TODO(Loop 06): findClones.
+    // TODO(Loop 06): findClones.
     const clones: HealthReport['clones'] = [];
-    const hubs: HealthReport['hubs'] = [];
+    const { hubs, maxFanIn } = await computeHubReport(ctx);
 
     const vector: HealthVector = zeroHealthVector();
     // incl-type-only: ALL cycles over the full graph (the analyzer runs the SCC
@@ -53,6 +54,11 @@ export async function runHealthScan(
     // Loop 04: mutual-recursion call cycles vs the direct self-recursion bucket.
     vector.callCyclesMutual = callCycles.length;
     vector.callCyclesRecursion = recursion.length;
+
+    // Loop 05: hub / instability. `maxFanIn` is the global max Ca over ALL file
+    // nodes (not just flagged outliers); `hubOutliers` is the count of flagged.
+    vector.maxFanIn = maxFanIn;
+    vector.hubOutliers = hubs.length;
 
     // Basename label only (no timestamp). Split on both separators so it works
     // regardless of the OS-native form of `workspaceRoot`.

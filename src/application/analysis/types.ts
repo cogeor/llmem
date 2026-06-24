@@ -46,6 +46,18 @@ export interface CycleFinding extends Finding {
     runtimeMembers?: string[];  // members surviving type-only edge removal (sorted)
 }
 
+/** Label distinguishing a healthy shared dependency from a risky hub. */
+export type HubLabel = 'kernel' | 'unstable-hub';
+
+/** Hub / instability finding for a single import-graph file node. */
+export interface HubFinding extends Finding {
+    type: 'hub';
+    ca: number;          // fan-in: distinct incoming file→file deps
+    ce: number;          // fan-out: distinct outgoing file→file deps
+    instability: number; // I = ce / (ca + ce), 0 when ca+ce === 0
+    label: HubLabel;
+}
+
 /** Result of `findCallCycles`: mutual-recursion cycles vs the low-priority self-recursion bucket. */
 export interface CallCycleResult {
     cycles: CycleFinding[]; // multi-node SCCs (kind:'call-cycle')
@@ -80,7 +92,7 @@ export interface HealthReport {
     callCycles: CycleFinding[]; // multi-node call SCCs (Loop 04)
     recursion?: Finding[]; // Loop 04: direct self-recursion bucket (low priority)
     clones: Finding[]; // [] this loop (stub)
-    hubs: Finding[]; // [] this loop (stub)
+    hubs: HubFinding[]; // Loop 05: hub / instability outliers (kernel|unstable-hub)
 }
 
 /** Phase-2 (MCP) issue schema — spec §0 VERBATIM. Type ONLY this loop. */

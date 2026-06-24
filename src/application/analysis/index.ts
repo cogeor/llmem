@@ -8,6 +8,14 @@
 
 export * from './types';
 export { findImportCycles, importCyclesFromGraph } from './cycles';
+export {
+    computeHubMetrics,
+    hubMetricsFromGraph,
+    computeHubReport,
+    maxFanInFromGraph,
+    HUB_DEGREE_THRESHOLD,
+    KERNEL_INSTABILITY_MAX,
+} from './metrics';
 export { runHealthScan } from './health';
 export type { HealthScanOptions } from './health';
 export { renderHealthReport } from './report-markdown';

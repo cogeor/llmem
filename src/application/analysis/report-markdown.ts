@@ -77,5 +77,23 @@ export function renderHealthReport(report: HealthReport): string {
         recursion.forEach(f => lines.push(`  ${f.title}`));
     }
 
+    // §3 Duplication is Loop 06; emit the spec's fixed section number `## 4`
+    // here even with the §3 gap. Order-preserving: the array is already sorted
+    // by metrics.ts (degree desc, id asc) — do NOT re-sort.
+    lines.push('');
+    lines.push('## 4. Hubs & instability');
+    const hubs = report.hubs;
+    if (hubs.length === 0) {
+        lines.push('No hub outliers found.');
+    } else {
+        lines.push('| File | Ca (in) | Ce (out) | I | Label |');
+        lines.push('| --- | --- | --- | --- | --- |');
+        hubs.forEach(h => {
+            lines.push(
+                `| ${h.relatedFiles[0]} | ${h.ca} | ${h.ce} | ${h.instability.toFixed(2)} | ${h.label} |`,
+            );
+        });
+    }
+
     return lines.join('\n');
 }
