@@ -2,12 +2,14 @@
  * A1 — listener/subscription balance signal (WS-4), feeding FL1 + ST4.
  *
  * Scans each in-scope source for lifecycle REGISTER vs RELEASE call lexemes and
- * emits a candidate when a file's register count exceeds its release count — the
- * regex-review-time approximation of the extraction-plan's A1 lifecycle-balance
- * pass. Per-entity balance is out of regex reach (we can't reliably bound a
- * mount/teardown pair from text), so this is FILE granularity: noisy by design,
- * and the LLM filter judges the genuine leak vs the app-lifetime singleton that
- * never tears down.
+ * emits a candidate when an entity's register count exceeds its release count —
+ * the regex-review-time approximation of the extraction-plan's A1
+ * lifecycle-balance pass. Loop 04 moves the tally from FILE granularity to
+ * PER-ENTITY: each match is attributed (via the pure `entitySpans` brace tracker)
+ * to its enclosing class/method, so a leak names `<fileId>::<Class.method>` and
+ * a module-top-level leak falls back to the plain `<fileId>`. Still noisy by
+ * design — the LLM filter judges the genuine leak vs the app-lifetime singleton
+ * that never tears down.
  *
  *   REGISTER: addEventListener( · .subscribe( · .on( · .observe( · .connect( ·
  *             .watch(
@@ -27,7 +29,9 @@
  * Pure: text in, candidates out. No IO, no `Date`, no `Math.random`.
  */
 
+import { makeEntityId } from '../../../core/ids';
 import type { RecallCandidate } from '../types';
+import { entitySpans, enclosingEntity } from './entity-spans';
 import type { ScopedSource, SignalResult, SignalScanner } from './source-scan';
 
 /**
@@ -61,30 +65,65 @@ const RELEASE_RES: readonly RegExp[] = [
     /(?<![\w$.])unsubscribe(?![\w$])\s*\(/g,
 ];
 
-/** Count total matches of every pattern in `res` across `text`. */
-function countMatches(text: string, res: readonly RegExp[]): number {
-    let total = 0;
+/** Per-entity register/release tallies, keyed by enclosing entity name. */
+interface Tally {
+    register: number;
+    release: number;
+}
+
+// The file-level bucket key for matches that sit outside every declaration.
+// A symbol can't key a Map insertion-order test cleanly, so we use `null`.
+type BucketKey = string | null;
+
+/**
+ * Accumulate matches of every pattern in `res` into `buckets`, attributing each
+ * match to its enclosing entity (or the `null` file-level bucket). `kind` selects
+ * which side of the tally to bump.
+ */
+function tallyMatches(
+    text: string,
+    spans: ReturnType<typeof entitySpans>,
+    res: readonly RegExp[],
+    kind: 'register' | 'release',
+    buckets: Map<BucketKey, Tally>,
+): void {
     for (const re of res) {
         // A fresh regex per call avoids shared `lastIndex` state across files.
         const r = new RegExp(re.source, 'g');
-        while (r.exec(text) !== null) {
-            total++;
+        let m: RegExpExecArray | null;
+        while ((m = r.exec(text)) !== null) {
+            const key: BucketKey = enclosingEntity(spans, m.index) ?? null;
+            const tally = buckets.get(key) ?? { register: 0, release: 0 };
+            tally[kind]++;
+            buckets.set(key, tally);
         }
     }
-    return total;
 }
 
-/** Build the candidate for one source, or none when register ≤ release. */
-function candidateFor(source: ScopedSource): RecallCandidate | undefined {
-    const register = countMatches(source.text, REGISTER_RES);
-    const release = countMatches(source.text, RELEASE_RES);
-    if (register <= release) {
-        return undefined;
+/**
+ * Build the per-entity leak candidates for one source. Each entity (or the
+ * file-level fallback bucket) whose register count exceeds its release count
+ * yields one candidate; the harness sorts/dedupes the merged list.
+ */
+function candidatesFor(source: ScopedSource): RecallCandidate[] {
+    const spans = entitySpans(source.text);
+    const buckets = new Map<BucketKey, Tally>();
+    tallyMatches(source.text, spans, REGISTER_RES, 'register', buckets);
+    tallyMatches(source.text, spans, RELEASE_RES, 'release', buckets);
+
+    const out: RecallCandidate[] = [];
+    for (const [key, { register, release }] of buckets) {
+        if (register <= release) {
+            continue;
+        }
+        const ref =
+            key === null ? source.fileId : makeEntityId(source.fileId, key);
+        out.push({
+            ref,
+            note: `${register} register vs ${release} release call(s) — possible leak`,
+        });
     }
-    return {
-        ref: source.fileId,
-        note: `${register} register vs ${release} release call(s) — possible leak`,
-    };
+    return out;
 }
 
 /**
@@ -98,10 +137,7 @@ export const listenerBalanceScanner: SignalScanner = (
 ): SignalResult[] => {
     const candidates: RecallCandidate[] = [];
     for (const source of sources) {
-        const candidate = candidateFor(source);
-        if (candidate) {
-            candidates.push(candidate);
-        }
+        candidates.push(...candidatesFor(source));
     }
     // Same candidates feed the frontend leak (FL1) and generic lifecycle (ST4).
     return [

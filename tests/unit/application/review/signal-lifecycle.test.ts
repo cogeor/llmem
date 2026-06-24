@@ -54,7 +54,8 @@ const emptyReport = (): HealthReport => ({
 const entryFor = (checklist: ReviewChecklist, itemId: string) =>
     checklist.entries.find(e => e.item.id === itemId);
 
-// 5 registers, 0 releases.
+// 5 registers, 0 releases — all at MODULE TOP LEVEL (outside any decl), so the
+// candidate falls back to the plain fileId.
 const LEAKY = `
 el.addEventListener('click', h);
 el.addEventListener('keydown', h);
@@ -62,6 +63,17 @@ store.subscribe(fn);
 emitter.on('data', fn);
 ro.observe(node);
 `;
+
+// 5 registers, 0 releases, all INSIDE a named class method → per-entity ref.
+const LEAKY_METHOD = `class Panel {
+    wire() {
+        el.addEventListener('click', h);
+        el.addEventListener('keydown', h);
+        store.subscribe(fn);
+        emitter.on('data', fn);
+        ro.observe(node);
+    }
+}`;
 
 // 3 register / 3 release — balanced.
 const BALANCED = `
@@ -73,9 +85,9 @@ store.unsubscribe(fn);
 sock.disconnect();
 `;
 
-// ---- Case 1: leaky file (5 register / 0 release) yields FL1 + ST4 ----------
+// ---- Case 1a: module-top-level leak → file-level fallback ref -------------
 
-test('listenerBalanceScanner: 5 register / 0 release yields FL1 + ST4 candidate noting 5 vs 0', () => {
+test('listenerBalanceScanner: top-level 5/0 leak falls back to the plain file id ref', () => {
     const sources = [src('src/webview/panel.ts', LEAKY)];
 
     const results = listenerBalanceScanner(sources);
@@ -85,11 +97,11 @@ test('listenerBalanceScanner: 5 register / 0 release yields FL1 + ST4 candidate 
     assert.ok(fl1, 'FL1 result present');
     assert.ok(st4, 'ST4 result present');
 
-    assert.equal(fl1.candidates.length, 1, 'exactly one unbalanced-file candidate');
+    assert.equal(fl1.candidates.length, 1, 'exactly one unbalanced candidate');
     assert.equal(
         fl1.candidates[0].ref,
         'src/webview/panel.ts',
-        'candidate ref is the file id',
+        'top-level leak → ref is the plain file id (fallback)',
     );
     assert.equal(
         fl1.candidates[0].note,
@@ -99,6 +111,60 @@ test('listenerBalanceScanner: 5 register / 0 release yields FL1 + ST4 candidate 
 
     // ST4 carries the SAME candidates (generic lifecycle framing).
     assert.deepEqual(st4.candidates, fl1.candidates, 'ST4 mirrors FL1 candidates');
+});
+
+// ---- Case 1b: leak inside a class method → per-entity ref ------------------
+
+test('listenerBalanceScanner: 5/0 leak inside Panel.wire names <fileId>::Panel.wire', () => {
+    const sources = [src('src/webview/panel.ts', LEAKY_METHOD)];
+
+    const results = listenerBalanceScanner(sources);
+    const fl1 = results.find(r => r.itemId === 'FL1');
+    const st4 = results.find(r => r.itemId === 'ST4');
+    assert.ok(fl1);
+    assert.ok(st4);
+
+    assert.equal(fl1.candidates.length, 1, 'exactly one per-entity candidate');
+    assert.equal(
+        fl1.candidates[0].ref,
+        'src/webview/panel.ts::Panel.wire',
+        'candidate ref names the enclosing class method',
+    );
+    assert.equal(
+        fl1.candidates[0].note,
+        '5 register vs 0 release call(s) — possible leak',
+        'note reports that entity’s register/release tally',
+    );
+    assert.deepEqual(st4.candidates, fl1.candidates, 'ST4 mirrors FL1 candidates');
+});
+
+// ---- Case 1c: two methods, one leaky one balanced → attribute to leaker -----
+
+test('listenerBalanceScanner: per-entity tally attributes only the leaky method', () => {
+    const TWO_METHODS = `class Widget {
+    leaky() {
+        el.addEventListener('click', h);
+        store.subscribe(fn);
+    }
+    clean() {
+        el.addEventListener('click', h);
+        el.removeEventListener('click', h);
+    }
+}`;
+    const sources = [src('src/widget.ts', TWO_METHODS)];
+
+    const fl1 = listenerBalanceScanner(sources).find(r => r.itemId === 'FL1');
+    assert.ok(fl1);
+    assert.equal(
+        fl1.candidates.length,
+        1,
+        'only the unbalanced method yields a candidate (per-entity, not per-file)',
+    );
+    assert.equal(fl1.candidates[0].ref, 'src/widget.ts::Widget.leaky');
+    assert.equal(
+        fl1.candidates[0].note,
+        '2 register vs 0 release call(s) — possible leak',
+    );
 });
 
 // ---- Case 2: balanced file yields no candidate ----------------------------

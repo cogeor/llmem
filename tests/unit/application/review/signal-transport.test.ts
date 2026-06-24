@@ -78,6 +78,51 @@ test('transportScanner: onDidReceiveMessage((message: any)) with no validator yi
     );
 });
 
+test('transportScanner: a sink inside a class method names <fileId>::Host.wire', () => {
+    const sources = [
+        src(
+            'src/panel.ts',
+            `class Host {
+    wire() {
+        panel.webview.onDidReceiveMessage((m: any) => dispatch(m));
+    }
+}`,
+        ),
+    ];
+
+    const fp1 = transportScanner(sources).find(r => r.itemId === 'FP1');
+    assert.ok(fp1);
+    assert.equal(fp1.candidates.length, 1, 'one transport-sink candidate');
+    assert.equal(
+        fp1.candidates[0].ref,
+        'src/panel.ts::Host.wire',
+        'ref names the entity enclosing the first sink',
+    );
+    assert.equal(
+        fp1.candidates[0].note,
+        'transport sink; payloadUntyped=true validatesBeforeUse=false',
+        'typing-flag note unchanged',
+    );
+});
+
+test('transportScanner: a top-level sink falls back to the plain file id', () => {
+    const sources = [
+        src(
+            'src/win.ts',
+            'window.addEventListener("message", ev => { dispatch(ev.data); });',
+        ),
+    ];
+
+    const fp1 = transportScanner(sources).find(r => r.itemId === 'FP1');
+    assert.ok(fp1);
+    assert.equal(fp1.candidates.length, 1);
+    assert.equal(
+        fp1.candidates[0].ref,
+        'src/win.ts',
+        'top-level sink → plain file id (fallback)',
+    );
+});
+
 test('transportScanner: other sink shapes also yield candidates with flags', () => {
     const sources = [
         src(

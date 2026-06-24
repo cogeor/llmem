@@ -48,3 +48,5 @@ export { payloadOwnerScanner } from './payload-owners';
 export { routeLiteralScanner } from './routes';
 export { transportScanner } from './transport';
 export { mergeSignals } from '../recall';
+export type { EntitySpan } from './entity-spans';
+export { entitySpans, enclosingEntity } from './entity-spans';

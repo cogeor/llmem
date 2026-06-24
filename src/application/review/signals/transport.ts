@@ -18,15 +18,22 @@
  * The LLM filter judges "serialized transport needs a runtime codec" against the
  * concrete site; this scanner only surfaces the boundary.
  *
- * Candidate for FP1 = a file with a transport sink. The candidate `ref` is the
- * file id; the `note` is `transport sink; payloadUntyped=<bool> validatesBeforeUse=<bool>`.
+ * Candidate for FP1 = a file with a transport sink. Loop 04 attributes the
+ * candidate to the entity enclosing the file's FIRST sink (via the pure
+ * `entitySpans` brace tracker): `ref = <fileId>::<Class.method>`, falling back to
+ * the plain `<fileId>` when the first sink sits outside any declaration. The
+ * `note` (`transport sink; payloadUntyped=<bool> validatesBeforeUse=<bool>`) and
+ * the one-candidate-per-sink-file cardinality are unchanged — the two typing
+ * flags remain file-scoped presence flags by design.
  *
  * Only FP1 is emitted.
  *
  * Pure: text in, candidates out. No IO, no `Date`, no `Math.random`.
  */
 
+import { makeEntityId } from '../../../core/ids';
 import type { RecallCandidate } from '../types';
+import { entitySpans, enclosingEntity } from './entity-spans';
 import type { ScopedSource, SignalResult, SignalScanner } from './source-scan';
 
 /**
@@ -54,9 +61,21 @@ const UNTYPED_RE = /:\s*(?:any|unknown)\b/;
  */
 const VALIDATOR_RE = /\b(?:parse|validate|decode|isValid|safeParse)\s*\(/;
 
-/** Does `text` contain at least one transport sink? */
-function hasTransportSink(text: string): boolean {
-    return SINK_RES.some(re => new RegExp(re.source, re.flags).test(text));
+/**
+ * Offset of the FIRST transport sink in `text`, or `-1` when none. We take the
+ * minimum `match.index` across every sink pattern so the candidate is attributed
+ * to the entity that owns the earliest sink.
+ */
+function firstSinkOffset(text: string): number {
+    let min = Infinity;
+    for (const re of SINK_RES) {
+        const r = new RegExp(re.source, 'g');
+        const m = r.exec(text);
+        if (m && m.index < min) {
+            min = m.index;
+        }
+    }
+    return min === Infinity ? -1 : min;
 }
 
 /**
@@ -70,13 +89,18 @@ export const transportScanner: SignalScanner = (
 ): SignalResult[] => {
     const candidates: RecallCandidate[] = [];
     for (const source of sources) {
-        if (!hasTransportSink(source.text)) {
+        const sinkOffset = firstSinkOffset(source.text);
+        if (sinkOffset < 0) {
             continue;
         }
         const payloadUntyped = UNTYPED_RE.test(source.text);
         const validatesBeforeUse = VALIDATOR_RE.test(source.text);
+        const key = enclosingEntity(entitySpans(source.text), sinkOffset);
+        const ref = key
+            ? makeEntityId(source.fileId, key)
+            : source.fileId;
         candidates.push({
-            ref: source.fileId,
+            ref,
             note: `transport sink; payloadUntyped=${payloadUntyped} validatesBeforeUse=${validatesBeforeUse}`,
         });
     }
