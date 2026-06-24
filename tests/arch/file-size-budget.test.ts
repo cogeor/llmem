@@ -111,6 +111,16 @@ const KNOWN_OVER_BUDGET: readonly OverBudgetEntry[] = [
     // EMPTY. Future transitional rows MUST carry a `phase` (the loop id that
     // retires the row) and a one-line `reason`; the stale-row test below
     // fires on any unobserved entry.
+    {
+        rel: 'src/application/analysis/interface-width.ts',
+        maxLines: 560,
+        phase: 'interface-width Loop 07',
+        reason:
+            'Loop 04 landed the interface-width pure core (W1/W2/W3/W4) + ' +
+            'barrel annotation + dynamic-percentile calibration in one analyzer ' +
+            'module (552 lines, header-heavy). Decomposed once the Loop-06 schema ' +
+            'bump splits the pure-metric vs calibration concerns.',
+    },
 ];
 
 function toRepoRel(absPath: string): string {

@@ -16,6 +16,11 @@ export {
     HUB_DEGREE_THRESHOLD,
     KERNEL_INSTABILITY_MAX,
 } from './metrics';
+export {
+    computeInterfaceWidth,
+    interfaceWidthFromGraph,
+    calibrateInterfaceWidthSeverity,
+} from './interface-width';
 export { runHealthScan, reportHasFindingKind } from './health';
 export type { HealthScanOptions } from './health';
 export { renderHealthReport } from './report-markdown';

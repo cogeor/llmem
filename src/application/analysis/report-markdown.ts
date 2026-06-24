@@ -30,6 +30,9 @@ export function renderHealthReport(report: HealthReport): string {
         `clone clusters: ${v.cloneClustersHigh} (high) / ${v.cloneClustersTotal} (total)`,
     );
     lines.push(`hub outliers: ${v.hubOutliers} (max fan-in ${v.maxFanIn})`);
+    lines.push(
+        `interface width: max W_eff ${v.maxEffectiveWidth.toFixed(2)}, ${v.interfaceWidthShallowWide} shallow-wide module(s)`,
+    );
     lines.push(`files over budget: ${v.filesOverBudget}`);
 
     lines.push('');
@@ -118,6 +121,68 @@ export function renderHealthReport(report: HealthReport): string {
                 `| ${h.relatedFiles[0]} | ${h.ca} | ${h.ce} | ${h.instability.toFixed(2)} | ${h.label} |`,
             );
         });
+    }
+
+    // §5 Module interfaces (Loop 05 interface-width). The findings array is
+    // id-sorted by the analyzer; each sub-list re-sorts LOCALLY by its display
+    // metric (stable, deterministic). No per-file dump — three compact lists:
+    // the actionable shallow-wide folders, a widest-folder context window, and
+    // the informational shared-utility function surfaces.
+    const iw = report.interfaceWidth;
+    const folderFindings = iw.filter(f => f.scope === 'folder');
+    const fnFindings = iw.filter(f => f.scope === 'function');
+
+    const widthRow = (
+        f: { module: string; w: number; wEff: number; moduleDepth: number; dmr: number },
+    ): string =>
+        `| ${f.module} | ${f.w} | ${f.wEff.toFixed(2)} | ${f.moduleDepth} | ${f.dmr.toFixed(2)} |`;
+
+    lines.push('');
+    lines.push('## 5. Module interfaces');
+
+    // (a) Shallow-wide modules — the actionable smell list.
+    lines.push('');
+    lines.push('### Shallow-wide modules');
+    const shallowWide = folderFindings
+        .filter(f => f.severity === 'medium')
+        .sort((a, b) => b.wEff - a.wEff || a.module.localeCompare(b.module));
+    if (shallowWide.length === 0) {
+        lines.push('No shallow-wide modules.');
+    } else {
+        lines.push('| Module | W | W_eff | Depth | DMR |');
+        lines.push('| --- | --- | --- | --- | --- |');
+        shallowWide.forEach(f => lines.push(widthRow(f)));
+    }
+
+    // (b) Widest folders (context) — top 8 folder findings by W_eff (w > 0).
+    lines.push('');
+    lines.push('### Widest folders (context)');
+    const widestFolders = folderFindings
+        .filter(f => f.w > 0)
+        .sort((a, b) => b.wEff - a.wEff || a.module.localeCompare(b.module))
+        .slice(0, 8);
+    if (widestFolders.length === 0) {
+        lines.push('No folder interfaces measured.');
+    } else {
+        lines.push('| Module | W | W_eff | Depth | DMR |');
+        lines.push('| --- | --- | --- | --- | --- |');
+        widestFolders.forEach(f => lines.push(widthRow(f)));
+    }
+
+    // (c) Shared-utility surfaces (informational) — top 8 function findings by
+    // cross-file inbound (topEntryPoints[0].inbound) desc.
+    lines.push('');
+    lines.push('### Shared-utility surfaces (informational)');
+    const widestFns = fnFindings
+        .map(f => ({ module: f.module, inbound: f.topEntryPoints[0]?.inbound ?? 0 }))
+        .sort((a, b) => b.inbound - a.inbound || a.module.localeCompare(b.module))
+        .slice(0, 8);
+    if (widestFns.length === 0) {
+        lines.push('No shared-utility surfaces.');
+    } else {
+        lines.push('| Function | cross-file inbound |');
+        lines.push('| --- | --- |');
+        widestFns.forEach(f => lines.push(`| ${f.module} | ${f.inbound} |`));
     }
 
     return lines.join('\n');

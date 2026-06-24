@@ -141,6 +141,16 @@ test('health on a clean workspace: exit 0, writes md+json, prints the report', (
 
         const parsed = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
         assert.equal(parsed.vector.importCyclesRuntime, 0, 'no runtime import cycles');
+        // Loop 05 (interface-width): the two new vector fields are present and
+        // numeric in the persisted JSON (the small seed has no medium smell, so
+        // shallow-wide is 0).
+        assert.equal(typeof parsed.vector.maxEffectiveWidth, 'number', 'maxEffectiveWidth in vector');
+        assert.equal(
+            typeof parsed.vector.interfaceWidthShallowWide,
+            'number',
+            'interfaceWidthShallowWide in vector',
+        );
+        assert.ok(Array.isArray(parsed.interfaceWidth), 'report carries interfaceWidth array');
     } finally {
         rmrf(tmp);
     }

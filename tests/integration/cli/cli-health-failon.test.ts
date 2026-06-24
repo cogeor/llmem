@@ -172,6 +172,8 @@ const ALL_VECTOR_KEYS = [
     'maxFanIn',
     'hubOutliers',
     'filesOverBudget',
+    'maxEffectiveWidth',
+    'interfaceWidthShallowWide',
 ] as const;
 
 test('--fail-on import-cycle: exit 1 on a RUNTIME cycle, 0 on a clean repo', () => {
@@ -218,12 +220,15 @@ test('reportHasFindingKind: clone/hub/recursion map to the right report source',
             maxFanIn: 0,
             hubOutliers: 0,
             filesOverBudget: 0,
+            maxEffectiveWidth: 0,
+            interfaceWidthShallowWide: 0,
         },
         importCycles: [],
         callCycles: [],
         recursion: [],
         clones: [],
         hubs: [],
+        interfaceWidth: [],
     };
 
     // Empty report: every kind is false.
@@ -274,9 +279,20 @@ test('reportHasFindingKind: clone/hub/recursion map to the right report source',
     };
     assert.equal(reportHasFindingKind(typeOnlyCycle, 'import-cycle'), false,
         'type-only cycle does NOT trip import-cycle gate');
+
+    // interface-width keys on the shallow-wide SMELL count, NOT on the mere
+    // existence of width findings (every real repo has those). Opt-in gate (D2).
+    assert.equal(reportHasFindingKind(base, 'interface-width'), false,
+        'interface-width false when no shallow-wide smell');
+    const withShallowWide: HealthReport = {
+        ...base,
+        vector: { ...base.vector, interfaceWidthShallowWide: 1 },
+    };
+    assert.equal(reportHasFindingKind(withShallowWide, 'interface-width'), true,
+        'interface-width keys on vector.interfaceWidthShallowWide');
 });
 
-test('--json: full HealthVector shape (9 numeric dims) + byte-deterministic across two runs', () => {
+test('--json: full HealthVector shape (all numeric dims) + byte-deterministic across two runs', () => {
     ensureBuilt();
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-failon-'));
     try {
@@ -294,7 +310,7 @@ test('--json: full HealthVector shape (9 numeric dims) + byte-deterministic acro
         }
         assert.equal(
             Object.keys(parsed.vector).length, ALL_VECTOR_KEYS.length,
-            'vector has exactly the 9 declared dims',
+            'vector has exactly the declared dims',
         );
 
         // No ISO timestamp anywhere in the emitted JSON (the report is timestamp-free).

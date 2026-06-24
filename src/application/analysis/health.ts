@@ -15,6 +15,7 @@ import { zeroHealthVector } from './types';
 import { findImportCycles, findCallCycles } from './cycles';
 import { findClones } from './clones';
 import { computeHubReport } from './metrics';
+import { computeInterfaceWidth } from './interface-width';
 import { readManifest } from '../scan-manifest';
 
 /**
@@ -52,6 +53,7 @@ export async function runHealthScan(
 
     const clones = await findClones(ctx);
     const { hubs, maxFanIn } = await computeHubReport(ctx);
+    const interfaceWidth = await computeInterfaceWidth(ctx);
 
     const vector: HealthVector = zeroHealthVector();
     // incl-type-only: ALL cycles over the full graph (the analyzer runs the SCC
@@ -79,6 +81,17 @@ export async function runHealthScan(
     vector.cloneClustersTotal = clones.length;
     vector.cloneClustersHigh = clones.filter(c => c.severity === 'high').length;
 
+    // Loop 05 (interface-width): `maxEffectiveWidth` is the max W_eff over
+    // FOLDER-scope findings (0 when none); `interfaceWidthShallowWide` is the
+    // count of shallow-wide folder smells (severity === 'medium' from the
+    // Loop-04 percentile calibration). Both are pure functions of the graph.
+    vector.maxEffectiveWidth = interfaceWidth
+        .filter(f => f.scope === 'folder')
+        .reduce((max, f) => Math.max(max, f.wEff), 0);
+    vector.interfaceWidthShallowWide = interfaceWidth.filter(
+        f => f.severity === 'medium',
+    ).length;
+
     // Loop 09: filesOverBudget — count files whose recorded `lines` exceed the
     // single documented threshold (FILE_SIZE_BUDGET_LINES = 350). Source of
     // truth is the scan-manifest `lines` field (no parsing here). A
@@ -93,7 +106,7 @@ export async function runHealthScan(
     const repo =
         ctx.workspaceRoot.split(/[\\/]/).pop() ?? ctx.workspaceRoot;
 
-    return { repo, vector, importCycles, callCycles, recursion, clones, hubs };
+    return { repo, vector, importCycles, callCycles, recursion, clones, hubs, interfaceWidth };
 }
 
 /**
@@ -109,6 +122,9 @@ export async function runHealthScan(
  *   - `hub`          -> `report.hubs.length > 0`
  *   - `recursion`    -> `(report.recursion ?? []).length > 0` (recursion
  *     findings live in `report.recursion`, NOT `report.callCycles`).
+ *   - `interface-width` -> `report.vector.interfaceWidthShallowWide > 0` (the
+ *     opt-in gate fires on an actual shallow-wide SMELL, NOT on the mere
+ *     existence of width findings — every real repo has those).
  *   - any other kind -> `false` (an unknown/typo kind never fails the build).
  */
 export function reportHasFindingKind(report: HealthReport, kind: string): boolean {
@@ -118,6 +134,7 @@ export function reportHasFindingKind(report: HealthReport, kind: string): boolea
         case 'clone':        return report.clones.length > 0;
         case 'hub':          return report.hubs.length > 0;
         case 'recursion':    return (report.recursion ?? []).length > 0;
+        case 'interface-width': return report.vector.interfaceWidthShallowWide > 0;
         default: return false; // unknown kind -> never fails the build
     }
 }

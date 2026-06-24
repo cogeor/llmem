@@ -137,6 +137,11 @@ export interface HealthVector {
     maxFanIn: number;
     hubOutliers: number;
     filesOverBudget: number;
+    // Loop 05 (interface-width): max W_eff over folder-scope findings (0 if
+    // none) and the count of shallow-wide folder smells (severity === 'medium'
+    // from the Loop-04 calibration).
+    maxEffectiveWidth: number;
+    interfaceWidthShallowWide: number;
 }
 
 /** Composed report assembled by `runHealthScan`. */
@@ -148,6 +153,7 @@ export interface HealthReport {
     recursion?: Finding[]; // Loop 04: direct self-recursion bucket (low priority)
     clones: CloneFinding[]; // Loop 06: exact-body clone clusters
     hubs: HubFinding[]; // Loop 05: hub / instability outliers (kernel|unstable-hub)
+    interfaceWidth: InterfaceWidthFinding[]; // Loop 05 (interface-width): file/folder/function width findings
 }
 
 /** Phase-2 (MCP) issue schema — spec §0 VERBATIM. Type ONLY this loop. */
@@ -174,5 +180,7 @@ export function zeroHealthVector(): HealthVector {
         maxFanIn: 0,
         hubOutliers: 0,
         filesOverBudget: 0,
+        maxEffectiveWidth: 0,
+        interfaceWidthShallowWide: 0,
     };
 }
