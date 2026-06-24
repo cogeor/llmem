@@ -9,3 +9,13 @@
 
 export * from './types';
 export { REVIEW_REGISTRY } from './registry';
+export {
+    detectPathKind,
+    isUnderPath,
+    normalizeReviewPath,
+} from './scope';
+export {
+    reviewRecallFromReport,
+    runReviewRecall,
+    ReviewRecallError,
+} from './recall';
