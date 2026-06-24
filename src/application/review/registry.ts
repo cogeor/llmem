@@ -246,7 +246,7 @@ export const REVIEW_REGISTRY: readonly ChecklistItem[] = Object.freeze([
         scope: 'file',
         recallStrength: '●●○',
         title: 'Resource lifecycle',
-        recallQuery: 'instruction',
+        recallQuery: 'lifecycle',
         promptInstruction:
             'Graph surfaces acquisitions (open/watch/listen/subscribe/connect) without a matching release on all paths. LLM judges leak on error or teardown.',
     },
@@ -561,7 +561,7 @@ export const REVIEW_REGISTRY: readonly ChecklistItem[] = Object.freeze([
         scope: 'file',
         recallStrength: '●●○',
         title: 'Listener/subscription leak',
-        recallQuery: 'instruction',
+        recallQuery: 'lifecycle',
         promptInstruction:
             'Graph surfaces an entity that registers (addEventListener/subscribe/observe) in mount/constructor without a symmetric release on all teardown paths; a mount that re-subscribes without disposing the prior subscription. LLM judges real leak vs app-lifetime singleton. Instruction (until A1 ships): diff register vs release call counts. (graph add: A1 lifecycle balance.)',
     },

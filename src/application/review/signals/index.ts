@@ -13,11 +13,13 @@
 import type { SignalScanner } from './source-scan';
 import { ambientScanner } from './ambient';
 import { interfaceWidthScanner } from './interface-width';
+import { listenerBalanceScanner } from './lifecycle';
 
 /** Every signal scanner the recall wrapper runs. Append new scanners here. */
 export const ALL_SCANNERS: SignalScanner[] = [
     ambientScanner,
     interfaceWidthScanner,
+    listenerBalanceScanner,
 ];
 
 export type {
@@ -32,4 +34,5 @@ export {
 } from './source-scan';
 export { ambientScanner } from './ambient';
 export { interfaceWidthScanner } from './interface-width';
+export { listenerBalanceScanner } from './lifecycle';
 export { mergeSignals } from '../recall';
