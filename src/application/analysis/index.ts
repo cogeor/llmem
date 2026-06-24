@@ -25,3 +25,4 @@ export { normalizeBody, sha256Hex } from './clones-normalize';
 export type { NormalizedBody } from './clones-normalize';
 export { loadAnalysisCache, saveAnalysisCache } from './cache';
 export type { AnalysisCache, CachedFile, CachedEntity } from './cache';
+export { buildHealthOverlay } from './webview-overlay';

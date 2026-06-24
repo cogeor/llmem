@@ -38,6 +38,7 @@ import { ImportEdgeListStore, CallEdgeListStore } from '../graph/edgelist';
 import { computeAllFolderStatuses } from './viewer/graph-status';
 import { WatchService } from '../graph/worktree-state';
 import type { WorkspaceContext } from './workspace-context';
+import { buildHealthOverlay } from './analysis/webview-overlay';
 import { ensureGitignored } from './ensure-gitignored';
 import {
     toWorkspaceRel,
@@ -142,11 +143,17 @@ export async function collectViewerData(
     const watchedFiles = new Set(watchService.getWatchedFiles());
     logger.info(`[WebviewDataService] Loaded ${watchedFiles.size} watched files`);
 
+    // Loop 08: assemble the health overlay (clone edges + node smells) from the
+    // persisted clone-edgelist + cheap hub arithmetic. Tolerant — empty when
+    // artifacts are absent.
+    const health = await buildHealthOverlay(ctx);
+
     // 1. Graph Data (from split edge lists, filtered by watched files)
     const graphData = prepareWebviewDataFromSplitEdgeLists(
         importStore.getData(),
         callStore.getData(),
         watchedFiles.size > 0 ? watchedFiles : undefined,
+        health,
     );
     logger.info(`[WebviewDataService] Graph data prepared: import ${graphData.importGraph.nodes.length} nodes, call ${graphData.callGraph.nodes.length} nodes`);
 

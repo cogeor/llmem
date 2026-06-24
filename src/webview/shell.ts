@@ -128,12 +128,18 @@ export function renderShell(opts: ShellOptions): string {
                 <span class="pane-title" id="graph-title"><span class="pane-icon"></span></span>
                 <div class="toolbar">
                     <div id="graph-type-toggle"></div>
+                    <div id="health-highlight-toggle"></div>
                 </div>
             </div>
             <div class="pane-content graph-pane-content">
                 <div id="graph-view" class="graph-container">
                     <div class="graph-canvas"></div>
                 </div>
+                <!-- Loop 08: health-highlight smell list for the selected node.
+                     Sibling of the summary panel so the summary panel's own
+                     innerHTML repaints never clobber it. Hidden until a smelly
+                     node is selected with health-highlight on. -->
+                <div id="health-smell-list" class="health-smell-list" style="display:none;"></div>
                 <!-- FolderStructureView mount point (orthogonal folder graph;
                      folders expand to reveal their files inline). -->
                 <div id="folder-structure-view" style="display: none; width: 100%; height: 100%; overflow: auto;"></div>

@@ -39,4 +39,9 @@ export interface AppState {
      * UI should hide call graph button if false.
      */
     callGraphAvailable: boolean;
+    /**
+     * Loop 08 (health-highlight): when true, clone edges render amber-dashed
+     * and smelly nodes get a badge + detail-panel smell list. Defaults false.
+     */
+    healthHighlight: boolean;
 }

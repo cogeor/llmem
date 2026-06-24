@@ -12,6 +12,20 @@
 import type { FolderTreeData } from './folder-tree';
 import type { FolderEdgelistData } from './folder-edges';
 
+/**
+ * Loop 08 (health-highlight): a node-attached smell marker. A STRUCTURAL
+ * mirror of `src/application/analysis/types.ts#Smell` — NOT an import of it,
+ * because this contracts module may import ONLY from `src/contracts/*`. Plain
+ * browser-safe data: derived at GENERATION time (server-side), folded onto a
+ * `VisNode` by `transformGraphsToVisData`, and consumed by the health-overlay
+ * renderer for the badge + detail-panel smell list. NEVER persisted.
+ */
+export interface SmellMarker {
+    kind: string;
+    severity: 'high' | 'medium' | 'low';
+    title: string;
+}
+
 export interface VisNode {
     id: string;
     label: string;
@@ -28,6 +42,13 @@ export interface VisNode {
      * (absence of badge = trusted). The browser never computes this itself.
      */
     callGraph?: 'semantic' | 'heuristic' | 'none';
+    /**
+     * Loop 08 (health-highlight): payload-only smell markers attached
+     * server-side from the `HealthOverlay`. Absent for non-smelly nodes. Drives
+     * the `node-smelly` badge/halo and the detail-panel smell list. Never
+     * persisted — recomputed each generation.
+     */
+    smells?: SmellMarker[];
 }
 
 export interface VisEdge {
@@ -46,6 +67,16 @@ export interface VisEdge {
      * `EdgeRenderer` (which is graph-agnostic — it paints any in-cycle VisEdge).
      */
     inCycle?: boolean;
+    /**
+     * Loop 08 (health-highlight): set server-side on CALL-graph edges between
+     * cloned entities. Drives the amber-dashed `.clone-edge` class in the
+     * health-overlay renderer. INDEPENDENT of `inCycle` (a clone pair is added
+     * as a NEW edge and is, by construction, not a cycle edge — distinct
+     * visual). Omitted (undefined) for non-clone edges. Never persisted.
+     */
+    isClone?: boolean;
+    /** Loop 08: clone severity, set alongside `isClone`. */
+    cloneSeverity?: 'high' | 'medium' | 'low';
 }
 
 export interface GraphData {
@@ -57,6 +88,26 @@ export interface GraphData {
         nodes: VisNode[];
         edges: VisEdge[];
     };
+}
+
+/**
+ * Loop 08 (health-highlight): the plain-data overlay a HOST assembles (from
+ * the persisted `clone-edgelist.json` + cheap analyzers) and passes into
+ * `prepareWebviewDataFromSplitEdgeLists` as an OPTIONAL parameter. It carries
+ * NO node references — pure data — so the graph layer can fold it without
+ * importing the application layer.
+ *
+ * - `cloneEdges`: clone PAIRS between call-graph entity ids. These become NEW
+ *   `isClone` `VisEdge`s in the call graph (a clone pair almost never has an
+ *   existing call edge between its endpoints). The fold ADDS one edge per pair
+ *   whose BOTH endpoints exist as rendered call nodes; pairs referencing a
+ *   missing node are dropped.
+ * - `nodeSmells`: smell markers keyed by node id, copied onto the matching
+ *   `VisNode.smells` (import file nodes and/or call entity nodes).
+ */
+export interface HealthOverlay {
+    cloneEdges: { source: string; target: string; severity: 'high' | 'medium' | 'low' }[];
+    nodeSmells: Record<string, SmellMarker[]>;
 }
 
 /**

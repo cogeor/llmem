@@ -22,6 +22,7 @@ import {
     nodePositionsBounds,
 } from './graphRendererQueries';
 import { highlightContainerNodes } from './graphRendererHighlight';
+import { applyCloneEdges, applySmellBadges } from './HealthOverlayRenderer';
 
 export class GraphRenderer {
     private container: HTMLElement;
@@ -44,7 +45,9 @@ export class GraphRenderer {
     private onFileClick?: (filePath: string) => void;
 
     private currentEdges: VisEdge[] = [];
+    private currentNodes: VisNode[] = []; // Loop 08: for health-overlay re-apply
     private currentFileRegions: FileRegion[] = [];
+    private healthHighlightOn = false; // Loop 08
     private logger: WebviewLogger;
 
     /**
@@ -91,8 +94,7 @@ export class GraphRenderer {
 
         // Initialize components — thread the logger through so the whole
         // call tree shares one gating decision (Loop 14). GroupRenderer
-        // doesn't log (its sole console.log was deleted as a content-leak)
-        // so it doesn't take the logger.
+        // doesn't log so it doesn't take the logger.
         this.hierarchicalLayout = new HierarchicalLayout(this.width, this.height, this.logger);
         this.groupRenderer = new GroupRenderer(this.foldersGroup);
         this.nodeRenderer = new NodeRenderer(this.nodesGroup, this.logger);
@@ -107,9 +109,7 @@ export class GraphRenderer {
         });
     }
 
-    /**
-     * Resize the graph and re-render if needed.
-     */
+    /** Resize the graph and re-render if needed. */
     resize(width: number, height: number): void {
         this.width = width;
         this.height = height;
@@ -132,15 +132,13 @@ export class GraphRenderer {
     ): void {
         const { nodes, edges } = graphData;
         this.currentEdges = edges;
+        this.currentNodes = nodes;
 
         this.logger.log('[GraphRenderer] Rendering:', { graphType, nodes: nodes.length, edges: edges.length });
 
         // 1. Compute layout
         const layoutResult = this.hierarchicalLayout.compute(nodes, edges, worktree);
         this.currentFileRegions = layoutResult.fileRegions;
-
-        // Loop 14: removed `console.log('[GraphRenderer] Layout computed:', { ... })`
-        // — graph-data summary dump per the loop's content-leak acceptance criterion.
 
         // 2. Update camera
         this.cameraController.setPositions(layoutResult.nodePositions, layoutResult.folders);
@@ -184,12 +182,10 @@ export class GraphRenderer {
         } else {
             this.cameraController.fitAll(false);
         }
+        this.reapplyHealthHighlight(); // Loop 08: survive a graph rebuild
     }
 
-    /**
-     * Add nodes to a specific folder incrementally (lazy loading).
-     * Uses incremental layout to avoid full recompute.
-     */
+    /** Add nodes to a folder incrementally (lazy loading; no full recompute). */
     addNodesToFolder(
         newNodes: VisNode[],
         newEdges: VisEdge[],
@@ -199,8 +195,9 @@ export class GraphRenderer {
     ): void {
         this.logger.log(`[GraphRenderer] Adding ${newNodes.length} nodes to ${folderPath}`);
 
-        // Merge edges
+        // Merge edges + nodes
         this.currentEdges = [...this.currentEdges, ...newEdges];
+        this.currentNodes = [...this.currentNodes, ...newNodes];
 
         // Call incremental layout
         const layoutResult = this.hierarchicalLayout.addNodes(newNodes, folderPath);
@@ -238,7 +235,20 @@ export class GraphRenderer {
             this.cameraController.setBounds(bounds);
         }
 
+        this.reapplyHealthHighlight(); // Loop 08
+
         this.logger.log(`[GraphRenderer] Incremental update complete: ${layoutResult.nodePositions.size} total nodes`);
+    }
+
+    /** Loop 08: toggle the health overlay (clone edges + smell badges). */
+    setHealthHighlight(on: boolean): void {
+        this.healthHighlightOn = on;
+        applyCloneEdges(this.edgesGroup, this.currentEdges, on);
+        applySmellBadges(this.nodesGroup, this.currentNodes, on);
+    }
+
+    private reapplyHealthHighlight(): void {
+        if (this.healthHighlightOn) this.setHealthHighlight(true);
     }
 
     /** Highlight a single node and its neighbors. */

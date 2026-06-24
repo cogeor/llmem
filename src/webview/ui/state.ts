@@ -10,6 +10,7 @@ export const initialState: AppState = {
     watchedPaths: new Set(),  // No paths watched initially (lazy mode)
     designViewMode: "view",  // Start in view mode (rendered HTML)
     callGraphAvailable: true,  // Will be updated when graph data loads
+    healthHighlight: false,  // Loop 08: health-highlight off by default
 };
 
 export class State {

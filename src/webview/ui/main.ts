@@ -6,7 +6,9 @@ import { createDataProvider } from './services/dataProviderFactory';
 import { createWebviewLogger } from './services/webview-logger';
 import { Worktree } from './components/Worktree';
 import { GraphTypeToggle } from './components/GraphTypeToggle';
+import { HealthHighlightToggle } from './components/HealthHighlightToggle';
 import { GraphView } from './components/GraphView';
+import { renderSmellList } from './graph/HealthOverlayRenderer';
 import { FolderStructureView } from './components/FolderStructureView';
 import { ViewToggle } from './components/ViewToggle';
 import { FolderDescriptionPanel } from './components/FolderDescriptionPanel';
@@ -46,6 +48,8 @@ const elGraphView = requireElement('graph-view');
 const elFolderStructureView = requireElement('folder-structure-view');
 const elViewToggle = requireElement('view-toggle');
 const elSummaryPanel = requireElement('folder-summary-panel');
+const elHealthToggle = requireElement('health-highlight-toggle');
+const elHealthSmellList = requireElement('health-smell-list');
 
 // Splitter elements
 const elSplitter1 = requireElement('splitter-1');
@@ -104,6 +108,11 @@ const graphTypeToggle = new GraphTypeToggle({
     state
 });
 
+const healthHighlightToggle = new HealthHighlightToggle({
+    el: elHealthToggle,
+    state,
+});
+
 const graphView = new GraphView({
     el: elGraphView,
     state,
@@ -139,6 +148,23 @@ const summaryPanel = new SummaryPanel({
 });
 state.subscribe((s) => {
     summaryPanel.onSelection(s.selectedPath, s.selectedType);
+});
+
+// Loop 08: drive the health overlay (clone edges + smell badges) from the
+// `healthHighlight` flag, and the detail-panel smell list from the current
+// selection. The list is shown only when health-highlight is on AND the
+// selected node carries smells; otherwise it's hidden.
+let lastHealthHighlight = state.get().healthHighlight;
+state.subscribe((s) => {
+    if (s.healthHighlight !== lastHealthHighlight) {
+        lastHealthHighlight = s.healthHighlight;
+        graphView.setHealthHighlight(s.healthHighlight);
+    }
+    const smells =
+        s.healthHighlight && s.selectedPath
+            ? graphView.getNodeSmells(s.selectedPath)
+            : undefined;
+    renderSmellList(elHealthSmellList, smells);
 });
 
 // Register Routes
@@ -245,6 +271,7 @@ const initHeaderIcons = () => {
         viewToggle.mount();
         const mountPromises = [
             graphTypeToggle.mount(),
+            healthHighlightToggle.mount(),
             graphView.mount(),
             folderStructureView.mount(),
         ];

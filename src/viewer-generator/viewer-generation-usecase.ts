@@ -20,6 +20,7 @@ import { generateStaticWebview } from '../webview/generator';
 import { WatchService } from '../graph/worktree-state';
 import { createLogger } from '../common/logger';
 import { buildAndSaveFolderArtifacts } from '../application/folder-artifacts';
+import { buildHealthOverlay } from '../application/analysis/webview-overlay';
 import { rescanAfterSchemaMismatch } from '../application/scan';
 import { initWorkspaceContext, type WorkspaceContext } from '../application/workspace-context';
 import { resolveAssetRoot } from './asset-root-resolver';
@@ -191,8 +192,13 @@ export async function generateGraph(
     await watchService.load();
     const watchedFiles = new Set(watchService.getWatchedFiles());
 
+    // Loop 08: assemble the health overlay (clone edges + node smells) from the
+    // persisted clone-edgelist + cheap hub arithmetic. Tolerant — empty when
+    // artifacts are absent.
+    const health = await buildHealthOverlay(ctx);
+
     // Prepare graph data for visualization (filtered by watched files)
-    const graphData = prepareWebviewDataFromSplitEdgeLists(importData, callData, watchedFiles);
+    const graphData = prepareWebviewDataFromSplitEdgeLists(importData, callData, watchedFiles, health);
 
     // Loop 21 — resolve webview asset root via injected option / cwd
     // walk-up. Replaces the previous compile-time directory arithmetic.

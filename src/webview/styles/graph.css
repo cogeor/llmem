@@ -147,6 +147,20 @@
     opacity: 0.1;
 }
 
+/* Loop 08 — health-highlight: clone edges (amber dashed). Placed BEFORE the
+   `.in-cycle` block and WITHOUT `!important` so the cycle-red rule (which is
+   `!important`) always wins the cascade when a path is both — by construction
+   they are mutually exclusive (clone edges are added as NEW non-cycle edges)
+   and the renderer also guards against painting `.in-cycle` paths, but this
+   ordering guarantees cycle-red precedence + selection-immunity regardless. */
+.edges-layer path.clone-edge {
+    stroke: var(--edge-clone-color, #d9821a);
+    stroke-width: 2px;
+    stroke-dasharray: 4 3;
+    stroke-opacity: 0.9;
+    marker-end: none;
+}
+
 /* In-cycle (circular-dependency) edges.
    A cycle is a GLOBAL property of the graph, so it must stay visible
    regardless of transient node/folder selection. These rules are placed
@@ -197,3 +211,54 @@
     text-align: center;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
+
+/* Loop 08 — health-highlight: smelly-node badge. A small amber dot at the
+   top-right of the node circle. The `node-smelly` class is added by the
+   overlay renderer; the badge `<circle>` is its own appended element. */
+.nodes-layer .node-group.node-smelly .node-smell-badge {
+    fill: var(--node-smell-color, #d9821a);
+    stroke: var(--background, #fff);
+    stroke-width: 1;
+}
+
+/* Loop 08 — detail-panel smell list (sibling of the summary panel). */
+.health-smell-list {
+    position: absolute;
+    left: var(--spacing-md, 8px);
+    bottom: var(--spacing-md, 8px);
+    max-width: 320px;
+    background: var(--background);
+    color: var(--foreground, var(--description-foreground));
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: var(--spacing-sm, 6px) var(--spacing-md, 8px);
+    font-family: var(--vscode-font-family, var(--font-family));
+    font-size: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    z-index: 5;
+}
+
+.health-smell-list-items {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.health-smell-row {
+    display: flex;
+    gap: var(--spacing-sm, 6px);
+    align-items: baseline;
+    padding: 2px 0;
+}
+
+.health-smell-sev {
+    flex: 0 0 auto;
+    text-transform: uppercase;
+    font-size: 10px;
+    font-weight: 700;
+    opacity: 0.8;
+}
+
+.health-smell-high .health-smell-sev { color: var(--edge-cycle-color, #e5484d); }
+.health-smell-medium .health-smell-sev { color: var(--node-smell-color, #d9821a); }
+.health-smell-low .health-smell-sev { color: var(--description-foreground, #888); }

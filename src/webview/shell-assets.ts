@@ -68,7 +68,9 @@ export const MOUNT_POINTS: readonly string[] = [
     'splitter-1',
     'graph-pane',
     'graph-type-toggle',
+    'health-highlight-toggle',
     'graph-view',
     'folder-structure-view',
     'folder-summary-panel',
+    'health-smell-list',
 ] as const;

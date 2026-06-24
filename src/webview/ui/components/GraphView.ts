@@ -69,10 +69,6 @@ export class GraphView {
         // Backend filters to TS/JS only, so if there are nodes, call graph is available
         const callGraphAvailable = (this.data?.callGraph?.nodes?.length ?? 0) > 0;
 
-        // Loop 14: removed `console.log('[GraphView] Data loaded:', { ... })`
-        // — the dump leaked node/edge counts plus a worktree reference per
-        // the loop's content-leak acceptance criterion.
-
         // Update state with callGraphAvailable (backend determined)
         this.state.set({ callGraphAvailable });
 
@@ -281,6 +277,17 @@ export class GraphView {
         // #graph-view's subtree on view switch, but keeping emptyStateEl's
         // lifetime contained here avoids a dangling field reference.
         this.removeEmptyState();
+    }
+
+    /** Loop 08: toggle the health overlay on the current graph. */
+    setHealthHighlight(on: boolean): void {
+        this.graphRenderer?.setHealthHighlight(on);
+    }
+    /** Smells of a node by id across BOTH graphs (file id OR entity id). */
+    getNodeSmells(nodeId: string): GraphData['importGraph']['nodes'][number]['smells'] {
+        if (!this.data) return undefined;
+        const all = [...this.data.importGraph.nodes, ...this.data.callGraph.nodes];
+        return all.find((n) => n.id === nodeId)?.smells;
     }
 
     // --- Worktree helpers ---
