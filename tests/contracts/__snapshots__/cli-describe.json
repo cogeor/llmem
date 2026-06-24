@@ -144,6 +144,13 @@
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false,
         "properties": {
+          "_": {
+            "description": "(internal) Positional arguments routed by the dispatcher.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "json": {
             "default": false,
             "description": "Emit the JSON ReviewChecklist to stdout instead of the markdown",

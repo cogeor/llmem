@@ -41,6 +41,11 @@ const reviewArgs = z.object({
         .describe('Override the checklist output directory or .md path (default: <workspace>/.llmem/review)'),
     json: z.boolean().default(false)
         .describe('Emit the JSON ReviewChecklist to stdout instead of the markdown'),
+    // Captures the positional arguments that main.ts collects into `flagMap._`.
+    // Surfaces in `describe --json` as an internal flag so the loop 04 contract
+    // test (which asserts every property has a `description`) keeps passing.
+    _: z.array(z.string()).optional()
+        .describe('(internal) Positional arguments routed by the dispatcher.'),
 });
 
 /**
@@ -114,7 +119,7 @@ export const reviewCommand: CommandSpec<typeof reviewArgs> = {
         // finding). `normalizeReviewPath('') === ''` and
         // `isUnderPath(x, '', 'folder') === true` already make '' match-all in
         // the capability layer, so the CLI needs no special case.
-        const reviewPath = args.path ?? '';
+        const reviewPath = args.path ?? (args._ && args._[0]) ?? '';
         const checklist = await runReviewRecall(ctx, reviewPath, args.ruleset);
 
         const md = renderReviewChecklist(checklist);
