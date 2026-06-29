@@ -2,7 +2,7 @@
   "name": "@cogeor/llmem",
   "displayName": "LLMem - Codebase Graph & Documentation",
   "description": "MCP server extension for generating interactive graph visualizations and documentation for codebases",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "cogeor",
   "author": "Costa Georgantas <c.georgantas@hotmail.com>",
   "license": "MIT",
