@@ -1,7 +1,7 @@
 /**
- * Shell-cache content-hash invalidation guard for `.artifacts/webview/`.
+ * Shell-cache content-hash invalidation guard for `.llmem/graph/webview/`.
  *
- * Loop 01 closed the long-standing "delete `.artifacts/webview/` by hand"
+ * Loop 01 closed the long-standing "delete `.llmem/graph/webview/` by hand"
  * developer step (CLAUDE.md). The static generator now hashes the shell
  * source + bundled assets, compares against the previous hash recorded in
  * `<destinationDir>/.shell-hash`, and rms the destination directory when
@@ -20,7 +20,7 @@
  * Files are sorted by repo-relative posix path before hashing so the
  * digest is stable across platforms.
  *
- * This module owns `.artifacts/webview/` cache writes — `fs.rmSync` for
+ * This module owns `.llmem/graph/webview/` cache writes — `fs.rmSync` for
  * invalidation and `fs.writeFileSync` for the hash file. It is on the
  * `WRITE_ALLOWLIST` in `tests/arch/workspace-paths.test.ts` Part B with
  * that justification.

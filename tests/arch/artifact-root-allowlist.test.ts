@@ -254,9 +254,8 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     // -----------------------------------------------------------------------
     // A. Repo-root config files
     // -----------------------------------------------------------------------
-    { file: '.env.example',
-      phase: 'permanent',
-      reason: 'Example env file documents `ARTIFACT_ROOT=.artifacts` as the default.' },
+    // .llmem convergence (2026-06-29): .env.example now documents
+    // `ARTIFACT_ROOT=.llmem/graph` (the real default) — literal gone, row removed.
     { file: '.gitignore',
       phase: 'permanent',
       reason: 'G3: re-ignores the generated `.artifacts/` edge-list/webview cache (legacy + dev-script default root) to prevent staging it.' },
@@ -272,9 +271,8 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     { file: 'CONTRIBUTING.md',
       phase: 'permanent',
       reason: 'Documents legacy `rm -rf .artifacts/webview` step in case Loop 01 cache-invalidation regresses.' },
-    { file: 'README.md',
-      phase: 'permanent',
-      reason: 'User-facing README documents the default artifact root and resolution rules.' },
+    // .llmem convergence (2026-06-29): README config table now lists the real
+    // `.llmem/graph` default — `.artifacts` literal gone, row removed.
 
     // -----------------------------------------------------------------------
     // C. Memo / design docs
@@ -321,9 +319,8 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     // real default) — `.artifacts` literal gone, row removed.
     // G3: scan.ts description now says "write edge lists to .llmem/graph/" (the
     // real default) — `.artifacts` literal gone, row removed.
-    { file: 'src/cli/commands/serve.ts',
-      phase: 'permanent',
-      reason: 'Comment explaining the resolved artifactRoot must NOT force `.artifacts`; functional code consumes `ctx.config.artifactRoot`.' },
+    // .llmem convergence (2026-06-29): serve.ts comment reworded to "do NOT
+    // hardcode a fallback root" — `.artifacts` literal gone, row removed.
     // G3: main.ts --help text now documents the `.llmem/graph` default —
     // `.artifacts` literal gone, row removed.
     // G3: config.ts JSDoc now documents the `.llmem/graph` default —
@@ -369,23 +366,16 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     { file: 'src/application/migrate-docs.ts',
       phase: 'permanent',
       reason: 'JSDoc explains the docs migration leaves `.artifacts/` (regenerable cache) untouched; no functional callsite uses the literal.' },
-    { file: 'src/extension/panel/panel-data-handlers.ts',
-      phase: 'permanent',
-      reason: 'JSDoc on `loadFolderTree` / `loadFolderEdges` documents which artifact JSON files are read.' },
+    // .llmem convergence (2026-06-29): panel-data-handlers JSDoc now names
+    // `.llmem/graph/folder-{tree,edgelist}.json` — `.artifacts` literal gone, row removed.
     // A-grade #3: generate-call-edges.ts and generate_edgelist.ts no longer
     // hardcode `.artifacts` — both now resolve the artifact root from the
     // WorkspaceContext (product default `.llmem/graph`). Rows removed; the
     // script-default contract test (tests/contracts/script-artifact-root.test.ts)
     // keeps them from regressing.
-    { file: 'src/webview/generator.ts',
-      phase: 'permanent',
-      reason: 'JSDoc + comments describe the `.artifacts/webview/` cache surface (this module owns it).' },
-    { file: 'src/webview/shell-cache.ts',
-      phase: 'permanent',
-      reason: 'Banner doc on the cache-invalidation guard for `.artifacts/webview/` (this module owns the cache writes).' },
-    { file: 'src/webview/ui/services/vscodeDataProvider.ts',
-      phase: 'permanent',
-      reason: 'JSDoc comment naming the artifact JSON file the host reads.' },
+    // .llmem convergence (2026-06-29): generator.ts, shell-cache.ts, and
+    // vscodeDataProvider.ts comments now describe the `.llmem/graph/webview`
+    // and `.llmem/graph/*.json` surfaces — `.artifacts` literals gone, rows removed.
 
     // -----------------------------------------------------------------------
     // G. Architecture tests' own skip-directory lists

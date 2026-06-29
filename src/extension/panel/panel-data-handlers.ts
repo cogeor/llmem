@@ -125,7 +125,7 @@ export async function loadFolderNodes(host: PanelHost, folderPath: string): Prom
 }
 
 /**
- * Load `.artifacts/folder-tree.json` and post `data:folderTree` back to
+ * Load `.llmem/graph/folder-tree.json` and post `data:folderTree` back to
  * the webview, echoing the original `requestId`. Loop 02.
  *
  * Loop 04: shares the panel's `_ctx` instead of constructing a fresh
@@ -165,7 +165,7 @@ export async function loadFolderTree(host: PanelHost, requestId: string | undefi
 }
 
 /**
- * Load `.artifacts/folder-edgelist.json` and post `data:folderEdges`
+ * Load `.llmem/graph/folder-edgelist.json` and post `data:folderEdges`
  * back to the webview, echoing the original `requestId`. Loop 02.
  * Same posture as `loadFolderTree` — see the comment there.
  */

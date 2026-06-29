@@ -55,8 +55,8 @@ export const serveCommand: CommandSpec<typeof serveArgs> = {
         console.log(`Workspace: ${workspace}`);
 
         // Resolve the workspace context ONCE (honors LLMEM_ARTIFACT_ROOT /
-        // vscode / default — do NOT force '.artifacts') so the probe, cold
-        // scan, webview dir, and generateGraph all agree on a single
+        // vscode / default — do NOT hardcode a fallback root) so the probe,
+        // cold scan, webview dir, and generateGraph all agree on a single
         // artifactRoot (the centralized `.llmem/graph` default).
         const ctx = await cli.createWorkspace(workspace);
         const artifactRoot = ctx.config.artifactRoot;

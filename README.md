@@ -134,7 +134,7 @@ All optional:
 
 | Setting | Default | What it controls |
 |---|---|---|
-| `artifactRoot` | `.artifacts` | Where edge lists and the generated webview live |
+| `artifactRoot` | `.llmem/graph` | Where edge lists and the generated webview live (under the single `.llmem/` tree) |
 | `maxFileSizeKB` | `512` | Skip files larger than this when scanning |
 | `maxFileLines` | `2000` | Skip files with more than this many lines when scanning |
 | `maxFilesPerFolder` | `20` | Viewer/context **display** heuristic only — caps how many files a folder summary lists for readability |

@@ -17,6 +17,7 @@ const SKIP_DIRECTORIES = new Set([
     'dist',
     'out',
     'build',
+    '.llmem',
     '.artifacts'
 ]);
 

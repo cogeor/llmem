@@ -56,7 +56,7 @@ export class VSCodeDataProvider implements DataProvider {
      * Mirrors `pendingWatchToggles`. Each call to `loadFolderTree()`
      * generates a unique requestId and stores its resolver here.
      * Panel-side handler in `src/extension/panel.ts::_loadFolderTree`
-     * reads `.artifacts/folder-tree.json` via `FolderTreeStore` and
+     * reads `.llmem/graph/folder-tree.json` via `FolderTreeStore` and
      * echoes `data:folderTree` (loop 02).
      */
     private pendingFolderTreeRequests: Map<string, PendingFolderTreeRequest> = new Map();

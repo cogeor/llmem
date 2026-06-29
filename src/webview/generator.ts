@@ -21,12 +21,12 @@ import { computeShellHash, invalidateIfStale, writeCachedShellHash } from './she
  *     - `folder_tree.js`   — `window.FOLDER_TREE = ...`        (loop 11)
  *     - `folder_edges.js`  — `window.FOLDER_EDGES = ...`       (loop 11)
  *
- * The `.artifacts/webview/` output directory is treated as a cache by
+ * The `.llmem/graph/webview/` output directory is treated as a cache by
  * `npm run serve` and the extension. Loop 01 added a content-hash
  * invalidation guard (`src/webview/shell-cache.ts`) — when `shell.ts`,
  * `shell-assets.ts`, or any bundled asset under `dist/webview/` changes,
  * `generateStaticWebview` removes the cached directory before regenerating.
- * The previous "DELETE `.artifacts/webview/` by hand" step is no longer
+ * The previous "DELETE `.llmem/graph/webview/` by hand" step is no longer
  * required.
  */
 
@@ -43,7 +43,7 @@ export interface GeneratorOptions {
 /**
  * Generate a static webview folder in the artifacts directory.
  *
- * @param destinationDir - The directory where the static webview should be generated (e.g., .artifacts/webview)
+ * @param destinationDir - The directory where the static webview should be generated (e.g., .llmem/graph/webview)
  * @param extensionRoot - The root of the extension (to find source src/webview files)
  * @param graphData - The graph data object to inject
  * @param options - Optional generator configuration
@@ -82,7 +82,7 @@ export async function generateStaticWebview(
     // (or the source styles/libs/ui directories in dev mode), then
     // remove the cached destination directory if it differs from the
     // recorded hash. After the regeneration completes below we record
-    // the new hash. This replaces the legacy "delete `.artifacts/webview/`
+    // the new hash. This replaces the legacy "delete `.llmem/graph/webview/`
     // by hand" developer step; see `src/webview/shell-cache.ts`.
     const shellHash = computeShellHash(extensionRoot);
     const wasStale = invalidateIfStale(destinationDir, shellHash);
@@ -193,7 +193,7 @@ export async function generateStaticWebview(
 
     // 5b. Folder tree + folder edges (loop 11).
     //
-    // Loop 10 guarantees `.artifacts/folder-tree.json` and `.artifacts/folder-edgelist.json`
+    // Loop 10 guarantees `.llmem/graph/folder-tree.json` and `.llmem/graph/folder-edgelist.json`
     // are on disk by the time this generator runs: every upstream call site
     // (`src/viewer-generator/viewer-generation-usecase.ts:generateGraph`, `src/cli/commands/scan.ts`)
     // calls `buildAndSaveFolderArtifacts` before invoking the generator.
