@@ -269,9 +269,6 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     // -----------------------------------------------------------------------
     // B. Top-level documentation
     // -----------------------------------------------------------------------
-    { file: 'CLAUDE.md',
-      phase: 'permanent',
-      reason: 'Codebase guide for Claude Code; documents artifact root layout.' },
     { file: 'CONTRIBUTING.md',
       phase: 'permanent',
       reason: 'Documents legacy `rm -rf .artifacts/webview` step in case Loop 01 cache-invalidation regresses.' },
