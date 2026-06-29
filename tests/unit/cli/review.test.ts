@@ -154,16 +154,20 @@ test('resolveReviewOutPaths: default writes .llmem/review/<sanitized>.{md,json}'
 });
 
 test('resolveReviewOutPaths: --out ending in .md is the md path; json is its sibling', () => {
-    const ws = path.join('C:', 'ws');
-    const out = path.join('C:', 'tmp', 'r.md');
+    // path.resolve yields a genuinely-absolute path for the HOST OS, so the
+    // isAbsolute branch fires on POSIX CI as well as Windows. (A literal
+    // 'C:/...' fixture only counts as absolute on win32 and would be joined
+    // onto the workspace on Linux.)
+    const ws = path.resolve('ws');
+    const out = path.resolve('tmp', 'r.md');
     const { mdPath, jsonPath } = resolveReviewOutPaths(ws, 'src', out);
     assert.equal(mdPath, out);
-    assert.equal(jsonPath, path.join('C:', 'tmp', 'r.json'));
+    assert.equal(jsonPath, path.resolve('tmp', 'r.json'));
 });
 
 test('resolveReviewOutPaths: --out directory joins the sanitized default names', () => {
-    const ws = path.join('C:', 'ws');
-    const out = path.join('C:', 'reports');
+    const ws = path.resolve('ws');
+    const out = path.resolve('reports');
     const { mdPath, jsonPath } = resolveReviewOutPaths(ws, 'src/webview', out);
     assert.equal(mdPath, path.join(out, 'src__webview.md'));
     assert.equal(jsonPath, path.join(out, 'src__webview.json'));
