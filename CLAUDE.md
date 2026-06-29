@@ -4,201 +4,188 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LLMem is an MCP (Model Context Protocol) server extension for VS Code/Antigravity IDE that generates interactive graph visualizations and documentation for codebases. It creates a "shadow filesystem" (`.arch/`) containing AI-generated documentation alongside the source code, and provides tools for analyzing import dependencies and function call relationships.
+LLMem analyzes **code structure**: it builds an import dependency graph (file → file) and a
+call graph (function → function) for a codebase, then surfaces that structure four ways —
+an interactive web viewer, a `health` analysis report (cycles, hubs, interface width,
+clones), an LLM-driven 65-item architecture **review** checklist, and per-folder/file spec
+docs. It ships as one package (`@cogeor/llmem`) with three faces:
 
-**Core Concept**: LLMem maintains parallel data structures:
-- `.arch/` directory: Contains AI-generated markdown documentation mirroring the source structure
-- Edge lists: JSON files tracking import and call relationships between files and functions
-- Interactive webview: Graph visualization of dependencies and calls
+- **CLI** (`llmem`) — `dist/cli/main.js`, exposed via `bin/llmem`.
+- **MCP server** (`llmem mcp`) — `dist/mcp/main.js` (the package `exports` entry); lets
+  Claude Code / Codex / Antigravity call the analysis as in-band tools.
+- **VS Code / Antigravity extension** — `dist/extension/extension.js` (the package `main`).
+
+**Operating model (important):** most analysis follows **graph-recall → LLM-filter → human**.
+The graph/AST produces a high-recall *candidate* set (deliberately noisy); an LLM reads the
+code and decides. The product is *graph + skill + agent*, not the graph alone. Positioning is
+**triage, not audit** — import edges rank hubs / map layers / find cycles, but are blind to
+duplication and in-file cohesion by construction (those need the content/AST and LLM passes).
+
+### Artifact locations
+
+| Path | Contents |
+|---|---|
+| `.llmem/graph/` | Edge lists (`import-edgelist.json`, `call-edgelist.json`, `clone-edgelist.json`), `folder-tree.json`, `folder-edgelist.json`, generated webview. This is `artifactRoot` (override: `LLMEM_ARTIFACT_ROOT`). |
+| `.llmem/` (root) | `health-report.{md,json}` (host artifacts CI diffs). |
+| `.llmem/review/` | Review reports (`<path>.{md,json}`). |
+| `.arch/` | LLM-enriched per-folder/file spec docs (markdown shadow tree). |
+
+> Naming caveat: "artifact" is overloaded. The old `.arch/`-store artifact system is gone
+> (only `src/application/migrate-docs.ts` remains, a one-time `.arch/` → `.llmem/docs/` move).
+> Today "artifact" mostly means the **parser output type** (`FileArtifact`,
+> `artifact-converter.ts`), not a storage system.
 
 ## Development Commands
 
-### Webview Cache
-
-Cache invalidation is automatic — `.artifacts/webview/` is regenerated when `src/webview/shell.ts`, `shell-assets.ts`, or any bundled asset changes. See `src/webview/shell-cache.ts`.
-
-### Build and Package
+### Build & package
 ```bash
-npm run build              # Full build: compile TypeScript + build webview
-npm run compile            # TypeScript compilation only
-npm run watch              # Watch mode for TypeScript
-npm run package            # Create VSIX package (runs build first)
+npm run build              # compile (vscode + webview types) + build webview
+npm run build:all          # compile:all + build webview
+npm run compile            # TypeScript compile only
+npm run watch              # TS watch mode
+npm run package            # vsce package (VSIX)
 ```
 
-### Testing and Linting
+### Test & lint
 ```bash
-npm test                   # Run tests (node --test)
+npm test                   # test:unit && test:arch && test:integration (node --test runner)
+npm run test:unit          # tests/unit + tests/contracts
+npm run test:arch          # tests/arch — architecture fitness functions (see below)
+npm run test:integration   # tests/integration (concurrency 1)
 npm run lint               # ESLint
+npm run check:langs        # assert README lang table <-> LANGUAGES descriptor <-> peerDeps
 ```
+The test runner is `scripts/run-tests.cjs` and **exits non-zero on failure** — `npm test`
+propagates it, so CI catches red tests. (`pretest` compiles + builds webview + entrypoints.)
 
-### Development Scripts
+### Dev / debugging scripts
 ```bash
-# Edge list and graph generation (for debugging/development)
-npm run scan               # Generate edge list from codebase
-npm run view               # Generate static webview
-npm run view:graph         # Generate graph-only webview
-
-# File/folder analysis CLI (for debugging MCP tools)
-npm run file-info          # Get file info
-npm run file-info:sig      # File info with signatures
-npm run file-info:semantic # Semantic file info
-npm run module-info        # Get folder/module info
-npm run module-info:semantic # Semantic module info
+npm run scan               # node bin/llmem scan — build edge lists
+npm run serve              # build entrypoints + webview, then llmem serve
+npm run serve:dev          # ts-node src/cli/main.ts serve (no build)
+npm run view               # generate static webview
+npm run graph / graph:stats# llmem generate / stats
+npm run health:ci          # llmem health --fail-on import-cycle (CI gate convenience)
+npm run file-info[:sig|:semantic]   # file-info CLI for debugging the MCP extractor
 ```
-
-### Running in Development
-Press `F5` in VS Code to launch Extension Development Host.
+Press `F5` in VS Code to launch the Extension Development Host.
 
 ## Architecture
 
-### Extension Lifecycle (`src/extension/`)
+Layered, with boundaries **enforced by `tests/arch/`** fitness functions (not just convention):
+`core → contracts → application → {cli, mcp, extension, http-server, webview}`. Lower layers
+never import higher ones; the layer matrix in `tests/arch/layer-matrix.test.ts` encodes the
+allowed edges with phase-tagged allowlists for the few exceptions.
 
-- **extension.ts**: Entry point - activates on startup, loads config, starts MCP server
-- **config.ts**: Configuration management (artifact root, file limits, etc.)
-- **panel.ts**: Webview panel for graph visualization
+### `src/core/` — leaf primitives
+`ids.ts` (the single owner of graph-ID construction/parsing — entity IDs are `<fileId>::<name>`;
+never re-derive the `::` split elsewhere), `paths.ts`, `errors.ts`, `logger.ts` (the `Logger`
+boundary type; `src/common/logger.ts` owns the `StructuredLogger` impl), `language-descriptors.ts`
+(the `LANGUAGES` source of truth), `config-types.ts`.
 
-### MCP Server (`src/mcp/`)
+### `src/contracts/` — typed boundary payloads
+`panel-messages.ts`, `webview-payloads.ts`, `folder-edges.ts`, `folder-tree.ts` — the DTOs
+crossing the extension/webview/http IPC seams.
 
-The MCP server exposes tools for AI agents to analyze and document code:
+### `src/application/` — use-cases (the coordinator layer)
+One folder per use-case: `scan/`, `refresh-graph/`, `file-info/`, `document-file/`,
+`document-folder/`, `viewer/`, `viewer-data/`, plus:
+- **`analysis/`** — the `health` engine. `health.ts` composes six dimensions into a
+  deterministic `HealthReport` + flat `HealthVector` (no aggregate grade — built for
+  before/after diffs): import cycles (split **runtime vs type-only**), call cycles + recursion,
+  hub/instability (Martin `I`), **interface width** (`interface-width.ts` — Ousterhout
+  deep-module), **clones** (`clones.ts` exact-body + `clones-literals.ts` shared-literal),
+  files-over-budget. Renders via `report-markdown.ts`. SCC engine: `src/graph/scc.ts`
+  (iterative Tarjan).
+- **`review/`** — the architecture-review checklist. `registry.ts` holds the frozen
+  `REVIEW_REGISTRY` (34 general + 31 frontend items, each with id/category/scope/recallStrength/
+  recallQuery/promptInstruction). `recall.ts` + `recall-gate.ts` wire graph candidates to items;
+  `signals/` holds 7 review-time regex scanners (edge lists don't retain callee names);
+  `prompts/` holds embedded general/frontend methodology; `render.ts`/`validate.ts`/`persist.ts`
+  emit + completeness-gate + write the report.
+- `artifact-converter.ts` lives here because it's the only layer allowed to import **both**
+  `parser` and `graph` (documented in its header; enforced by the layer matrix).
 
-- **server.ts**: MCP server initialization with stdio transport
-- **tools.ts**: Tool definitions and handlers
-- **handlers.ts**: Request validation and response formatting
+### `src/mcp/` — MCP server (7 tools)
+`server/lifecycle.ts` registers tools over stdio; `tools/*.ts` define them; `handlers.ts`
+validates/formats. Three two-phase pairs + one standalone:
+- `file_info` ↔ `report_file_info` → `.arch/{path}.md`
+- `folder_info` ↔ `report_folder_info` → `.arch/{path}/README.md`
+- `review` ↔ `report_review` → `.llmem/review/{path}.md` (phase-2 enforces a hard completeness
+  gate — if any required checklist box is unresolved, it writes nothing and names them)
+- `open_window` — returns a live `http://localhost:{port}` URL if `serve` is up, else a static
+  `file://` snapshot (or opens the IDE panel).
 
-**Available MCP Tools**:
-- `file_info` / `report_file_info`: Generate and save file documentation
-- `folder_info` / `report_folder_info`: Generate and save folder documentation
-- `open_window`: Open the LLMem webview panel
+Phase-1 tools return `prompt_ready` with `promptForHostLLM` + `callbackTool` + `callbackArgs`;
+the agent runs the prompt through its own LLM and calls the phase-2 tool to persist.
 
-**Two-Phase Documentation Workflow**:
-1. `file_info` / `folder_info`: Extract structural data, return prompt for LLM enrichment
-2. `report_file_info` / `report_folder_info`: Receive LLM response, save to `.arch/`
+### `src/cli/` — CLI
+`main.ts` dispatches; `registry.ts` lists commands; `arg-parser.ts` parses. Commands:
+`serve` (default; zero-config — auto-scans, regenerates webview, opens browser), `mcp`, `scan`,
+`find-cycles`, `health` (`--json`, `--out`, `--fail-on <kind>`), `review [path]`
+(`--ruleset general|frontend|both`), `describe` (`--json`, stable command schema), `document`,
+`init`, `install` (registers the MCP server with Claude Code / Codex / Claude Desktop), plus
+hidden `generate` and `stats`. `scan`/`serve` build the edge lists; `find-cycles`/`health`/
+`review`/`generate`/`stats` require they exist first.
 
-### Graph System (`src/graph/`)
+### `src/graph/` — graph storage & queries
+`edge-list/` (the `*EdgeListStore` classes + `base-store.ts` atomic write/dirty-flag CRUD),
+`scc.ts` (Tarjan), `query/`, `webview-data.ts`, `worktree-state.ts` (watched-files set),
+`types.ts`. Edge lists persist as `{version, timestamp, nodes[], edges[]}` JSON; in-memory
+with periodic save.
 
-Edge list-based graph representation for tracking relationships:
+### `src/parser/` — multi-language extraction
+`registry.ts` loads parsers per `LANGUAGES`; `ts-service.ts`/`ts-extractor/` use the TypeScript
+Compiler API (semantic, TS/JS only); `python/`, `cpp/`, `rust/`, `r/` use tree-sitter.
+Tree-sitter grammars are **optional peer deps** loaded lazily — a missing grammar is recorded
+as `needsGrammar` with an install hint, never a crash (worst case: TS/JS only).
 
-- **edgelist.ts**: Core storage for import/call edges in JSON format
-  - `ImportEdgeListStore`: Tracks file-to-file import relationships
-  - `CallEdgeListStore`: Tracks function-to-function call relationships
-  - Stored as `import-edgelist.json` and `call-edgelist.json` in artifact root
-- **index.ts**: Graph building from edge list data
-- **types.ts**: Graph type definitions (FileNode, EntityNode, ImportEdge, CallEdge)
-- **webview-data.ts**: Prepare graph data for visualization
-- **worktree-state.ts**: Track watched files for lazy edge computation
+| Language | Import graph | Call graph |
+|---|---|---|
+| TS/JS | yes | **semantic** (type-aware) |
+| Python | yes | **heuristic** (name-matched) |
+| C/C++, Rust, R | yes | none (import-only) |
 
-**Edge List Architecture**:
-- Nodes: Represent files and code entities (functions, classes, methods)
-- Edges: Represent relationships (imports between files, calls between functions)
-- Storage: JSON files with `{version, timestamp, nodes[], edges[]}` structure
-- Updates: In-memory operations with periodic disk persistence (dirty flag)
+### `src/http-server/`, `src/webview/`, `src/extension/`, `src/install/`, `src/workspace/`
+- `http-server/` — the `GraphServer` for `llmem serve` (websocket live-reload, file watchers).
+- `webview/` — `generator.ts` (static HTML) + `ui/` (graph renderer, camera, layout, file
+  explorer). The viewer toggles import-graph vs call-graph; cycle edges render **red**; a
+  "Health" overlay adds clone edges + smell badges.
+- `extension/` — VS Code activation, config, panel.
+- `install/` — `llmem install` adapters (claude-code, codex, claude-desktop).
+- `workspace/` — `safe-fs.ts` + `workspace-io.ts`: realpath-containment-checked file I/O.
+  All in-workspace writes route through `WorkspaceIO`; the few top-level host-artifact writers
+  (health/review report writers, install adapters) are allowlisted in
+  `tests/arch/workspace-paths.test.ts`.
 
-### Parser System (`src/parser/`)
+## Architecture fitness tests (`tests/arch/`)
 
-Code analysis using TypeScript Compiler API and Tree-sitter:
+These enforce the design in CI — read the offending test's banner for the fix recipe; most use
+an **allowlist + stale-row** pattern (add a documented entry with phase + reason, OR fix the
+code):
+- `layer-matrix` — allowed inter-layer import edges.
+- `file-size-budget` — per-layer line budgets (`KNOWN_OVER_BUDGET` allowlist).
+- `workspace-paths` — `fs.write*` must be centralized (`WRITE_ALLOWLIST`).
+- `graph-ids` — `::`/`#` graph-ID separators only via `src/core/ids.ts`.
+- `console-discipline`, `logger-ownership`, `html-safety`, and more.
 
-- **ts-service.ts**: TypeScript/JavaScript analysis (built-in)
-- **ts-extractor.ts**: Extract imports, exports, function signatures
-- **registry.ts**: Parser registry for multiple languages
-- **config.ts**: Extension mappings and parser configuration
-- **interfaces.ts**: Common interfaces for all language parsers
+## Workspace root detection (priority order)
 
-**Multi-Language Support**:
-- TypeScript/JavaScript: Built-in support via TypeScript Compiler API
-- Python, C/C++, Rust, R: Tree-sitter parsers (import graphs only)
+1. Stored workspace root (extension context).
+2. `LLMEM_WORKSPACE` environment variable.
+3. Auto-detect: walk up from cwd looking for `.llmem` / `.git` / `package.json`.
+4. Fallback: current working directory.
 
-### Information Extraction (`src/info/`)
+Claude Code and Codex launch the MCP server from the project dir, so auto-detect works without
+config. Set `LLMEM_WORKSPACE` for Claude Desktop (no launch dir) or to pin one project.
 
-Generates structured information for documentation:
+## Configuration (all optional)
 
-- **extractor.ts**: Extract file/folder structural information
-- **folder.ts**: Folder-level analysis using edge list data
-- **mcp.ts**: MCP-specific info extraction and prompt building
-- **renderer.ts**: Format extracted info as markdown
-- **reverse-index.ts**: Build reverse lookup indexes for dependencies
+| Setting | Default | Controls |
+|---|---|---|
+| `artifactRoot` | `.llmem/graph` | Where edge lists + webview live |
+| `maxFileSizeKB` | `512` | Skip files larger than this when scanning |
+| `maxFileLines` | `2000` | Skip files with more than this many lines |
+| `maxFilesPerFolder` | `20` | **Display** cap on files a folder summary lists (NOT a scan cap) |
 
-### Artifact Management (`src/artifact/`)
-
-Manages the `.arch/` shadow filesystem (legacy, mostly deprecated in favor of edge lists):
-
-- **path-mapper.ts**: Map source paths to artifact paths
-- **storage.ts**: File I/O operations
-- **tree.ts**: Artifact tree structure
-- **index.ts**: Artifact index (deprecated - edge list is preferred)
-
-### Webview (`src/webview/`)
-
-Interactive graph visualization UI:
-
-- **generator.ts**: Static HTML generation for webview
-- **index.html**: Main webview template
-- **ui/**: UI components (file explorer, graph canvas)
-- **libs/**: Visualization libraries
-- **data-service.ts**: Data loading and management
-- **worktree.ts**: File watching and toggle state
-
-## Key Data Flows
-
-### 1. Documentation Generation (MCP Tool Flow)
-
-```
-Agent calls file_info
-  → Extract file structure (imports, exports, functions)
-  → Build enrichment prompt
-  → Return to agent
-
-Agent processes with LLM, calls report_file_info
-  → Format as design document
-  → Save to .arch/{path}.md
-  → Return success
-```
-
-### 2. Graph Building (Edge List Flow)
-
-```
-User toggles file/folder to "watched"
-  → Parse source files with TS Compiler/Tree-sitter
-  → Extract import edges (file → file)
-  → Extract call edges (function → function)
-  → Add to edge lists (in-memory)
-  → Periodic save to JSON
-  → Update webview visualization
-```
-
-### 3. Workspace Root Detection
-
-Priority order:
-1. Stored workspace root (from extension context)
-2. `LLMEM_WORKSPACE` environment variable
-3. Auto-detect project root (walk up from cwd looking for `.arch`, `.artifacts`, `package.json`)
-4. Fallback to current working directory
-
-## Important Patterns
-
-### Edge List vs Artifact System
-
-- **Edge lists** (preferred): Fast, in-memory graph representation stored as JSON
-- **Artifact system** (deprecated): File-based artifact tree with metadata index
-- Current direction: Edge lists for all graph operations, artifacts only for documentation storage
-
-### Lazy Initialization
-
-- Extension activates immediately but doesn't scan codebase at startup
-- Edge computation happens on-demand when files are "watched" in the UI
-- Reduces activation time and resource usage for large codebases
-
-## Configuration
-
-Extension settings (in config.ts):
-- `artifactRoot`: Default `.artifacts` (location for edge lists and webview)
-- `maxFilesPerFolder`: Default 20 (limit for folder analysis)
-- `maxFileSizeKB`: Default 512 (skip files larger than this)
-
-## File Patterns
-
-- Source files: `src/**/*.ts`
-- Tests: `**/*.test.ts`
-- Build output: `dist/`
-- Artifacts: `.arch/`, `.artifacts/`
-- Edge lists: `.artifacts/import-edgelist.json`, `.artifacts/call-edgelist.json`
-- Webview output: `.artifacts/webview/`
+VS Code reads the same under the `llmem.*` namespace in `.vscode/settings.json`.
