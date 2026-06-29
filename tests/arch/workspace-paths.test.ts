@@ -229,6 +229,29 @@ const WRITE_ALLOWLIST_ENTRIES: readonly WriteAllowlistEntry[] = [
       'the destination; all paths derive from the resolved workspace root.',
   },
   {
+    file: 'src/application/review/persist.ts',
+    phase: 'permanent',
+    reason:
+      'Persists the durable architecture-review artifact (the filled ' +
+      'checklist markdown) to the WORKSPACE-ROOT `.llmem/review/` dir — a ' +
+      'host artifact CI/agents diff, NOT a graph-store file under any ' +
+      'WorkspaceIO sandbox. Same surface-owner contract as the ' +
+      '`llmem health` report writer (`cli/commands/health.ts`): paths derive ' +
+      'from the resolved workspace root; the report is a top-level workspace ' +
+      'write by design.',
+  },
+  {
+    file: 'src/cli/commands/review.ts',
+    phase: 'permanent',
+    reason:
+      'The `llmem review` command writes the review report ' +
+      '(`.llmem/review/<path>.{md,json}`) to the WORKSPACE-ROOT `.llmem/` ' +
+      'dir (or `--out`), mirroring the proven `cli/commands/health.ts` ' +
+      'plain-`fs` pattern. This is a top-level host-artifact write outside ' +
+      'any WorkspaceIO sandbox; all paths derive from the resolved ' +
+      'workspace root.',
+  },
+  {
     file: 'src/install/claude-code.ts',
     phase: 'permanent',
     reason:

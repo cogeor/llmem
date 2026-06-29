@@ -121,6 +121,19 @@ const KNOWN_OVER_BUDGET: readonly OverBudgetEntry[] = [
             'module (552 lines, header-heavy). Decomposed once the Loop-06 schema ' +
             'bump splits the pure-metric vs calibration concerns.',
     },
+    {
+        rel: 'src/application/review/registry.ts',
+        maxLines: 800,
+        phase: 'permanent',
+        reason:
+            'Frozen REVIEW_REGISTRY data table (34 general + 31 frontend ' +
+            'checklist items) — pure `Object.freeze`d data, NO logic. The ' +
+            'per-item prose (title / recallQuery / promptInstruction) is ' +
+            'inherently line-heavy and is the single source of truth for the ' +
+            'review checklist. Splitting it across files would fragment that ' +
+            'SSOT for no behavioral gain; the budget exists to force ' +
+            'decomposition of LOGIC, which this file has none of.',
+    },
 ];
 
 function toRepoRel(absPath: string): string {

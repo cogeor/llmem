@@ -10,6 +10,7 @@
  * (which also reads `interface-width`) keeps its full ungated candidate list.
  */
 
+import { parseGraphId } from '../../core/ids';
 import type { CloneFinding, InterfaceWidthFinding } from '../analysis/types';
 import type { RecallCandidate } from './types';
 
@@ -24,12 +25,14 @@ export const CAPPED_ITEM_IDS: ReadonlySet<string> = new Set(['FI1', 'D1']);
 
 /**
  * Strip an entity-id `::name` suffix to recover the owning FILE id. Entity ids
- * follow the `<fileId>::<name>` convention; file ids and folder prefixes have
- * no `::` and pass through unchanged.
+ * follow the `<fileId>::<name>` convention; file ids, folder prefixes, and bare
+ * external module specifiers have no `::` and pass through unchanged. Parsing is
+ * delegated to the `src/core/ids` contract module (the single owner of the
+ * `::` separator) rather than re-deriving the split locally.
  */
 export function toFileId(id: string): string {
-    const idx = id.indexOf('::');
-    return idx === -1 ? id : id.slice(0, idx);
+    const parsed = parseGraphId(id);
+    return parsed.kind === 'entity' ? parsed.fileId : id;
 }
 
 /**
