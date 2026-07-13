@@ -16,7 +16,9 @@
 
 import { serveCommand } from './commands/serve';
 import { createCliContext } from './context';
-import { parseArgv, coerceForSchema, printHelp } from './arg-parser';
+import { parseArgv, coerceForSchema } from './arg-parser';
+import { printHelp, printCommandHelp } from './help';
+import { camelToKebab } from './schema-info';
 import { CliError } from './errors';
 
 /**
@@ -26,11 +28,6 @@ import { CliError } from './errors';
  * `process.exit` owner. arg-parser and command handlers follow the same
  * rule — neither calls `process.exit` (A-grade #2).
  */
-/** camelCase schema key → the kebab-case flag the user actually typed. */
-function camelToKebab(key: string): string {
-    return key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
-}
-
 async function runCli(): Promise<void> {
     const argv = process.argv.slice(2);
 
@@ -46,14 +43,20 @@ async function runCli(): Promise<void> {
         // Resolved relative to the compiled entry (dist/cli/main.js) — the
         // repo/package root's package.json in both the esbuild bundle
         // (inlined at build time) and the tsc output (resolved at runtime).
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
         const pkg = require('../../package.json') as { version: string };
         console.log(pkg.version);
         return; // exit 0
     }
 
     if (helpRequested) {
-        printHelp();
+        // `llmem <command> --help` → command-scoped help (B2); bare
+        // `llmem --help` → the global page.
+        if (command !== null) {
+            printCommandHelp(command);
+        } else {
+            printHelp();
+        }
         return; // exit 0
     }
 

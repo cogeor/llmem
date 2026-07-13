@@ -98,6 +98,29 @@ test('llmem serve --prot 8080 exits 1 naming the unknown flag', async () => {
     );
 });
 
+// B2 — the two help surfaces.
+test('llmem health --help is command-scoped: names --fail-on, omits other commands', async () => {
+    ensureBuilt();
+    const { exitCode, stdout } = await runCli(['health', '--help']);
+    assert.equal(exitCode, 0);
+    assert.match(stdout, /llmem health — /, 'command header present');
+    assert.match(stdout, /--fail-on/, `health flags listed:\n${stdout}`);
+    assert.ok(!stdout.includes('install '), `no other commands on the page:\n${stdout}`);
+});
+
+test('llmem --help: honest header, llmem-first examples, no npm run serve', async () => {
+    ensureBuilt();
+    const { exitCode, stdout } = await runCli(['--help']);
+    assert.equal(exitCode, 0);
+    assert.match(
+        stdout,
+        /LLMem — dependency graphs, health reports, and AI architecture review/,
+        `new title:\n${stdout}`,
+    );
+    assert.match(stdout, /llmem health/, 'health example present');
+    assert.ok(!stdout.includes('npm run serve'), `npm-run examples dropped:\n${stdout}`);
+});
+
 test('llmem scan with a stray positional exits 1 with unexpected-argument', async () => {
     ensureBuilt();
     // `scan` takes --folder, not a positional; before .strict() the stray

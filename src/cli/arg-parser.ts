@@ -1,16 +1,11 @@
 /**
- * LLMem CLI — argv parsing, flag coercion, and help-text formatting.
+ * LLMem CLI — argv parsing and flag coercion.
  *
  * Split out of `main.ts` (loop 20, phase 15) so the entry shell stays under
  * the 250-line platform budget. This module holds the cohesive "argv →
  * typed flags + command" group: the trivial argv tokenizer, the
- * kebab→camel flag normalizer, the Zod-aware string→number coercion, and the
- * registry-driven `printHelp`. `main.ts` keeps only `main()` (the dispatch
- * shell) and re-exports nothing new — the public surface is unchanged.
- *
- * Behavior is identical to the pre-split inline helpers: help text matches
- * the old `printHelp` verbatim, the parser rules are byte-for-byte the same,
- * and the coercion mirrors today's `parseInt(...)` behavior.
+ * kebab→camel flag normalizer, and the Zod-aware string→number coercion.
+ * Help-text formatting moved to `./help` (B2, same budget reason).
  */
 
 import { z } from 'zod';
@@ -191,47 +186,4 @@ export function coerceForSchema(
         }
     }
     return out;
-}
-
-export function printHelp(): void {
-    // Loop 07: now registry-driven; visible commands listed dynamically.
-    // See `describe.ts:printHumanTree` for the matching JSON-driven listing —
-    // both surfaces filter `hidden`, so the two cannot drift.
-    //
-    // OPTIONS and ENVIRONMENT remain hardcoded — they document global flags
-    // (port/workspace/regenerate/...) and env vars, not per-command shape.
-    // Per-command flags are surfaced by `describe`.
-    const visibleCommands = REGISTRY.filter(c => !c.hidden);
-    const longest = visibleCommands.reduce((m, c) => Math.max(m, c.name.length), 0);
-    const cmdLines = visibleCommands
-        .map(c => `  ${c.name.padEnd(longest + 2)} ${c.description}`)
-        .join('\n');
-
-    console.log(`
-LLMem CLI - Graph Visualization and MCP Server
-
-USAGE:
-  llmem <command> [OPTIONS]
-  npm run serve [OPTIONS]
-
-COMMANDS:
-${cmdLines}
-
-OPTIONS:
-  --port, -p <num>       Port number (default: 5757)
-  --workspace, -w <path> Workspace root (auto-detected)
-  --regenerate, -r       Force regenerate graph before serving
-  --open, -o             Open browser automatically
-  --verbose, -v          Verbose logging
-  --help, -h             Show this help
-
-EXAMPLES:
-  npm run serve
-  npm run serve -- --port 8080
-  npm run serve -- --regenerate --open
-
-ENVIRONMENT:
-  LLMEM_WORKSPACE        Workspace root directory
-  LLMEM_ARTIFACT_ROOT    Artifact directory (default: .llmem/graph)
-`);
 }
