@@ -26,8 +26,14 @@ export function renderHealthReport(report: HealthReport): string {
     lines.push(
         `call cycles: ${v.callCyclesMutual} (mutual) / ${v.callCyclesRecursion} (recursion)`,
     );
+    // A4: the headline clone count is the actionable subset — exact-body
+    // clusters at `high` (which, post test-clamping, means their non-test
+    // members span modules). The vector keeps its recall-first totals.
+    const exactBodyHigh = report.clones.filter(
+        c => c.cloneType === 'exact-body' && c.severity === 'high',
+    ).length;
     lines.push(
-        `clone clusters: ${v.cloneClustersHigh} (high) / ${v.cloneClustersTotal} (total)`,
+        `clone clusters: ${exactBodyHigh} high (exact-body, cross-module, non-test) / ${v.cloneClustersTotal} total`,
     );
     lines.push(
         `hubs: ${v.hubUnstable} unstable / ${v.hubOutliers - v.hubUnstable} kernel (max fan-in ${v.maxFanIn})`,
@@ -97,27 +103,36 @@ export function renderHealthReport(report: HealthReport): string {
     // §3 Duplication (Loop 06 exact-body + Loop 07 shared-literal). Clusters are
     // already combined + ranked by `findClones` (severity band → strength → id);
     // the renderer must NOT re-sort. Deterministic, no timestamp.
+    //
+    // A4: the markdown lists EXACT-BODY clusters only. Shared-literal clusters
+    // (colors, ports, marker arrays) are recall bait for the review checklist —
+    // they dominated the human report (500+ clusters on llmem itself) without
+    // being actionable, so they collapse to one summary line here. They remain
+    // untouched in the JSON report and clone-edgelist.json.
     lines.push('');
     lines.push('## 3. Duplication');
-    const clones = report.clones;
-    if (clones.length === 0) {
-        lines.push('No duplication found.');
+    const exactBodyClones = report.clones.filter(c => c.cloneType === 'exact-body');
+    const literalClusterCount = report.clones.length - exactBodyClones.length;
+    if (exactBodyClones.length === 0) {
+        lines.push('No exact-body duplication found.');
     } else {
-        lines.push(`Found ${clones.length} clone cluster(s):`);
-        clones.forEach((c, i) => {
+        lines.push(`Found ${exactBodyClones.length} exact-body clone cluster(s):`);
+        exactBodyClones.forEach((c, i) => {
             lines.push('');
             const note =
                 c.severity === 'low' ? ' [sibling-boilerplate]' : '';
-            const kind =
-                c.cloneType === 'shared-literal'
-                    ? ` [shared-literal: ${c.sharedKind}]`
-                    : '';
             lines.push(
-                `Cluster ${i + 1} (${c.severity})${kind}${note}: ${c.members.length} members`,
+                `Cluster ${i + 1} (${c.severity})${note}: ${c.members.length} members`,
             );
             lines.push(`  members: ${c.members.join(', ')}`);
             lines.push(`  files: ${c.relatedFiles.join(', ')}`);
         });
+    }
+    if (literalClusterCount > 0) {
+        lines.push('');
+        lines.push(
+            `shared-literal clusters: ${literalClusterCount} (feeding review items D1/D2) — see JSON`,
+        );
     }
 
     // Order-preserving: the hubs array is already sorted by metrics.ts (degree

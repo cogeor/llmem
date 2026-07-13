@@ -208,6 +208,88 @@ test('renderHealthReport: renders the Module interfaces section with the shallow
     assert.ok(out.includes('interface width: max W_eff 8.50, 1 shallow-wide module(s)'));
 });
 
+// A4 (2026-07-13 review): the markdown Duplication section lists exact-body
+// clusters only; shared-literal clusters collapse to one summary line (they
+// stay in the JSON as review-recall bait). The scorecard headline counts
+// exact-body high clusters.
+function reportWithClones(): HealthReport {
+    const base = makeReport([]);
+    const clones: HealthReport['clones'] = [
+        {
+            id: 'clone:HASH1:src/cli/x.ts::f|src/webview/y.ts::g',
+            type: 'clone',
+            cloneType: 'exact-body',
+            similarity: 1,
+            severity: 'high',
+            title: '2-member exact-body clone (cross-layer)',
+            detail: 'd',
+            relatedFiles: ['src/cli/x.ts', 'src/webview/y.ts'],
+            members: ['src/cli/x.ts::f', 'src/webview/y.ts::g'],
+        },
+        {
+            id: 'clone-lit:arr:HASH2:src/a.ts::f|src/b.ts::g',
+            type: 'clone',
+            cloneType: 'shared-literal',
+            sharedKind: 'array',
+            similarity: 1,
+            severity: 'high',
+            title: '2-member shared-literal clone [array] (cross-layer)',
+            detail: 'd',
+            relatedFiles: ['src/a.ts', 'src/b.ts'],
+            members: ['src/a.ts::f', 'src/b.ts::g'],
+        },
+        {
+            id: 'clone-lit:str:HASH3:src/c.ts::f|src/d.ts::g',
+            type: 'clone',
+            cloneType: 'shared-literal',
+            sharedKind: 'string',
+            similarity: 1,
+            severity: 'medium',
+            title: '2-member shared-literal clone [string] (same-module)',
+            detail: 'd',
+            relatedFiles: ['src/c.ts', 'src/d.ts'],
+            members: ['src/c.ts::f', 'src/d.ts::g'],
+        },
+    ];
+    return {
+        ...base,
+        vector: { ...base.vector, cloneClustersTotal: clones.length, cloneClustersHigh: 2 },
+        clones,
+    };
+}
+
+test('renderHealthReport: duplication lists exact-body only, literals collapse to a summary line', () => {
+    const out = renderHealthReport(reportWithClones());
+    assert.ok(out.includes('Found 1 exact-body clone cluster(s):'), `exact-body header:\n${out}`);
+    assert.ok(out.includes('src/cli/x.ts::f, src/webview/y.ts::g'), 'exact-body members listed');
+    assert.ok(
+        out.includes('shared-literal clusters: 2 (feeding review items D1/D2) — see JSON'),
+        `literal summary line:\n${out}`,
+    );
+    assert.ok(!out.includes('[shared-literal:'), 'no per-cluster shared-literal rows in markdown');
+});
+
+test('renderHealthReport: clone scorecard counts exact-body highs against the recall total', () => {
+    const out = renderHealthReport(reportWithClones());
+    // 1 exact-body high (the shared-literal high does NOT count) / 3 total.
+    assert.ok(
+        out.includes('clone clusters: 1 high (exact-body, cross-module, non-test) / 3 total'),
+        `scorecard clone line:\n${out}`,
+    );
+});
+
+test('renderHealthReport: "No exact-body duplication found." when only literal clusters exist', () => {
+    const withOnlyLiterals = {
+        ...reportWithClones(),
+    };
+    withOnlyLiterals.clones = withOnlyLiterals.clones.filter(
+        c => c.cloneType === 'shared-literal',
+    );
+    const out = renderHealthReport(withOnlyLiterals);
+    assert.ok(out.includes('No exact-body duplication found.'));
+    assert.ok(out.includes('shared-literal clusters: 2 (feeding review items D1/D2) — see JSON'));
+});
+
 // A3 (2026-07-13 review): the hub section conflated signal with context —
 // llmem itself reported 101 "hub outliers", mostly healthy kernels. The
 // renderer now leads with unstable hubs (all of them) and caps kernels at 10
