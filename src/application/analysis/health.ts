@@ -73,8 +73,11 @@ export async function runHealthScan(
 
     // Loop 05: hub / instability. `maxFanIn` is the global max Ca over ALL file
     // nodes (not just flagged outliers); `hubOutliers` is the count of flagged.
+    // A3: `hubUnstable` counts only the `unstable-hub` labels — the signal the
+    // scorecard leads with (kernels are context, not smells).
     vector.maxFanIn = maxFanIn;
     vector.hubOutliers = hubs.length;
+    vector.hubUnstable = hubs.filter(h => h.label === 'unstable-hub').length;
 
     // Loop 06: exact-body clone clusters. `cloneClustersHigh` counts the
     // cross-layer (high-severity) clusters; total counts every cluster.

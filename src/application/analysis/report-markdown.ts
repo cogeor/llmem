@@ -29,7 +29,9 @@ export function renderHealthReport(report: HealthReport): string {
     lines.push(
         `clone clusters: ${v.cloneClustersHigh} (high) / ${v.cloneClustersTotal} (total)`,
     );
-    lines.push(`hub outliers: ${v.hubOutliers} (max fan-in ${v.maxFanIn})`);
+    lines.push(
+        `hubs: ${v.hubUnstable} unstable / ${v.hubOutliers - v.hubUnstable} kernel (max fan-in ${v.maxFanIn})`,
+    );
     lines.push(
         `interface width: max W_eff ${v.maxEffectiveWidth.toFixed(2)}, ${v.interfaceWidthShallowWide} shallow-wide module(s)`,
     );
@@ -119,20 +121,40 @@ export function renderHealthReport(report: HealthReport): string {
     }
 
     // Order-preserving: the hubs array is already sorted by metrics.ts (degree
-    // desc, id asc) — do NOT re-sort.
+    // desc, id asc) — do NOT re-sort. A3: unstable hubs are the SIGNAL (all
+    // listed); kernels are healthy shared dependencies shown as capped context
+    // so they stop drowning the report (llmem itself has ~100 of them).
     lines.push('');
     lines.push('## 4. Hubs & instability');
     const hubs = report.hubs;
-    if (hubs.length === 0) {
-        lines.push('No hub outliers found.');
+    const unstableHubs = hubs.filter(h => h.label === 'unstable-hub');
+    const kernels = hubs.filter(h => h.label === 'kernel');
+    const hubRow = (h: (typeof hubs)[number]): string =>
+        `| ${h.relatedFiles[0]} | ${h.ca} | ${h.ce} | ${h.instability.toFixed(2)} |`;
+
+    lines.push('');
+    lines.push('### Unstable hubs');
+    if (unstableHubs.length === 0) {
+        lines.push('No unstable hubs found.');
     } else {
-        lines.push('| File | Ca (in) | Ce (out) | I | Label |');
-        lines.push('| --- | --- | --- | --- | --- |');
-        hubs.forEach(h => {
-            lines.push(
-                `| ${h.relatedFiles[0]} | ${h.ca} | ${h.ce} | ${h.instability.toFixed(2)} | ${h.label} |`,
-            );
-        });
+        lines.push('| File | Ca (in) | Ce (out) | I |');
+        lines.push('| --- | --- | --- | --- |');
+        unstableHubs.forEach(h => lines.push(hubRow(h)));
+    }
+
+    const KERNEL_CAP = 10;
+    lines.push('');
+    lines.push('### Kernels (context — healthy shared dependencies)');
+    if (kernels.length === 0) {
+        lines.push('No kernels flagged.');
+    } else {
+        lines.push('| File | Ca (in) | Ce (out) | I |');
+        lines.push('| --- | --- | --- | --- |');
+        kernels.slice(0, KERNEL_CAP).forEach(h => lines.push(hubRow(h)));
+        if (kernels.length > KERNEL_CAP) {
+            lines.push('');
+            lines.push(`… +${kernels.length - KERNEL_CAP} more kernels (see JSON)`);
+        }
     }
 
     // §5 Module interfaces (Loop 05 interface-width). The findings array is

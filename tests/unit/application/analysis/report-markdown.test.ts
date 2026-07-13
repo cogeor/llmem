@@ -87,6 +87,7 @@ function makeReport(interfaceWidth: InterfaceWidthFinding[]): HealthReport {
             cloneClustersTotal: 0,
             maxFanIn: 0,
             hubOutliers: 0,
+            hubUnstable: 0,
             filesOverBudget: 0,
             maxEffectiveWidth,
             interfaceWidthShallowWide: shallowWide,
@@ -205,6 +206,65 @@ test('renderHealthReport: renders the Module interfaces section with the shallow
     assert.ok(out.includes('| src/logger.ts#log | 26 |'));
     // Scorecard carries the two new vector lines.
     assert.ok(out.includes('interface width: max W_eff 8.50, 1 shallow-wide module(s)'));
+});
+
+// A3 (2026-07-13 review): the hub section conflated signal with context —
+// llmem itself reported 101 "hub outliers", mostly healthy kernels. The
+// renderer now leads with unstable hubs (all of them) and caps kernels at 10
+// context rows; the scorecard splits the counts.
+function reportWithHubs(unstable: number, kernel: number): HealthReport {
+    const base = makeReport([]);
+    const hub = (i: number, label: 'unstable-hub' | 'kernel'): HealthReport['hubs'][number] => ({
+        id: `hub:src/${label}${String(i).padStart(2, '0')}.ts`,
+        type: 'hub',
+        severity: 'medium',
+        title: `hub ${label} ${i}`,
+        detail: 'd',
+        relatedFiles: [`src/${label}${String(i).padStart(2, '0')}.ts`],
+        ca: label === 'kernel' ? 10 : 5,
+        ce: label === 'kernel' ? 1 : 6,
+        instability: label === 'kernel' ? 0.09 : 0.55,
+        label,
+    });
+    const hubs = [
+        ...Array.from({ length: unstable }, (_, i) => hub(i, 'unstable-hub')),
+        ...Array.from({ length: kernel }, (_, i) => hub(i, 'kernel')),
+    ];
+    return {
+        ...base,
+        vector: {
+            ...base.vector,
+            hubOutliers: hubs.length,
+            hubUnstable: unstable,
+            maxFanIn: 10,
+        },
+        hubs,
+    };
+}
+
+test('renderHealthReport: hub scorecard splits unstable vs kernel counts', () => {
+    const out = renderHealthReport(reportWithHubs(2, 12));
+    assert.ok(
+        out.includes('hubs: 2 unstable / 12 kernel (max fan-in 10)'),
+        `scorecard line splits counts; got:\n${out}`,
+    );
+});
+
+test('renderHealthReport: all unstable hubs listed, kernels capped at 10', () => {
+    const out = renderHealthReport(reportWithHubs(2, 12));
+    assert.ok(out.includes('### Unstable hubs'));
+    assert.ok(out.includes('| src/unstable-hub00.ts | 5 | 6 | 0.55 |'));
+    assert.ok(out.includes('| src/unstable-hub01.ts | 5 | 6 | 0.55 |'));
+    assert.ok(out.includes('### Kernels (context — healthy shared dependencies)'));
+    assert.ok(out.includes('| src/kernel09.ts | 10 | 1 | 0.09 |'), 'kernel 10 of 12 shown');
+    assert.ok(!out.includes('src/kernel10.ts'), 'kernel 11 elided by the cap');
+    assert.ok(out.includes('… +2 more kernels (see JSON)'), `cap suffix present:\n${out}`);
+});
+
+test('renderHealthReport: empty hub sections render their no-findings lines', () => {
+    const out = renderHealthReport(reportWithHubs(0, 0));
+    assert.ok(out.includes('No unstable hubs found.'));
+    assert.ok(out.includes('No kernels flagged.'));
 });
 
 test('renderHealthReport: "No shallow-wide modules." when no medium folder finding', () => {
