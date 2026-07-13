@@ -5,44 +5,33 @@
  * `toolDefinitions` array consumed by the MCP server. Per-tool handlers and
  * Zod schemas are also re-exported so tests and external callers can keep
  * a stable import surface.
+ *
+ * C5 (2026-07-13): `file_info`/`folder_info` merged into `document` and
+ * `report_file_info`/`report_folder_info` into `report_document` (clean
+ * break — 5 tools, no aliases; a doubled tool list is the cost the merge
+ * exists to cut).
  */
 
-import { fileInfoTool } from './file-info';
-import { reportFileInfoTool } from './report-file-info';
-import { folderInfoTool } from './folder-info';
-import { reportFolderInfoTool } from './report-folder-info';
+import { documentTool } from './document';
+import { reportDocumentTool } from './report-document';
 import { reviewTool } from './review';
 import { reportReviewTool } from './report-review';
 import { openWindowTool } from './open-window';
 
 // Per-tool re-exports (schemas, handlers, tool definitions)
 export {
-    fileInfoTool,
-    FileInfoSchema,
-    handleFileInfo,
-} from './file-info';
-export type { FileInfoInput } from './file-info';
+    documentTool,
+    DocumentSchema,
+    handleDocument,
+} from './document';
+export type { DocumentInput } from './document';
 
 export {
-    reportFileInfoTool,
-    ReportFileInfoSchema,
-    handleReportFileInfo,
-} from './report-file-info';
-export type { ReportFileInfoInput } from './report-file-info';
-
-export {
-    folderInfoTool,
-    FolderInfoSchema,
-    handleFolderInfo,
-} from './folder-info';
-export type { FolderInfoInput } from './folder-info';
-
-export {
-    reportFolderInfoTool,
-    ReportFolderInfoSchema,
-    handleReportFolderInfo,
-} from './report-folder-info';
-export type { ReportFolderInfoInput } from './report-folder-info';
+    reportDocumentTool,
+    ReportDocumentSchema,
+    handleReportDocument,
+} from './report-document';
+export type { ReportDocumentInput } from './report-document';
 
 export {
     reviewTool,
@@ -66,12 +55,10 @@ export {
 export type { OpenWindowInput } from './open-window';
 
 // The registrar — order is preserved for human-readable startup logs
-// (file/report pairs first, then open_window).
+// (document/report pair first, then review pair, then open_window).
 export const toolDefinitions = [
-    fileInfoTool,
-    reportFileInfoTool,
-    folderInfoTool,
-    reportFolderInfoTool,
+    documentTool,
+    reportDocumentTool,
     reviewTool,
     reportReviewTool,
     openWindowTool,

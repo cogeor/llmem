@@ -1,7 +1,8 @@
 /**
  * MCP Tools Integration Tests
  *
- * Tests the file_info and report_file_info tools end-to-end.
+ * Tests the merged `document` / `report_document` pair end-to-end (C5:
+ * formerly file_info/folder_info + report_file_info/report_folder_info).
  * Uses a temporary workspace to avoid polluting the real project.
  */
 
@@ -11,13 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
-// Import the actual handlers (not the wrapped versions)
-import {
-    FileInfoSchema,
-    ReportFileInfoSchema,
-    FolderInfoSchema,
-    ReportFolderInfoSchema,
-} from '../../src/mcp/tools';
+import { DocumentSchema, ReportDocumentSchema } from '../../src/mcp/tools';
 
 import { validateRequest, formatSuccess, formatError, formatPromptResponse } from '../../src/mcp/handlers';
 import { setStoredWorkspaceRoot, setStoredConfig } from '../../src/mcp/server';
@@ -87,8 +82,8 @@ export class Calculator {
 // ============================================================================
 
 describe('MCP Tool Schema Validation', () => {
-    test('FileInfoSchema validates correct input', () => {
-        const result = validateRequest(FileInfoSchema, {
+    test('DocumentSchema validates correct input (file or folder path — same shape)', () => {
+        const result = validateRequest(DocumentSchema, {
             workspaceRoot: '/home/user/project',
             path: 'src/sample.ts',
         });
@@ -96,10 +91,11 @@ describe('MCP Tool Schema Validation', () => {
         assert.equal(result.success, true);
         assert.equal(result.data?.workspaceRoot, '/home/user/project');
         assert.equal(result.data?.path, 'src/sample.ts');
+        assert.equal(result.data?.refresh, 'auto');
     });
 
-    test('FileInfoSchema rejects missing workspaceRoot', () => {
-        const result = validateRequest(FileInfoSchema, {
+    test('DocumentSchema rejects missing workspaceRoot', () => {
+        const result = validateRequest(DocumentSchema, {
             path: 'src/sample.ts',
         });
 
@@ -107,8 +103,8 @@ describe('MCP Tool Schema Validation', () => {
         assert.ok(result.error?.includes('workspaceRoot'));
     });
 
-    test('FileInfoSchema rejects missing path', () => {
-        const result = validateRequest(FileInfoSchema, {
+    test('DocumentSchema rejects missing path', () => {
+        const result = validateRequest(DocumentSchema, {
             workspaceRoot: '/home/user/project',
         });
 
@@ -116,8 +112,9 @@ describe('MCP Tool Schema Validation', () => {
         assert.ok(result.error?.includes('path'));
     });
 
-    test('ReportFileInfoSchema validates correct input', () => {
-        const result = validateRequest(ReportFileInfoSchema, {
+    test('ReportDocumentSchema validates a kind:file payload', () => {
+        const result = validateRequest(ReportDocumentSchema, {
+            kind: 'file',
             workspaceRoot: '/home/user/project',
             path: 'src/sample.ts',
             overview: 'This file provides utility functions.',
@@ -130,37 +127,14 @@ describe('MCP Tool Schema Validation', () => {
             ],
         });
 
-        assert.equal(result.success, true);
+        assert.equal(result.success, true, result.error);
         assert.equal(result.data?.overview, 'This file provides utility functions.');
-        assert.equal(result.data?.functions.length, 1);
+        assert.equal(result.data?.kind, 'file');
     });
 
-    test('ReportFileInfoSchema allows optional inputs/outputs', () => {
-        const result = validateRequest(ReportFileInfoSchema, {
-            workspaceRoot: '/home/user/project',
-            path: 'src/sample.ts',
-            overview: 'Overview text',
-            inputs: 'Takes configuration options',
-            outputs: 'Returns processed data',
-            functions: [],
-        });
-
-        assert.equal(result.success, true);
-        assert.equal(result.data?.inputs, 'Takes configuration options');
-        assert.equal(result.data?.outputs, 'Returns processed data');
-    });
-
-    test('FolderInfoSchema validates correct input', () => {
-        const result = validateRequest(FolderInfoSchema, {
-            workspaceRoot: '/home/user/project',
-            path: 'src/utils',
-        });
-
-        assert.equal(result.success, true);
-    });
-
-    test('ReportFolderInfoSchema validates correct input', () => {
-        const result = validateRequest(ReportFolderInfoSchema, {
+    test('ReportDocumentSchema validates a kind:folder payload', () => {
+        const result = validateRequest(ReportDocumentSchema, {
+            kind: 'folder',
             workspaceRoot: '/home/user/project',
             path: 'src/utils',
             overview: 'Utility functions for the project',
@@ -170,8 +144,33 @@ describe('MCP Tool Schema Validation', () => {
             architecture: 'Simple flat structure with exported utilities',
         });
 
-        assert.equal(result.success, true);
-        assert.equal(result.data?.key_files.length, 1);
+        assert.equal(result.success, true, result.error);
+        assert.equal(result.data?.kind, 'folder');
+    });
+
+    test('ReportDocumentSchema rejects a payload without kind', () => {
+        const result = validateRequest(ReportDocumentSchema, {
+            workspaceRoot: '/home/user/project',
+            path: 'src/sample.ts',
+            overview: 'x',
+            functions: [],
+        });
+
+        assert.equal(result.success, false);
+    });
+
+    test('ReportDocumentSchema rejects a kind:folder payload with file-only fields', () => {
+        // Folder variant requires `architecture`; a file body under
+        // kind:'folder' must not validate.
+        const result = validateRequest(ReportDocumentSchema, {
+            kind: 'folder',
+            workspaceRoot: '/home/user/project',
+            path: 'src/utils',
+            overview: 'x',
+            functions: [],
+        });
+
+        assert.equal(result.success, false);
     });
 });
 
@@ -199,16 +198,17 @@ describe('MCP Response Formatting', () => {
     test('formatPromptResponse creates correct structure', () => {
         const response = formatPromptResponse(
             'Please analyze this code...',
-            'report_file_info',
-            { workspaceRoot: '/project', path: 'src/file.ts' }
+            'report_document',
+            { workspaceRoot: '/project', path: 'src/file.ts', kind: 'file' }
         );
 
         assert.equal(response.status, 'prompt_ready');
         assert.equal(response.promptForHostLLM, 'Please analyze this code...');
-        assert.equal(response.callbackTool, 'report_file_info');
+        assert.equal(response.callbackTool, 'report_document');
         assert.deepEqual(response.callbackArgs, {
             workspaceRoot: '/project',
             path: 'src/file.ts',
+            kind: 'file',
         });
     });
 });
@@ -236,12 +236,12 @@ describe('MCP Tools Integration', () => {
         workspace.cleanup();
     });
 
-    test('report_file_info creates design document in .llmem/docs/', async () => {
-        // Import the handler
-        const { handleReportFileInfo } = await import('../../src/mcp/tools');
+    test('report_document (kind:file) creates design document in .llmem/docs/', async () => {
+        const { handleReportDocument } = await import('../../src/mcp/tools');
 
-        // Simulate what LLM would send after processing file_info prompt
-        const response = await handleReportFileInfo({
+        // Simulate what LLM would send after processing the document prompt
+        const response = await handleReportDocument({
+            kind: 'file',
             workspaceRoot: workspace.root,
             path: 'src/sample.ts',
             overview: 'Sample module providing greeting and math utilities.',
@@ -266,11 +266,11 @@ describe('MCP Tools Integration', () => {
         assert.ok(response.data, 'Response should have data');
 
         // Check file was created
-        const archFile = path.join(workspace.root, '.llmem', 'docs', 'src', 'sample.ts.md');
-        assert.ok(fs.existsSync(archFile), `Expected file to exist: ${archFile}`);
+        const docFile = path.join(workspace.root, '.llmem', 'docs', 'src', 'sample.ts.md');
+        assert.ok(fs.existsSync(docFile), `Expected file to exist: ${docFile}`);
 
         // Check content
-        const content = fs.readFileSync(archFile, 'utf-8');
+        const content = fs.readFileSync(docFile, 'utf-8');
         assert.ok(content.includes('DESIGN DOCUMENT'), 'Should have design document header');
         assert.ok(content.includes('src/sample.ts'), 'Should reference the file path');
         assert.ok(content.includes('Sample module providing greeting'), 'Should include overview');
@@ -278,8 +278,8 @@ describe('MCP Tools Integration', () => {
         assert.ok(content.includes('add'), 'Should document add function');
     });
 
-    test('report_file_info: workspaceRoot wins over process.cwd() (L25 regression)', async () => {
-        const { handleReportFileInfo } = await import('../../src/mcp/tools');
+    test('report_document: workspaceRoot wins over process.cwd() (L25 regression, file)', async () => {
+        const { handleReportDocument } = await import('../../src/mcp/tools');
 
         // Use an isolated workspace + fake "AppData" to simulate the
         // legacy bug condition. A future refactor that constructs
@@ -297,7 +297,8 @@ describe('MCP Tools Integration', () => {
         process.chdir(fakeAppData);
 
         try {
-            const response = await handleReportFileInfo({
+            const response = await handleReportDocument({
+                kind: 'file',
                 workspaceRoot: ws.root,
                 path: 'src/sample.ts',
                 overview: 'L25 regression overview',
@@ -316,17 +317,17 @@ describe('MCP Tools Integration', () => {
             // The artifact must land inside the workspace, not inside process.cwd().
             const wsResolved = fs.realpathSync(ws.root);
             const cwdResolved = fs.realpathSync(fakeAppData);
-            const archResolved = fs.realpathSync(
+            const docResolved = fs.realpathSync(
                 (response.data as { artifactPath: string }).artifactPath,
             );
 
             assert.ok(
-                archResolved.startsWith(wsResolved),
-                `docPath ${archResolved} must start with workspaceRoot ${wsResolved}`,
+                docResolved.startsWith(wsResolved),
+                `docPath ${docResolved} must start with workspaceRoot ${wsResolved}`,
             );
             assert.ok(
-                !archResolved.startsWith(cwdResolved),
-                `docPath ${archResolved} must NOT start with fakeAppData ${cwdResolved}`,
+                !docResolved.startsWith(cwdResolved),
+                `docPath ${docResolved} must NOT start with fakeAppData ${cwdResolved}`,
             );
 
             // Concretely: <workspaceRoot>/.llmem/docs/src/sample.ts.md
@@ -346,8 +347,8 @@ describe('MCP Tools Integration', () => {
         }
     });
 
-    test('report_folder_info: workspaceRoot wins over process.cwd() (L25 regression)', async () => {
-        const { handleReportFolderInfo } = await import('../../src/mcp/tools');
+    test('report_document: workspaceRoot wins over process.cwd() (L25 regression, folder)', async () => {
+        const { handleReportDocument } = await import('../../src/mcp/tools');
 
         // The writer (processFolderInfoReport) does NOT read .artifacts —
         // that's the prompt-builder's job. So no edge-list fixture is needed.
@@ -360,7 +361,8 @@ describe('MCP Tools Integration', () => {
         process.chdir(fakeAppData);
 
         try {
-            const response = await handleReportFolderInfo({
+            const response = await handleReportDocument({
+                kind: 'folder',
                 workspaceRoot: ws.root,
                 path: 'src',
                 overview: 'L25 regression folder overview',
@@ -409,10 +411,11 @@ describe('MCP Tools Integration', () => {
         }
     });
 
-    test('report_folder_info creates README in .llmem/docs/<folder>/', async () => {
-        const { handleReportFolderInfo } = await import('../../src/mcp/tools');
+    test('report_document (kind:folder) creates README in .llmem/docs/<folder>/', async () => {
+        const { handleReportDocument } = await import('../../src/mcp/tools');
 
-        const response = await handleReportFolderInfo({
+        const response = await handleReportDocument({
+            kind: 'folder',
             workspaceRoot: workspace.root,
             path: 'src',
             overview: 'Source directory containing all application code.',
@@ -437,10 +440,31 @@ describe('MCP Tools Integration', () => {
         assert.ok(content.includes('sample.ts'), 'Should list key files');
     });
 
-    test('file_info returns prompt_ready response', async () => {
-        const { handleFileInfo } = await import('../../src/mcp/tools');
+    test('report_document rejects a kind that contradicts the path', async () => {
+        const { handleReportDocument } = await import('../../src/mcp/tools');
 
-        const response = await handleFileInfo({
+        // src/sample.ts is a FILE; a folder payload for it must be rejected
+        // (it would otherwise write .llmem/docs/src/sample.ts/README.md).
+        const response = await handleReportDocument({
+            kind: 'folder',
+            workspaceRoot: workspace.root,
+            path: 'src/sample.ts',
+            overview: 'mis-kinded payload',
+            key_files: [],
+            architecture: 'n/a',
+        });
+
+        assert.equal(response.status, 'error', 'kind mismatch must be an error');
+        assert.ok(
+            (response.error ?? '').includes('is a file'),
+            `error names the actual kind; got: ${response.error}`,
+        );
+    });
+
+    test('document (file path) returns prompt_ready with kind:file callback', async () => {
+        const { handleDocument } = await import('../../src/mcp/tools');
+
+        const response = await handleDocument({
             workspaceRoot: workspace.root,
             path: 'src/sample.ts',
         });
@@ -448,33 +472,34 @@ describe('MCP Tools Integration', () => {
         assert.equal(response.status, 'prompt_ready', `Expected prompt_ready but got: ${response.status}`);
         assert.ok(response.promptForHostLLM, 'Should have prompt for host LLM');
         assert.ok(response.promptForHostLLM.includes('sample.ts'), 'Prompt should reference the file');
-        assert.equal(response.callbackTool, 'report_file_info', 'Should specify callback tool');
+        assert.equal(response.callbackTool, 'report_document', 'Should specify callback tool');
         assert.equal(response.callbackArgs?.path, 'src/sample.ts', 'Callback should include path');
+        assert.equal(response.callbackArgs?.kind, 'file', 'Callback should carry the detected kind');
     });
 
     test('handles non-existent file gracefully', async () => {
-        const { handleFileInfo } = await import('../../src/mcp/tools');
+        const { handleDocument } = await import('../../src/mcp/tools');
 
-        // Handler throws for non-existent files - this is expected behavior
-        // The error is caught by the observer and logged
-        try {
-            await handleFileInfo({
-                workspaceRoot: workspace.root,
-                path: 'src/nonexistent.ts',
-            });
-            assert.fail('Should have thrown for non-existent file');
-        } catch (error) {
-            assert.ok(error instanceof Error);
-            assert.ok(error.message.includes('not found') || error.message.includes('nonexistent'));
-        }
+        const response = await handleDocument({
+            workspaceRoot: workspace.root,
+            path: 'src/nonexistent.ts',
+        });
+
+        // The merged tool stats the path up-front, so a missing path is a
+        // formatted error response (not a thrown crash).
+        assert.equal(response.status, 'error');
+        assert.ok(
+            (response.error ?? '').includes('not found'),
+            `error mentions the missing path: ${response.error}`,
+        );
     });
 
     test('rejects path traversal attempts', async () => {
-        const { handleFileInfo } = await import('../../src/mcp/tools');
+        const { handleDocument } = await import('../../src/mcp/tools');
 
         // Handler throws for path traversal attempts
         try {
-            await handleFileInfo({
+            await handleDocument({
                 workspaceRoot: workspace.root,
                 path: '../../../etc/passwd',
             });
@@ -512,23 +537,23 @@ describe('MCP End-to-End Workflow', () => {
         workspace.cleanup();
     });
 
-    test('full workflow: file_info → report_file_info → verify', async () => {
-        const { handleFileInfo, handleReportFileInfo } = await import('../../src/mcp/tools');
+    test('full workflow: document → report_document → verify', async () => {
+        const { handleDocument, handleReportDocument } = await import('../../src/mcp/tools');
 
-        // Step 1: Call file_info to get prompt
-        const infoResponse = await handleFileInfo({
+        // Step 1: Call document to get prompt (+ detected kind)
+        const infoResponse = await handleDocument({
             workspaceRoot: workspace.root,
             path: 'src/sample.ts',
         });
 
         assert.equal(infoResponse.status, 'prompt_ready');
         assert.ok(infoResponse.promptForHostLLM);
+        assert.equal(infoResponse.callbackArgs?.kind, 'file');
 
-        // Step 2: Simulate LLM processing and call report_file_info
-        // (In real usage, the LLM would analyze the prompt and generate this)
-        const reportResponse = await handleReportFileInfo({
-            workspaceRoot: workspace.root,
-            path: 'src/sample.ts',
+        // Step 2: Simulate LLM processing and call report_document with the
+        // callback args (in real usage, the LLM would generate the body).
+        const reportResponse = await handleReportDocument({
+            ...infoResponse.callbackArgs,
             overview: 'A sample TypeScript module demonstrating basic utilities.',
             functions: [
                 {

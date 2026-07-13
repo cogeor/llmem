@@ -57,10 +57,20 @@ type ToolInputSchema = {
 };
 
 /**
- * Convert a Zod schema to a JSON schema compatible with MCP SDK
+ * Convert a Zod schema to a JSON schema compatible with MCP SDK.
+ *
+ * C5: a discriminated union (report_document) serializes as a bare
+ * `{ anyOf: [...] }` with no top-level `type` — but the MCP wire contract
+ * requires `inputSchema.type === 'object'`. Every union branch here IS an
+ * object, so stamping `type: 'object'` alongside the `anyOf` is valid JSON
+ * Schema and satisfies the SDK's tools/list validation.
  */
 function toToolInputSchema(schema: z.ZodSchema): ToolInputSchema {
-    return zodToJsonSchema(schema) as ToolInputSchema;
+    const js = zodToJsonSchema(schema) as Record<string, unknown>;
+    if (js.type !== 'object' && Array.isArray(js.anyOf)) {
+        return { type: 'object', ...js } as ToolInputSchema;
+    }
+    return js as ToolInputSchema;
 }
 
 // ============================================================================

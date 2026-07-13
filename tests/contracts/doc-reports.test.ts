@@ -16,8 +16,7 @@ import {
     fileReportPayloadSchema,
     folderReportPayloadSchema,
 } from '../../src/contracts/doc-reports';
-import { ReportFileInfoSchema } from '../../src/mcp/tools/report-file-info';
-import { ReportFolderInfoSchema } from '../../src/mcp/tools/report-folder-info';
+import { ReportDocumentSchema } from '../../src/mcp/tools/report-document';
 
 const FILE_PAYLOAD = {
     overview: 'Parses TypeScript files into FileArtifacts.',
@@ -38,11 +37,13 @@ test('file payload: shared schema and MCP extended schema accept the same body',
     const shared = fileReportPayloadSchema.parse(FILE_PAYLOAD);
     assert.equal(shared.functions.length, 1);
 
-    const viaMcp = ReportFileInfoSchema.parse({
+    const viaMcp = ReportDocumentSchema.parse({
         ...FILE_PAYLOAD,
+        kind: 'file',
         workspaceRoot: '/repo',
         path: 'src/parser/ts.ts',
     });
+    if (viaMcp.kind !== 'file') assert.fail('expected file variant');
     assert.deepEqual(viaMcp.functions, shared.functions);
     assert.equal(viaMcp.overview, shared.overview);
 });
@@ -51,11 +52,13 @@ test('folder payload: shared schema and MCP extended schema accept the same body
     const shared = folderReportPayloadSchema.parse(FOLDER_PAYLOAD);
     assert.equal(shared.key_files.length, 1);
 
-    const viaMcp = ReportFolderInfoSchema.parse({
+    const viaMcp = ReportDocumentSchema.parse({
         ...FOLDER_PAYLOAD,
+        kind: 'folder',
         workspaceRoot: '/repo',
         path: 'src/parser',
     });
+    if (viaMcp.kind !== 'folder') assert.fail('expected folder variant');
     assert.deepEqual(viaMcp.key_files, shared.key_files);
     assert.equal(viaMcp.architecture, shared.architecture);
 });
