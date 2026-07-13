@@ -21,21 +21,16 @@ import {
     validateWorkspacePath,
 } from '../path-utils';
 import { processFileInfoReport } from '../../application/document-file';
+import { fileReportPayloadSchema } from '../../contracts/doc-reports';
 import { asRelPath } from '../../core/paths';
 import { getStoredContext } from '../server';
 import { assertWorkspaceRootMatch } from './shared';
 
-export const ReportFileInfoSchema = z.object({
+// C4: the payload shape is the shared contract (contracts/doc-reports.ts —
+// same schema the CLI `document` command parses); MCP adds routing fields.
+export const ReportFileInfoSchema = fileReportPayloadSchema.extend({
     workspaceRoot: z.string().describe('Absolute path to workspace root'),
     path: z.string().describe('File path (relative to workspace root)'),
-    overview: z.string().describe('File overview summary'),
-    inputs: z.string().optional().describe('What the file takes as input'),
-    outputs: z.string().optional().describe('What the file produces'),
-    functions: z.array(z.object({
-        name: z.string().describe('Function name'),
-        purpose: z.string().describe('What the function does'),
-        implementation: z.string().describe('How it works (bullet points)'),
-    })).describe('Enriched function documentation'),
 });
 
 export type ReportFileInfoInput = z.infer<typeof ReportFileInfoSchema>;
