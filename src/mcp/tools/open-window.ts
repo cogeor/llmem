@@ -12,7 +12,7 @@
 
 import { z } from 'zod';
 import * as path from 'path';
-import * as net from 'net';
+import * as http from 'http';
 import {
     McpResponse,
     validateRequest,
@@ -25,7 +25,11 @@ import { getStoredContext } from '../server';
 import { generateStaticWebview } from '../../webview/generator';
 import { prepareWebviewDataFromSplitEdgeLists } from '../../graph/webview-data';
 import { ImportEdgeListStore, CallEdgeListStore } from '../../graph/edgelist';
-import { DEFAULT_PORT } from '../../config-defaults';
+import {
+    DEFAULT_PORT,
+    PORT_FALLBACK_ATTEMPTS,
+    LLMEM_MARKER_HEADER,
+} from '../../config-defaults';
 
 export const OpenWindowSchema = z.object({
     viewColumn: z.number().optional().describe('View column to open in (1-3)'),
@@ -34,40 +38,42 @@ export const OpenWindowSchema = z.object({
 export type OpenWindowInput = z.infer<typeof OpenWindowSchema>;
 
 /**
- * TCP-probe a single port on 127.0.0.1. Resolves `true` if a connection is
- * established (something is listening), `false` on error or timeout.
- *
- * This is a best-effort liveness check — there is no pidfile, so a connect
- * only tells us *some* process holds the port. The caller probes
- * `DEFAULT_PORT` and the documented `+1` fallback to find a live `serve`.
+ * HTTP-probe a single port on 127.0.0.1 and verify the listener IS llmem:
+ * `GET /` must answer with the `x-llmem` marker header the GraphServer
+ * stamps on every response. C7 (2026-07-13): the old bare TCP connect
+ * reported ANY process on the port as "the live viewer" — a dev server on
+ * 5757 got its URL handed to agents as the graph.
  */
-export function probePort(port: number, timeoutMs = 300): Promise<boolean> {
+export function probeLlmemPort(port: number, timeoutMs = 500): Promise<boolean> {
     return new Promise((resolve) => {
-        const socket = net.createConnection({ port, host: '127.0.0.1' });
-        let settled = false;
-        const done = (alive: boolean) => {
-            if (settled) return;
-            settled = true;
-            socket.destroy();
-            resolve(alive);
-        };
-        socket.setTimeout(timeoutMs);
-        socket.once('connect', () => done(true));
-        socket.once('timeout', () => done(false));
-        socket.once('error', () => done(false));
+        const req = http.get(
+            { host: '127.0.0.1', port, path: '/', timeout: timeoutMs },
+            (res) => {
+                res.resume();
+                resolve(res.headers[LLMEM_MARKER_HEADER] === '1');
+            },
+        );
+        req.once('timeout', () => {
+            req.destroy();
+            resolve(false);
+        });
+        req.once('error', () => resolve(false));
     });
 }
 
 /**
- * Find a live `serve` by probing the default port then its documented `+1`
- * fallback (see `cli-port-fallback`: serve walks to DEFAULT_PORT+1 when the
- * default is taken). Returns the first live port, or `null` if none respond.
+ * Find a live `serve` by probing the SAME port range serve's EADDRINUSE
+ * walk-up uses — `DEFAULT_PORT .. DEFAULT_PORT + PORT_FALLBACK_ATTEMPTS - 1`
+ * (one shared constant, so probe and walk-up cannot drift; the probe used
+ * to stop at +1 while serve walked to +9). Returns the first VERIFIED
+ * llmem port, or `null` if none respond with the marker.
  */
 export async function findLiveServePort(
-    probe: (port: number) => Promise<boolean> = probePort,
+    probe: (port: number) => Promise<boolean> = probeLlmemPort,
 ): Promise<number | null> {
-    if (await probe(DEFAULT_PORT)) return DEFAULT_PORT;
-    if (await probe(DEFAULT_PORT + 1)) return DEFAULT_PORT + 1;
+    for (let offset = 0; offset < PORT_FALLBACK_ATTEMPTS; offset++) {
+        if (await probe(DEFAULT_PORT + offset)) return DEFAULT_PORT + offset;
+    }
     return null;
 }
 
