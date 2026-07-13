@@ -2,7 +2,7 @@
  * Shared helper to build and persist folder artifacts (Loop 10).
  *
  * Reads `import-edgelist.json` + `call-edgelist.json` from `ctx.artifactRoot`,
- * walks `.arch/` for documented folders, calls the loop-08 aggregators
+ * walks `.llmem/docs/` for documented folders, calls the loop-08 aggregators
  * (`buildFolderTree`, `buildFolderEdges`), and persists the results via
  * the loop-09 stores.
  *
@@ -26,13 +26,13 @@ import { buildFolderTree } from '../graph/folder-tree';
 import { buildFolderEdges } from '../graph/folder-edges';
 import { FolderTreeStore } from '../graph/folder-tree-store';
 import { FolderEdgelistStore } from '../graph/folder-edges-store';
-import { scanArchFolders } from '../docs/arch-store';
+import { scanDocFolders } from '../docs/doc-store';
 import { parseGraphId } from '../core/ids';
 import { rescanAfterSchemaMismatch } from './scan';
 import type { WorkspaceContext } from './workspace-context';
 
 /**
- * Read import + call edge lists from `ctx.artifactRoot`, walk `.arch/` for
+ * Read import + call edge lists from `ctx.artifactRoot`, walk `.llmem/docs/` for
  * documented folders, build folder-tree + folder-edges, and persist both
  * artifacts to `ctx.artifactRoot`.
  *
@@ -77,8 +77,8 @@ export async function buildAndSaveFolderArtifacts(
         await callStore.load();
     }
 
-    // Walk `.arch/` for documented folders.
-    const documentedFolders = await scanArchFolders(io);
+    // Walk `.llmem/docs/` for documented folders.
+    const documentedFolders = await scanDocFolders(io);
 
     // Build the fileOf map. The map resolves entity IDs (and file IDs)
     // back to file IDs. Walk both stores' nodes once, then provide a

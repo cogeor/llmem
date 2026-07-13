@@ -364,15 +364,15 @@ test('MCP spec-gen e2e: file_info → report_file_info writes .llmem/docs/<path>
         `report_file_info should return an artifactPath string: ${JSON.stringify(reportData)}`,
     );
 
-    // Matches getFileArchPath in src/docs/arch-store.ts:32-34
+    // Matches getFileDocPath in src/docs/doc-store.ts:32-34
     // → .llmem/docs/{src}.md, so .llmem/docs/src/a.ts.md.
-    const archPath = path.join(tempDir, '.llmem', 'docs', 'src', 'a.ts.md');
+    const docPath = path.join(tempDir, '.llmem', 'docs', 'src', 'a.ts.md');
     assert.ok(
-        fs.existsSync(archPath),
-        `expected ${archPath} to exist after report_file_info. Child stderr:\n${stderrBuf.value}`,
+        fs.existsSync(docPath),
+        `expected ${docPath} to exist after report_file_info. Child stderr:\n${stderrBuf.value}`,
     );
 
-    const content = fs.readFileSync(archPath, 'utf8');
+    const content = fs.readFileSync(docPath, 'utf8');
     assert.ok(content.includes('STUB-OVERVIEW'), `archived doc missing STUB-OVERVIEW: ${content}`);
     assert.ok(content.includes('STUB-PURPOSE'), `archived doc missing STUB-PURPOSE: ${content}`);
     assert.ok(content.includes('helloA'), `archived doc missing helloA: ${content}`);
@@ -430,7 +430,7 @@ test('MCP spec-gen e2e: folder_info → report_folder_info writes .llmem/docs/<f
         `report_folder_info should return an artifactPath string: ${JSON.stringify(reportData)}`,
     );
 
-    // Matches getFolderArchPath in src/docs/arch-store.ts:36-38
+    // Matches getFolderDocPath in src/docs/doc-store.ts:36-38
     // → .llmem/docs/{src}/README.md, so .llmem/docs/src/README.md.
     const readmePath = path.join(tempDir, '.llmem', 'docs', 'src', 'README.md');
     assert.ok(

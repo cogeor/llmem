@@ -63,7 +63,7 @@ const installArgs = z.object({
     // (which asserts every property has a `description`) keeps passing.
     _: z.array(z.string()).optional()
         .describe('(internal) Positional client names routed by the dispatcher.'),
-});
+}).strict();
 
 // ============================================================================
 // Manual snippet rendering

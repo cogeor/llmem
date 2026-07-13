@@ -53,7 +53,7 @@ const initArgs = z.object({
         .describe('Workspace root directory (auto-detected if omitted)'),
     force: z.boolean().default(false)
         .describe('Overwrite an existing .llmem/config.toml'),
-});
+}).strict();
 
 export const initCommand: CommandSpec<typeof initArgs> = {
     name: 'init',

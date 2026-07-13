@@ -34,10 +34,10 @@ test('collectViewerData: returns the seeded TS file and design doc', async () =>
         fs.writeFileSync(path.join(root, 'sample.ts'), 'export const x = 1;\n');
 
         // Seed a tiny design doc under the docs root (.llmem/docs).
-        const archDir = path.join(root, '.llmem', 'docs');
-        fs.mkdirSync(archDir, { recursive: true });
+        const docsDir = path.join(root, '.llmem', 'docs');
+        fs.mkdirSync(docsDir, { recursive: true });
         const docContent = '# Sample\n\nA tiny doc.\n';
-        fs.writeFileSync(path.join(archDir, 'sample.md'), docContent);
+        fs.writeFileSync(path.join(docsDir, 'sample.md'), docContent);
 
         // Artifact root under the workspace (.llmem/graph).
         const artifactDir = path.join(root, '.llmem', 'graph');

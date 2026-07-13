@@ -14,7 +14,7 @@ import { CliError } from '../errors';
 
 const statsArgs = z.object({
     workspace: z.string().optional(),
-});
+}).strict();
 
 export const statsCommand: CommandSpec<typeof statsArgs> = {
     name: 'stats',

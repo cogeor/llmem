@@ -4,7 +4,7 @@
  *
  * `renderEnrichmentPrompt` builds the LLM task prompt from the structural
  * markdown + raw edges + stats; `renderFolderReadme` formats the LLM's
- * enrichment payload into the `.arch/{folder}/README.md` design document.
+ * enrichment payload into the `.llmem/docs/{folder}/README.md` design document.
  * Both are pure string builders.
  */
 

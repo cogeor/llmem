@@ -41,7 +41,7 @@ const healthArgs = z.object({
         .describe('Exit non-zero if the report has >=1 finding of this kind (e.g. import-cycle)'),
     refresh: z.boolean().default(true)
         .describe('Refresh edge lists before scanning (use --no-refresh to skip)'),
-});
+}).strict();
 
 /**
  * Resolve the markdown + JSON report paths, honoring `--out`.

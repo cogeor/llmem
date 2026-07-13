@@ -102,12 +102,17 @@ export interface ServerInfo {
     workspaceRoot: string;
 }
 
-/** Emit the ready banner. Pure logging — reads no server state directly. */
+/**
+ * Emit the ready banner. Pure logging — reads no server state directly.
+ *
+ * B3 (2026-07-13): one info line ("Server running" — the machine-parseable
+ * announcement integration tests and embedders key on); the rest is debug
+ * (visible under LOG_LEVEL=debug). The human-facing URL line is printed by
+ * the CLI serve command on stdout.
+ */
 export function printServerInfo(info: ServerInfo): void {
-    log.info('LLMem Graph Server ready');
     log.info('Server running', { url: info.url });
-    log.info('Serving from', { webviewDir: info.webviewDir });
-    log.info('Workspace', { workspaceRoot: info.workspaceRoot });
-    log.info('Press Ctrl+C to stop');
-    log.info('Live reload enabled', { watchedFileCount: info.watchedFileCount });
+    log.debug('Serving from', { webviewDir: info.webviewDir });
+    log.debug('Workspace', { workspaceRoot: info.workspaceRoot });
+    log.debug('Live reload enabled', { watchedFileCount: info.watchedFileCount });
 }

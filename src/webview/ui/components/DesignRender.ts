@@ -91,7 +91,7 @@ export class DesignRender {
      *
      * Loop 13: in view mode, the rendered markdown HTML is sanitized via
      * DOMPurify before being returned. This is the XSS countermeasure for
-     * `.arch/<file>.md` payloads that may contain `<script>` tags or
+     * `.llmem/docs/<file>.md` payloads that may contain `<script>` tags or
      * `onerror` handlers — `marked` does not strip those by default.
      */
     render(): string {

@@ -69,15 +69,15 @@ test('arch-watcher: readDoc rejects symlink-target-outside-workspace (POSIX only
         fs.writeFileSync(path.join(outside, 'secret.md'), '# secret');
 
         // Build the context first so the symlink is planted in the ACTUAL docs
-        // root that readDoc reads (ctx.archRoot = .llmem/docs). This test used
+        // root that readDoc reads (ctx.docsRoot = .llmem/docs). This test used
         // to seed `.arch` and lean on createWorkspaceContext migrating it into
         // the docs tree; migration is now a separate host-startup step
         // (initWorkspaceContext), so the containment check targets the docs
         // root directly instead of depending on the migration side effect.
         const ctx = await createWorkspaceContext({ workspaceRoot: root });
-        fs.mkdirSync(ctx.archRoot, { recursive: true });
+        fs.mkdirSync(ctx.docsRoot, { recursive: true });
         try {
-            fs.symlinkSync(outside, path.join(ctx.archRoot, 'leak'), 'dir');
+            fs.symlinkSync(outside, path.join(ctx.docsRoot, 'leak'), 'dir');
         } catch (err) {
             const code = (err as NodeJS.ErrnoException).code;
             if (code === 'EPERM' || code === 'EACCES') {

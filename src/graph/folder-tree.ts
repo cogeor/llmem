@@ -57,7 +57,7 @@ export interface BuildFolderTreeInput {
     /** File-level nodes from the import edge list. */
     importNodes: { id: string; loc?: number }[];
     /**
-     * Forward-slash folder paths that have `.arch/{folder}/README.md`.
+     * Forward-slash folder paths that have `.llmem/docs/{folder}/README.md`.
      * Callers normalize before passing — the lookup is literal.
      */
     documentedFolders: Set<string>;

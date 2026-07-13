@@ -37,7 +37,7 @@ export interface FolderNode {
     fileCount: number;
     /** Recursive sum of `loc` for files in this folder and all descendants. */
     totalLOC: number;
-    /** Whether `.arch/{path}/README.md` exists (passed in via `documentedFolders`). */
+    /** Whether `.llmem/docs/{path}/README.md` exists (passed in via `documentedFolders`). */
     documented: boolean;
     /** Sorted alphabetically by `name` for deterministic output. */
     children: FolderNode[];

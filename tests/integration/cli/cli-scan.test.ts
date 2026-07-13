@@ -138,6 +138,37 @@ test('scan: writes edge lists and exits 0 on a clean workspace', async () => {
     }
 });
 
+test('scan: [GenerateEdges] diagnostics only appear under --verbose (B3)', async () => {
+    ensureBuilt();
+
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-scan-'));
+    fs.mkdirSync(path.join(tmp, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, 'src', 'a.ts'), 'export const a = 1;\n', 'utf8');
+
+    try {
+        const quiet = await runScan(tmp);
+        assert.equal(quiet.exitCode, 0, `quiet scan failed:\n${quiet.output}`);
+        assert.ok(
+            !quiet.output.includes('[GenerateEdges]'),
+            `no diagnostics without --verbose:\n${quiet.output}`,
+        );
+
+        fs.rmSync(path.join(tmp, '.llmem'), { recursive: true, force: true });
+        const verbose = await runScan(tmp, ['--verbose']);
+        assert.equal(verbose.exitCode, 0, `verbose scan failed:\n${verbose.output}`);
+        assert.ok(
+            verbose.output.includes('[GenerateEdges]'),
+            `--verbose surfaces the diagnostics:\n${verbose.output}`,
+        );
+    } finally {
+        try {
+            fs.rmSync(tmp, { recursive: true, force: true });
+        } catch {
+            // Best-effort cleanup — Windows file watchers can delay release.
+        }
+    }
+});
+
 test('scan: exits non-zero when a file fails to parse', async () => {
     ensureBuilt();
 

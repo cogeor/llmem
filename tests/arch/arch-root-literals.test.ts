@@ -8,8 +8,8 @@
 // This is the SIBLING guard to `tests/arch/artifact-root-allowlist.test.ts`
 // (which guards `.artifacts`). Before VS-B1 the AI-authored design-doc
 // tree lived in `.arch/`; it has since been centralized to `.llmem/docs`
-// (see `DOCS_DIR` in `src/docs/arch-store.ts`). Runtime code should now
-// consume `ctx.archRootRel` / `DOCS_DIR` / named helpers rather than
+// (see `DOCS_DIR` in `src/docs/doc-store.ts`). Runtime code should now
+// consume `ctx.docsRootRel` / `DOCS_DIR` / named helpers rather than
 // spelling the `.arch` directory name by hand. A NEW hardcoded `.arch`
 // storage-root literal in a non-owner src/ file is almost always drift.
 //
@@ -17,7 +17,7 @@
 // the `.arch` storage-root literal in `src/` (a quoted string whose
 // value is `.arch` or starts with `.arch/`) must either belong to a
 // checked-in `ALLOWLIST` entry that justifies it, or be removed in
-// favour of `ctx.archRootRel` / `DOCS_DIR`.
+// favour of `ctx.docsRootRel` / `DOCS_DIR`.
 //
 // Scoping decision (deviation from the sibling — read this)
 // --------------------------------------------------------
@@ -35,11 +35,11 @@
 // Why a quoted-literal regex (not the bare boundary regex)
 // --------------------------------------------------------
 // `src/` is full of identifiers and prose that contain the characters
-// `.arch`: `ctx.archRootRel`, `archWatcher`, `getArchRoot`,
-// `scanArchFolders`, `ARCH_*`, plus JSDoc prose describing the legacy
+// `.arch`: `ctx.docsRootRel`, `archWatcher`, `getDocsRoot`,
+// `scanDocFolders`, `ARCH_*`, plus JSDoc prose describing the legacy
 // `.arch/` layout. None of those are storage-root LITERALS. The
 // `(?![A-Za-z0-9_$])` negative lookahead alone rejects the identifiers
-// (`.archRoot`, `.archive`, `.architecture`) but still matches the many
+// (`.docsRoot`, `.archive`, `.architecture`) but still matches the many
 // `.arch/` mentions in comments/prose. So we anchor on the storage-root
 // FORM the loop calls out: a quoted string literal whose value is
 // exactly `.arch` or begins with `.arch/`. This flags genuine
@@ -54,7 +54,7 @@
 //   1. ARCH-LITERAL-OUTSIDE-ALLOWLIST <file>:<line>
 //        The scan found a quoted `.arch` storage-root literal in a src/
 //        file that is NOT in `ALLOWLIST`. Either:
-//          (a) refactor the callsite to consume `ctx.archRootRel` /
+//          (a) refactor the callsite to consume `ctx.docsRootRel` /
 //              `DOCS_DIR` (the preferred fix), OR
 //          (b) add the file to `ALLOWLIST` with a one-line `reason`
 //              explaining why the literal legitimately stays (it is
@@ -168,7 +168,7 @@ const INCLUDE_FILE_SUFFIXES: readonly string[] = [
 // match to genuine directory-name literals in code and rejects the many
 // `.arch/` mentions in prose/JSDoc. The `(?:\/[^'"]*)?` tail also
 // guarantees the character after `.arch` is the closing quote or a `/`,
-// so `.archRoot` / `.archive` / `.architecture` can never match even if
+// so `.docsRoot` / `.archive` / `.architecture` can never match even if
 // they were ever quoted. Captures the opening quote in group 1 and
 // requires the same quote to close (`\1`).
 const ARCH_RE = /(['"])\.arch(?:\/[^'"]*)?\1/g;
@@ -243,7 +243,7 @@ function scanArchLiteral(): Match[] {
 // storage-root literal. After centralization to `.llmem/docs` these are
 // the ONLY legitimate spellings that remain: legacy root-detection
 // markers, the one-time migration source dir, and directory-skip sets.
-// Anything else should consume `ctx.archRootRel` / `DOCS_DIR`.
+// Anything else should consume `ctx.docsRootRel` / `DOCS_DIR`.
 //
 // Categories:
 //   A. Legacy workspace root-detection markers — walk-up marker lists.
@@ -298,7 +298,7 @@ test('arch-root-literals: every observed `.arch` storage-root literal is in ALLO
                 `ARCH-LITERAL-OUTSIDE-ALLOWLIST  ${o.rel}:${o.line}\n  ` +
                     `${o.content}\n  ` +
                     `Add this file to ALLOWLIST in tests/arch/arch-root-literals.test.ts ` +
-                    `with a one-line reason, or refactor it to consume \`ctx.archRootRel\` / ` +
+                    `with a one-line reason, or refactor it to consume \`ctx.docsRootRel\` / ` +
                     `\`DOCS_DIR\` instead of the literal.`,
             );
         }
@@ -337,9 +337,9 @@ test('arch-root-literals: boundary regex matches storage-root literals only', ()
         assert.ok(ARCH_RE.test(s), `expected MATCH for: ${s}`);
     }
     // Rejects identifiers / prose that merely contain the chars `.arch`.
-    for (const s of ['ctx.archRootRel', 'archWatcher', 'getArchRoot',
-                     '.archRoot', '.archive', '.architecture',
-                     'scanArchFolders', 'ARCH_DIR', 'walk .arch/ for docs']) {
+    for (const s of ['ctx.docsRootRel', 'archWatcher', 'getDocsRoot',
+                     '.docsRoot', '.archive', '.architecture',
+                     'scanDocFolders', 'ARCH_DIR', 'walk .arch/ for docs']) {
         ARCH_RE.lastIndex = 0;
         assert.ok(!ARCH_RE.test(s), `expected NO match for: ${s}`);
     }

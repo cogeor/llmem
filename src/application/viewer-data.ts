@@ -17,13 +17,13 @@
  *
  * Markdown rendering: the application layer does NOT render markdown.
  * `designDocs` is returned as `Record<string, string>` of raw markdown,
- * keyed by the design-doc key contract from `docs/arch-store`. Callers
+ * keyed by the design-doc key contract from `docs/doc-store`. Callers
  * (panel, hot-reload) render at the consumption boundary using
  * `webview/design-docs.ts`.
  *
  * Loop 04: signatures are now `(ctx)` / `(ctx, request)` — the parallel
- * `(workspaceRoot, artifactRoot, io, logger)` bag is gone. The `ctx.archRoot`
- * field is used directly (single source of truth for the `.arch` prefix
+ * `(workspaceRoot, artifactRoot, io, logger)` bag is gone. The `ctx.docsRoot`
+ * field is used directly (single source of truth for the docs-tree prefix
  * lives on the context).
  */
 
@@ -68,13 +68,13 @@ export interface ViewerData {
  * Collect all data required for the viewer from disk.
  *
  * If edge lists exist under `ctx.artifactRoot`, they are loaded. Otherwise
- * a TS scan populates them and saves. The `ctx.archRoot` and
+ * a TS scan populates them and saves. The `ctx.docsRoot` and
  * `ctx.artifactRoot` directories are created (recursive) when missing.
  */
 export async function collectViewerData(
     ctx: WorkspaceContext,
 ): Promise<ViewerData> {
-    const { workspaceRoot, artifactRoot, archRoot, io, logger } = ctx;
+    const { workspaceRoot, artifactRoot, docsRoot, io, logger } = ctx;
 
     // Ensure artifact root exists. The realpath-strong `io.mkdirRecursive`
     // walks up to the nearest existing ancestor and asserts containment.
@@ -130,9 +130,9 @@ export async function collectViewerData(
 
     // Ensure the docs dir exists. `io.mkdirRecursive` surfaces a structured
     // PathEscapeError if the candidate escapes the workspace, which can't
-    // happen for the well-known `ctx.archRootRel` relative path (.llmem/docs).
+    // happen for the well-known `ctx.docsRootRel` relative path (.llmem/docs).
     try {
-        await io.mkdirRecursive(ctx.archRootRel);
+        await io.mkdirRecursive(ctx.docsRootRel);
     } catch (e) {
         logger.error(`Failed to create docs directory: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -165,7 +165,7 @@ export async function collectViewerData(
     populateTreeStatus(workTree, folderStatuses);
 
     // 3. Design Docs (raw markdown — caller renders)
-    const designDocs = await collectRawDesignDocs(workspaceRoot, archRoot, io, logger);
+    const designDocs = await collectRawDesignDocs(workspaceRoot, docsRoot, io, logger);
 
     return {
         graphData,

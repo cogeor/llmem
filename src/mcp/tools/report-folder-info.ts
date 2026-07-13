@@ -2,7 +2,7 @@
  * MCP tool: report_folder_info
  *
  * Receives LLM-enriched documentation for a folder and saves the README
- * to .arch/<folder>/README.md.
+ * to .llmem/docs/<folder>/README.md.
  *
  * Loop 04: shares the server-side `WorkspaceContext` via
  * `getStoredContext()`.
@@ -85,7 +85,7 @@ export const handleReportFolderInfo = (args: unknown) =>
 
 export const reportFolderInfoTool = {
     name: 'report_folder_info',
-    description: 'Store LLM-enriched documentation for a folder. Saves the folder README to .arch/{path}/README.md in the workspace.',
+    description: 'Store LLM-enriched documentation for a folder. Saves the folder README to .llmem/docs/{path}/README.md in the workspace.',
     schema: ReportFolderInfoSchema,
     handler: handleReportFolderInfo,
 };

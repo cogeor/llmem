@@ -55,33 +55,33 @@ test('processFileInfoReport writes to workspaceRoot/.arch, never elsewhere', asy
             ],
         });
 
-        // The archPath must be inside tmpRoot, not in process.cwd() (fakeAppData).
+        // The docPath must be inside tmpRoot, not in process.cwd() (fakeAppData).
         const tmpRootResolved = fs.realpathSync(tmpRoot);
         const fakeAppDataResolved = fs.realpathSync(fakeAppData);
-        const archPathResolved = fs.realpathSync(result.archPath);
+        const archPathResolved = fs.realpathSync(result.docPath);
 
         assert.ok(
             archPathResolved.startsWith(tmpRootResolved),
-            `archPath ${archPathResolved} must start with tmpRoot ${tmpRootResolved}`,
+            `docPath ${archPathResolved} must start with tmpRoot ${tmpRootResolved}`,
         );
         assert.ok(
             !archPathResolved.startsWith(fakeAppDataResolved),
-            `archPath ${archPathResolved} must NOT start with fakeAppData ${fakeAppDataResolved}`,
+            `docPath ${archPathResolved} must NOT start with fakeAppData ${fakeAppDataResolved}`,
         );
 
-        // The file must actually exist at archPath.
-        assert.ok(fs.existsSync(result.archPath), `archPath must exist on disk: ${result.archPath}`);
+        // The file must actually exist at docPath.
+        assert.ok(fs.existsSync(result.docPath), `docPath must exist on disk: ${result.docPath}`);
 
         // And the docs directory must be inside tmpRoot.
         const expectedArch = path.join(tmpRoot, '.llmem', 'docs', 'src', 'foo.ts.md');
         assert.equal(
-            path.resolve(result.archPath),
+            path.resolve(result.docPath),
             path.resolve(expectedArch),
-            'archPath must equal <tmpRoot>/.llmem/docs/src/foo.ts.md',
+            'docPath must equal <tmpRoot>/.llmem/docs/src/foo.ts.md',
         );
 
         // Sanity: contents include the overview text.
-        const contents = fs.readFileSync(result.archPath, 'utf-8');
+        const contents = fs.readFileSync(result.docPath, 'utf-8');
         assert.ok(
             contents.includes('Sample overview'),
             'design document must include the supplied overview',
@@ -106,7 +106,7 @@ test('processFileInfoReport bytesWritten matches utf-8 byte length', async () =>
             overview: 'overview',
             functions: [],
         });
-        const stat = fs.statSync(result.archPath);
+        const stat = fs.statSync(result.docPath);
         assert.equal(result.bytesWritten, stat.size);
     } finally {
         fs.rmSync(tmpRoot, { recursive: true, force: true });

@@ -20,6 +20,12 @@ export interface Logger {
     info(message: string): void;
     warn(message: string): void;
     error(message: string): void;
+    /**
+     * Diagnostic chatter (B3, 2026-07-13). OPTIONAL so existing adapters keep
+     * compiling; producers call `logger.debug?.(...)`. Hosts surface it only
+     * in verbose mode (an absent `debug` is silent by construction).
+     */
+    debug?(message: string): void;
 }
 
 /** No-op logger used when a caller does not provide one. */
@@ -27,6 +33,7 @@ export const NoopLogger: Logger = {
     info: () => {},
     warn: () => {},
     error: () => {},
+    debug: () => {},
 };
 
 /**

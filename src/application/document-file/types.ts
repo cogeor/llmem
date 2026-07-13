@@ -44,8 +44,8 @@ export interface DocumentFileData {
     filePath: RelPath;
     /** Workspace root used for all path resolution. */
     rootDir: WorkspaceRoot;
-    /** Absolute path to the .arch/{path}.md target. */
-    archPath: AbsPath;
+    /** Absolute path to the .llmem/docs/{path}.md target. */
+    docPath: AbsPath;
     /** Prompt for the host LLM (full design-doc generation prompt). */
     prompt: string;
     /** Auto-extracted structural summary (imports, entities, call edges). */
@@ -66,7 +66,7 @@ export interface ReportFileInfoRequest {
 }
 
 export interface ReportFileInfoResult {
-    archPath: AbsPath;
+    docPath: AbsPath;
     bytesWritten: number;
     designDocument: string;
 }

@@ -238,6 +238,11 @@
             "description": "Workspace-relative folder to scan (defaults to the whole workspace)",
             "type": "string"
           },
+          "verbose": {
+            "default": false,
+            "description": "Show per-file scan diagnostics",
+            "type": "boolean"
+          },
           "workspace": {
             "description": "Workspace root directory (auto-detected if omitted)",
             "type": "string"
@@ -306,7 +311,7 @@
         },
         {
           "command": "llmem document src/parser/extractor.ts --content-file -",
-          "scenario": "Pipe the agent's JSON output back to write .arch/src/parser/extractor.ts.md"
+          "scenario": "Pipe the agent's JSON output back to write .llmem/docs/src/parser/extractor.ts.md"
         }
       ],
       "name": "document"

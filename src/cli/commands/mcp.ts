@@ -9,7 +9,7 @@
 import { z } from 'zod';
 import type { CommandSpec } from '../registry';
 
-const mcpArgs = z.object({}); // no args — env vars only (LLMEM_WORKSPACE)
+const mcpArgs = z.object({}).strict(); // no args — env vars only (LLMEM_WORKSPACE)
 
 export const mcpCommand: CommandSpec<typeof mcpArgs> = {
     name: 'mcp',

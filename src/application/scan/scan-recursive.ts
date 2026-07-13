@@ -68,6 +68,7 @@ export async function scanFolderRecursive(
         if (st.isDirectory()) {
             const subResult = await scanFolderRecursive(ctx, {
                 folderPath: subRel,
+                onFile: req.onFile,
             });
             // Sum allowlist-but-unsupported counts key-by-key. Both sides
             // share the same canonical lowercased-extension keying, so a

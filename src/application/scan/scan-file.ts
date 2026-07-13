@@ -57,8 +57,8 @@ export async function scanFile(
     const existingCallEdgeCount = callStore.getStats().edges;
     const existingImportEdgeCount = importStore.getStats().edges;
 
-    logger.info(`[GenerateEdges] Processing file: ${filePath}`);
-    logger.info(`[GenerateEdges] Existing edges - call: ${existingCallEdgeCount}, import: ${existingImportEdgeCount}`);
+    logger.debug?.(`[GenerateEdges] Processing file: ${filePath}`);
+    logger.debug?.(`[GenerateEdges] Existing edges - call: ${existingCallEdgeCount}, import: ${existingImportEdgeCount}`);
 
     // Get parser from registry (language-agnostic)
     const registry = ParserRegistry.getInstance();
@@ -133,7 +133,7 @@ export async function scanFile(
     const actualNewCallEdges = finalCallEdgeCount - existingCallEdgeCount;
     const actualNewImportEdges = finalImportEdgeCount - existingImportEdgeCount;
 
-    logger.info(`[GenerateEdges] Processed file, added ${actualNewCallEdges} call edges, ${actualNewImportEdges} import edges`);
+    logger.debug?.(`[GenerateEdges] Processed file, added ${actualNewCallEdges} call edges, ${actualNewImportEdges} import edges`);
 
     return {
         filesProcessed: 1,

@@ -16,7 +16,7 @@ const ASSET_ROOT_OVERRIDE = process.env.LLMEM_ASSET_ROOT || undefined;
 
 const generateArgs = z.object({
     workspace: z.string().optional(),
-});
+}).strict();
 
 export const generateCommand: CommandSpec<typeof generateArgs> = {
     name: 'generate',
