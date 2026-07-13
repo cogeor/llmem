@@ -311,7 +311,7 @@
         },
         {
           "command": "llmem document src/parser/extractor.ts --content-file -",
-          "scenario": "Pipe the agent's JSON output back to write .arch/src/parser/extractor.ts.md"
+          "scenario": "Pipe the agent's JSON output back to write .llmem/docs/src/parser/extractor.ts.md"
         }
       ],
       "name": "document"

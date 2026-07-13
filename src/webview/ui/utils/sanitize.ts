@@ -2,7 +2,7 @@
  * HTML sanitizer for browser-side markdown injection.
  *
  * Loop 13: design documents are rendered server-side through `marked`, then
- * shipped to the webview as HTML. A malicious `.arch/<file>.md` could carry
+ * shipped to the webview as HTML. A malicious `.llmem/docs/<file>.md` could carry
  * `<script>` tags or `onerror` handlers; we strip those here before any
  * `innerHTML = ...` assignment that injects markdown-derived HTML.
  *

@@ -28,7 +28,7 @@ duplication and in-file cohesion by construction (those need the content/AST and
 | `.llmem/graph/` | Edge lists (`import-edgelist.json`, `call-edgelist.json`, `clone-edgelist.json`), `folder-tree.json`, `folder-edgelist.json`, generated webview. This is `artifactRoot` (override: `LLMEM_ARTIFACT_ROOT`). |
 | `.llmem/` (root) | `health-report.{md,json}` (host artifacts CI diffs). |
 | `.llmem/review/` | Review reports (`<path>.{md,json}`). |
-| `.arch/` | LLM-enriched per-folder/file spec docs (markdown shadow tree). |
+| `.llmem/docs/` | LLM-enriched per-folder/file spec docs (markdown shadow tree). |
 
 > Naming caveat: "artifact" is overloaded. The old `.arch/`-store artifact system is gone
 > (only `src/application/migrate-docs.ts` remains, a one-time `.arch/` → `.llmem/docs/` move).
@@ -109,8 +109,8 @@ One folder per use-case: `scan/`, `refresh-graph/`, `file-info/`, `document-file
 ### `src/mcp/` — MCP server (7 tools)
 `server/lifecycle.ts` registers tools over stdio; `tools/*.ts` define them; `handlers.ts`
 validates/formats. Three two-phase pairs + one standalone:
-- `file_info` ↔ `report_file_info` → `.arch/{path}.md`
-- `folder_info` ↔ `report_folder_info` → `.arch/{path}/README.md`
+- `file_info` ↔ `report_file_info` → `.llmem/docs/{path}.md`
+- `folder_info` ↔ `report_folder_info` → `.llmem/docs/{path}/README.md`
 - `review` ↔ `report_review` → `.llmem/review/{path}.md` (phase-2 enforces a hard completeness
   gate — if any required checklist box is unresolved, it writes nothing and names them)
 - `open_window` — returns a live `http://localhost:{port}` URL if `serve` is up, else a static

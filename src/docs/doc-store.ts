@@ -3,12 +3,12 @@
  * across LLMem. The docs tree now lives under `.llmem/docs` (was `.arch`).
  *
  * Call sites that derive the docs root from this owner:
- * - src/application/workspace-context.ts — getArchRoot + DOCS_DIR (archRoot / archRootRel)
- * - src/extension/hot-reload.ts          — reads ctx.archRoot (follows this owner automatically)
- * - src/http-server/arch-watcher.ts      — reads ctx.archRoot / ctx.archRootRel (follows automatically)
+ * - src/application/workspace-context.ts — getDocsRoot + DOCS_DIR (docsRoot / docsRootRel)
+ * - src/extension/hot-reload.ts          — reads ctx.docsRoot (follows this owner automatically)
+ * - src/http-server/arch-watcher.ts      — reads ctx.docsRoot / ctx.docsRootRel (follows automatically)
  *
- * Because hot-reload and arch-watcher consume the resolved `ctx.archRoot`
- * / `ctx.archRootRel` (computed once in workspace-context from DOCS_DIR),
+ * Because hot-reload and arch-watcher consume the resolved `ctx.docsRoot`
+ * / `ctx.docsRootRel` (computed once in workspace-context from DOCS_DIR),
  * they pick up the new prefix with no edit here.
  *
  * Behavior pinned by tests/arch/design-doc-keys.test.ts. Any change to
@@ -22,15 +22,15 @@ import type { WorkspaceIO } from '../workspace/workspace-io';
 
 export const DOCS_DIR = '.llmem/docs';
 
-export function getArchRoot(root: WorkspaceRoot): AbsPath {
+export function getDocsRoot(root: WorkspaceRoot): AbsPath {
     return asAbsPath(path.join(root, DOCS_DIR));
 }
 
-export function getFileArchPath(root: WorkspaceRoot, src: RelPath): AbsPath {
+export function getFileDocPath(root: WorkspaceRoot, src: RelPath): AbsPath {
     return asAbsPath(path.join(root, DOCS_DIR, `${src}.md`));
 }
 
-export function getFolderArchPath(root: WorkspaceRoot, src: RelPath): AbsPath {
+export function getFolderDocPath(root: WorkspaceRoot, src: RelPath): AbsPath {
     return asAbsPath(path.join(root, DOCS_DIR, src, 'README.md'));
 }
 
@@ -46,25 +46,25 @@ export function getFolderArchPath(root: WorkspaceRoot, src: RelPath): AbsPath {
  *
  * Backslash paths (Windows) are normalized to forward slashes in the result.
  */
-export function getDesignDocKey(archRoot: AbsPath, archPath: AbsPath): string {
-    const relPath = path.relative(archRoot, archPath).replace(/\\/g, '/');
-    const isReadme = path.basename(archPath).toLowerCase() === 'readme.md';
+export function getDesignDocKey(docsRoot: AbsPath, docPath: AbsPath): string {
+    const relPath = path.relative(docsRoot, docPath).replace(/\\/g, '/');
+    const isReadme = path.basename(docPath).toLowerCase() === 'readme.md';
     return isReadme ? relPath : relPath.replace(/\.md$/, '.html');
 }
 
 /**
  * Reverse of the docs-tree mapping: given an absolute path inside
- * `archRoot`, return the source-relative path (no `.llmem/docs/` prefix,
+ * `docsRoot`, return the source-relative path (no `.llmem/docs/` prefix,
  * no `.md` suffix manipulation — that's getDesignDocKey's job).
  *
  * Used by future watchers / walkers; not yet consumed inside this module.
  */
-export function archToSourcePath(archRoot: AbsPath, archPath: AbsPath): RelPath {
-    return asRelPath(path.relative(archRoot, archPath).replace(/\\/g, '/'));
+export function docToSourcePath(docsRoot: AbsPath, docPath: AbsPath): RelPath {
+    return asRelPath(path.relative(docsRoot, docPath).replace(/\\/g, '/'));
 }
 
 /**
- * Walk `.arch/` and return the set of folder paths (workspace-relative,
+ * Walk `.llmem/docs/` and return the set of folder paths (workspace-relative,
  * forward-slash) that contain a `README.md`. Used by the folder-tree
  * aggregator (Loop 10) to mark `documented: true` on `FolderNode` entries.
  *
@@ -87,7 +87,7 @@ export function archToSourcePath(archRoot: AbsPath, archPath: AbsPath): RelPath 
  * README casing: case-insensitive match (matches the existing
  * `getDesignDocKey` rule above).
  */
-export async function scanArchFolders(io: WorkspaceIO): Promise<Set<string>> {
+export async function scanDocFolders(io: WorkspaceIO): Promise<Set<string>> {
     const out = new Set<string>();
     if (!(await io.exists(DOCS_DIR))) return out;
 

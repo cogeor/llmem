@@ -52,7 +52,7 @@ import { NoopLogger } from '../core/logger';
 import { WorkspaceIO } from '../workspace/workspace-io';
 import type { Config } from '../core/config-types';
 import { DEFAULT_CONFIG } from '../config-defaults';
-import { getArchRoot, DOCS_DIR } from '../docs/arch-store';
+import { getDocsRoot, DOCS_DIR } from '../docs/doc-store';
 import { migrateDocs } from './migrate-docs';
 
 // ---------------------------------------------------------------------------
@@ -99,8 +99,8 @@ export interface WorkspaceContext {
     readonly workspaceRoot: WorkspaceRoot;
     readonly artifactRoot: AbsPath;
     readonly artifactRootRel: RelPath;
-    readonly archRoot: AbsPath;
-    readonly archRootRel: RelPath;
+    readonly docsRoot: AbsPath;
+    readonly docsRootRel: RelPath;
     readonly io: WorkspaceIO;
     readonly config: RuntimeConfig;
     readonly logger: Logger;
@@ -117,7 +117,7 @@ export interface WorkspaceContext {
  *   2. Resolved input — supply `{ workspaceRoot, config, io, logger? }`
  *      already-built (e.g. from a parent context that already paid the
  *      realpath cost). The factory still recomputes `artifactRoot` /
- *      `archRoot` to keep them authoritative.
+ *      `docsRoot` to keep them authoritative.
  *
  * Both shapes must end up with a realpath-validated root; the factory
  * rejects with `WorkspaceNotFoundError` if the root does not exist or
@@ -146,7 +146,7 @@ export type CreateWorkspaceContextInput =
  *   2. `WorkspaceIO.create(...)` — realpath-validates the root; throws
  *      `WorkspaceNotFoundError` on ENOENT/ENOTDIR/EACCES.
  *   3. Rebrand `workspaceRoot` to the realpath form (matters on macOS
- *      where `/var` → `/private/var`) so `artifactRoot`/`archRoot`
+ *      where `/var` → `/private/var`) so `artifactRoot`/`docsRoot`
  *      resolve against the canonical root.
  *   4. Merge `configOverrides` over `defaultRuntimeConfig()`.
  *
@@ -156,7 +156,7 @@ export type CreateWorkspaceContextInput =
  *      bag with mismatched fields).
  *
  * Then in both arities: derive `artifactRoot` from `config.artifactRoot`
- * (with containment assertion), derive `archRoot` via `getArchRoot()`
+ * (with containment assertion), derive `docsRoot` via `getDocsRoot()`
  * (single source of truth for the `.llmem/docs` prefix), and assemble.
  */
 export async function createWorkspaceContext(
@@ -192,7 +192,7 @@ export async function createWorkspaceContext(
         workspaceRoot = asWorkspaceRoot(resolved);
         io = await WorkspaceIO.create(workspaceRoot);
         // Rebrand workspaceRoot to the realpath form so artifactRoot /
-        // archRoot are computed against the canonical root.
+        // docsRoot are computed against the canonical root.
         workspaceRoot = asWorkspaceRoot(io.getRealRoot());
         config = {
             ...defaultRuntimeConfig(),
@@ -200,33 +200,33 @@ export async function createWorkspaceContext(
         };
     }
 
-    // artifactRoot / archRoot derivations.
+    // artifactRoot / docsRoot derivations.
     const artifactRootAbs = toAbs(config.artifactRoot, workspaceRoot);
     assertContained(artifactRootAbs, workspaceRoot);
     // `toRel` yields OS-native separators; normalize to forward slashes so
-    // the relpath matches `archRootRel` (derived from the forward-slash
+    // the relpath matches `docsRootRel` (derived from the forward-slash
     // `DOCS_DIR` const) and stays stable across platforms for routes / DTOs.
     // Matters now that the default is multi-segment (`.llmem/graph`).
     const artifactRootRel = asRelPath(
         toRel(artifactRootAbs, workspaceRoot).replace(/\\/g, '/'),
     );
 
-    // `getArchRoot` / `DOCS_DIR` are the single source of truth for the
-    // docs-tree prefix (`.llmem/docs`; see `src/docs/arch-store.ts`). It
+    // `getDocsRoot` / `DOCS_DIR` are the single source of truth for the
+    // docs-tree prefix (`.llmem/docs`; see `src/docs/doc-store.ts`). It
     // returns AbsPath but does NOT call `assertContained`; we do it here
     // for parity (cheap textual check; cannot fail given `path.join` with
-    // the literal `DOCS_DIR`, but explicit is better). `archRootRel` is
+    // the literal `DOCS_DIR`, but explicit is better). `docsRootRel` is
     // derived from the same const so it never drifts from the abs form.
-    const archRootAbs = getArchRoot(workspaceRoot);
+    const archRootAbs = getDocsRoot(workspaceRoot);
     assertContained(archRootAbs, workspaceRoot);
-    const archRootRel = asRelPath(DOCS_DIR);
+    const docsRootRel = asRelPath(DOCS_DIR);
 
     return {
         workspaceRoot,
         artifactRoot: artifactRootAbs,
         artifactRootRel,
-        archRoot: archRootAbs,
-        archRootRel,
+        docsRoot: archRootAbs,
+        docsRootRel,
         io,
         config,
         logger,
@@ -271,7 +271,7 @@ export function getArtifactRootRel(ctx: WorkspaceContext): RelPath {
 
 /** Workspace-relative path of the docs root (`.llmem/docs`; for design-doc keys). */
 export function getArchRootRel(ctx: WorkspaceContext): RelPath {
-    return ctx.archRootRel;
+    return ctx.docsRootRel;
 }
 
 /**
@@ -288,13 +288,13 @@ export function resolveArtifactPath(
     return abs;
 }
 
-/** Symmetric helper for `.arch` paths. */
+/** Symmetric helper for docs-tree paths. */
 export function resolveArchPath(
     ctx: WorkspaceContext,
     rel: string,
 ): AbsPath {
-    const abs = toAbs(rel, ctx.archRoot);
-    assertContained(abs, ctx.archRoot);
+    const abs = toAbs(rel, ctx.docsRoot);
+    assertContained(abs, ctx.docsRoot);
     return abs;
 }
 
@@ -314,7 +314,7 @@ export function resolveArchPath(
  */
 export type WorkspacePaths = Pick<
     WorkspaceContext,
-    'workspaceRoot' | 'artifactRoot' | 'artifactRootRel' | 'archRoot' | 'archRootRel'
+    'workspaceRoot' | 'artifactRoot' | 'artifactRootRel' | 'docsRoot' | 'docsRootRel'
 >;
 
 /**

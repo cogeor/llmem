@@ -24,7 +24,7 @@
 import * as path from 'path';
 import { ImportEdgeListStore, CallEdgeListStore } from '../../graph/edgelist';
 import { getEdgesForModule } from '../../graph/query/filter';
-import { getFolderArchPath } from '../../docs/arch-store';
+import { getFolderDocPath } from '../../docs/doc-store';
 import { renderCoverageCaveat } from '../coverage-caveat';
 import { refreshFolderGraph } from '../refresh-graph';
 import type { WorkspaceContext } from '../workspace-context';
@@ -75,8 +75,8 @@ export async function buildDocumentFolderPrompt(
     // re-parse — so repeated folder_info calls stay near-instant.
     const refreshCoverage = await refreshFolderGraph(ctx, { folderPath, refresh });
 
-    // Load existing .arch/<folder>/README.md if present.
-    const readmePath = getFolderArchPath(workspaceRoot, folderPath);
+    // Load existing .llmem/docs/<folder>/README.md if present.
+    const readmePath = getFolderDocPath(workspaceRoot, folderPath);
     const readmeRel = path.relative(io.getRealRoot(), readmePath).replace(/\\/g, '/');
     let existingDocs: string | null = null;
     try {
@@ -187,7 +187,7 @@ export async function buildDocumentFolderPrompt(
 // ============================================================================
 
 /**
- * Persist the LLM's enrichment for a folder into .arch/{folder}/README.md.
+ * Persist the LLM's enrichment for a folder into .llmem/docs/{folder}/README.md.
  *
  * The branded `workspaceRoot` is the only source of truth for the
  * destination — `process.cwd()` is never consulted. This is the
@@ -210,7 +210,7 @@ export async function processFolderInfoReport(
         architecture,
     });
 
-    const readmePath = getFolderArchPath(workspaceRoot, folderPath);
+    const readmePath = getFolderDocPath(workspaceRoot, folderPath);
 
     // Compute the workspace-relative path against the realpath of the
     // workspace root. WorkspaceIO.writeFile does NOT auto-mkdir, so we

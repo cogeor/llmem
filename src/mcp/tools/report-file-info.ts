@@ -1,7 +1,7 @@
 /**
  * MCP tool: report_file_info
  *
- * Receives LLM-enriched documentation for a file and saves it to .arch/.
+ * Receives LLM-enriched documentation for a file and saves it to .llmem/docs/.
  *
  * Loop 04: shares the server-side `WorkspaceContext` via
  * `getStoredContext()`.
@@ -65,7 +65,7 @@ async function handleReportFileInfoImpl(
 
     return formatSuccess({
         message: 'Design document generated and saved',
-        artifactPath: result.archPath,
+        artifactPath: result.docPath,
         designDocument: result.designDocument,
     });
 }
@@ -83,7 +83,7 @@ export const handleReportFileInfo = (args: unknown) =>
 
 export const reportFileInfoTool = {
     name: 'report_file_info',
-    description: 'Store LLM-enriched documentation for a file. Saves the design document to .arch/{path}.md in the workspace.',
+    description: 'Store LLM-enriched documentation for a file. Saves the design document to .llmem/docs/{path}.md in the workspace.',
     schema: ReportFileInfoSchema,
     handler: handleReportFileInfo,
 };

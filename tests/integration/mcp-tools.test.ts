@@ -71,8 +71,8 @@ export class Calculator {
 `.trim());
 
     // Create docs directory
-    const archDir = path.join(root, '.llmem', 'docs');
-    fs.mkdirSync(archDir, { recursive: true });
+    const docsDir = path.join(root, '.llmem', 'docs');
+    fs.mkdirSync(docsDir, { recursive: true });
 
     return {
         root,
@@ -322,11 +322,11 @@ describe('MCP Tools Integration', () => {
 
             assert.ok(
                 archResolved.startsWith(wsResolved),
-                `archPath ${archResolved} must start with workspaceRoot ${wsResolved}`,
+                `docPath ${archResolved} must start with workspaceRoot ${wsResolved}`,
             );
             assert.ok(
                 !archResolved.startsWith(cwdResolved),
-                `archPath ${archResolved} must NOT start with fakeAppData ${cwdResolved}`,
+                `docPath ${archResolved} must NOT start with fakeAppData ${cwdResolved}`,
             );
 
             // Concretely: <workspaceRoot>/.llmem/docs/src/sample.ts.md

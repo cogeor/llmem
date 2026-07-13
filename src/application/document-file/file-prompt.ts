@@ -4,7 +4,7 @@
  *
  * `renderEnrichmentPrompt` builds the LLM task prompt from the structural
  * markdown + source code; `renderDesignDocument` formats the LLM's enrichment
- * payload into the `.arch/{path}.md` design document. Both are pure string
+ * payload into the `.llmem/docs/{path}.md` design document. Both are pure string
  * builders.
  */
 

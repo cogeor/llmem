@@ -9,7 +9,7 @@
  * (rooted on the *workspace*, not on `.arch`). The previous textual
  * `assertInArchDir` containment check is retired in favor of:
  *
- *   1. an explicit `.arch/` prefix check on the workspace-relative path
+ *   1. an explicit `.llmem/docs/` prefix check on the workspace-relative path
  *      (preserves the old "operates only inside .arch" contract), and
  *   2. `WorkspaceIO`'s realpath layer (defeats symlink-target-outside-
  *      workspace attacks).
@@ -44,9 +44,9 @@ export class ArchWatcherService {
     private watcher: chokidar.FSWatcher | null = null;
     private readonly ctx: WorkspaceContext;
     private readonly verbose: boolean;
-    private archDir: string;
+    private docsDir: string;
     /** `.arch` path expressed as a workspace-relative string. */
-    private archRel: string;
+    private docsRel: string;
     private onEvent?: (event: ArchFileEvent) => void;
 
     // Debounce state per file
@@ -56,8 +56,8 @@ export class ArchWatcherService {
     constructor(ctx: WorkspaceContext, verbose = false) {
         this.ctx = ctx;
         this.verbose = verbose;
-        this.archDir = this.ctx.archRoot;
-        this.archRel = this.ctx.archRootRel;
+        this.docsDir = this.ctx.docsRoot;
+        this.docsRel = this.ctx.docsRootRel;
     }
 
     /** Initialize the watcher. @param onEvent Callback for file events */
@@ -66,9 +66,9 @@ export class ArchWatcherService {
 
         // Ensure .arch directory exists. L24: io.mkdirRecursive realpath-
         // validates the parent containment.
-        if (!(await this.ctx.io.exists(this.archRel))) {
+        if (!(await this.ctx.io.exists(this.docsRel))) {
             try {
-                await this.ctx.io.mkdirRecursive(this.archRel);
+                await this.ctx.io.mkdirRecursive(this.docsRel);
                 if (this.verbose) {
                     log.info('Created .arch directory');
                 }
@@ -81,7 +81,7 @@ export class ArchWatcherService {
         }
 
         // Watch the .arch directory directly; filter for .md files in events.
-        const watchPattern = this.archDir;
+        const watchPattern = this.docsDir;
 
         this.watcher = chokidar.watch(watchPattern, {
             persistent: true,
@@ -137,7 +137,7 @@ export class ArchWatcherService {
         const timeout = setTimeout(async () => {
             try {
                 this.pendingEvents.delete(absolutePath);
-                const event = await buildArchFileEvent(this.ctx, this.archDir, type, absolutePath);
+                const event = await buildArchFileEvent(this.ctx, this.docsDir, type, absolutePath);
                 if (this.onEvent) {
                     this.onEvent(event);
                 }
@@ -158,7 +158,7 @@ export class ArchWatcherService {
      * @returns DesignDoc or null if not found
      */
     async readDoc(relativePath: string): Promise<{ markdown: string; html: string } | null> {
-        const wsRel = archDocWsRel(this.archRel, this.archDir, relativePath);
+        const wsRel = archDocWsRel(this.docsRel, this.docsDir, relativePath);
 
         try {
             if (!(await this.ctx.io.exists(wsRel))) {
@@ -185,7 +185,7 @@ export class ArchWatcherService {
      * @returns Success status
      */
     async writeDoc(relativePath: string, markdown: string): Promise<boolean> {
-        const wsRel = archDocWsRel(this.archRel, this.archDir, relativePath);
+        const wsRel = archDocWsRel(this.docsRel, this.docsDir, relativePath);
 
         try {
             // Ensure directory exists. L24: io.mkdirRecursive does the
@@ -217,12 +217,12 @@ export class ArchWatcherService {
      * realpath-strong existence checking requires async fs.realpath.
      */
     async hasArchDir(): Promise<boolean> {
-        return this.ctx.io.exists(this.archRel);
+        return this.ctx.io.exists(this.docsRel);
     }
 
     /** Get the .arch directory path */
     getArchDir(): string {
-        return this.archDir;
+        return this.docsDir;
     }
 
     /** Close the watcher */

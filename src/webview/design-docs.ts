@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { getArchRoot, getDesignDocKey } from '../docs/arch-store';
+import { getDocsRoot, getDesignDocKey } from '../docs/doc-store';
 import { asWorkspaceRoot, asAbsPath, type WorkspaceRoot } from '../core/paths';
 import { renderMarkdown } from './markdown-renderer';
 import { createLogger } from '../common/logger';
@@ -36,8 +36,8 @@ export async function loadDesignDocs(
  */
 export class DesignDocManager {
     private workspaceRoot: WorkspaceRoot;
-    private archRoot: string;
-    private archRel: string;
+    private docsRoot: string;
+    private docsRel: string;
     private io: WorkspaceIO;
 
     constructor(projectRoot: WorkspaceRoot | string, io: WorkspaceIO) {
@@ -45,9 +45,9 @@ export class DesignDocManager {
             ? asWorkspaceRoot(projectRoot)
             : projectRoot;
         this.workspaceRoot = branded;
-        // .arch path mapping owned by src/docs/arch-store.ts (Loop 04).
-        this.archRoot = getArchRoot(branded);
-        this.archRel = path.relative(branded, this.archRoot).replace(/\\/g, '/');
+        // .arch path mapping owned by src/docs/doc-store.ts (Loop 04).
+        this.docsRoot = getDocsRoot(branded);
+        this.docsRel = path.relative(branded, this.docsRoot).replace(/\\/g, '/');
         this.io = io;
     }
 
@@ -66,21 +66,21 @@ export class DesignDocManager {
         // and the server-side DOMPurify pass.
         const docs: Record<string, DesignDoc> = {};
 
-        log.debug('archRoot resolved', { archRoot: this.archRoot });
-        if (!(await this.io.exists(this.archRel))) {
-            log.debug('archRoot does not exist');
+        log.debug('docsRoot resolved', { docsRoot: this.docsRoot });
+        if (!(await this.io.exists(this.docsRel))) {
+            log.debug('docsRoot does not exist');
             return docs;
         }
 
         const files: string[] = [];
         try {
-            await this.walk(this.archRel, (f) => files.push(f));
+            await this.walk(this.docsRel, (f) => files.push(f));
         } catch (e) {
             log.error('Error walking directory', {
                 error: e instanceof Error ? e.message : String(e),
             });
         }
-        log.debug('Found files in archRoot', { count: files.length });
+        log.debug('Found files in docsRoot', { count: files.length });
 
         for (const fileRel of files) {
             if (fileRel.endsWith('.md')) {
@@ -88,10 +88,10 @@ export class DesignDocManager {
                     const markdown = await this.io.readFile(fileRel, 'utf-8');
                     const html = await renderMarkdown(markdown);
 
-                    // Key mapping is owned by src/docs/arch-store.ts (Loop 04).
+                    // Key mapping is owned by src/docs/doc-store.ts (Loop 04).
                     const absFilePath = path.join(this.workspaceRoot, fileRel);
-                    const key = getDesignDocKey(asAbsPath(this.archRoot), asAbsPath(absFilePath));
-                    const relPath = path.relative(this.archRoot, absFilePath).replace(/\\/g, '/');
+                    const key = getDesignDocKey(asAbsPath(this.docsRoot), asAbsPath(absFilePath));
+                    const relPath = path.relative(this.docsRoot, absFilePath).replace(/\\/g, '/');
                     log.debug('Processed design doc', { relPath, key });
 
                     // Store both markdown and HTML

@@ -2,7 +2,7 @@
 //
 // Loop 03 — pin the WorkspaceContext factory contract:
 //   1. construction (loose / loose+overrides / resolved arities)
-//   2. root containment (artifactRoot, archRoot)
+//   2. root containment (artifactRoot, docsRoot)
 //   3. relpath helpers (getArtifactRootRel / getArchRootRel /
 //      resolveArtifactPath / resolveArchPath, with escape rejection)
 //   4. rejection paths (missing root, mismatched io.getRealRoot,
@@ -117,18 +117,18 @@ test('createWorkspaceContext: artifactRoot is contained under workspaceRoot', as
     }
 });
 
-test('createWorkspaceContext: archRoot is contained under workspaceRoot and archRootRel === ".llmem/docs"', async () => {
+test('createWorkspaceContext: docsRoot is contained under workspaceRoot and docsRootRel === ".llmem/docs"', async () => {
     const parent = mkTmp('llmem-ctx-');
     try {
         const root = path.join(parent, 'workspace');
         fs.mkdirSync(root);
         const ctx = await createWorkspaceContext({ workspaceRoot: root });
-        const rel = path.relative(ctx.workspaceRoot, ctx.archRoot);
+        const rel = path.relative(ctx.workspaceRoot, ctx.docsRoot);
         assert.ok(
             !rel.startsWith('..') && !path.isAbsolute(rel),
-            `expected archRoot under workspaceRoot, got rel='${rel}'`,
+            `expected docsRoot under workspaceRoot, got rel='${rel}'`,
         );
-        assert.equal(ctx.archRootRel, '.llmem/docs');
+        assert.equal(ctx.docsRootRel, '.llmem/docs');
     } finally {
         rm(parent);
     }
@@ -185,14 +185,14 @@ test('resolveArtifactPath: happy path resolves under artifactRoot; rejects ../ e
     }
 });
 
-test('resolveArchPath: happy path resolves under archRoot; rejects ../ escape with PathEscapeError', async () => {
+test('resolveArchPath: happy path resolves under docsRoot; rejects ../ escape with PathEscapeError', async () => {
     const parent = mkTmp('llmem-ctx-');
     try {
         const root = path.join(parent, 'workspace');
         fs.mkdirSync(root);
         const ctx = await createWorkspaceContext({ workspaceRoot: root });
         const resolved = resolveArchPath(ctx, 'src/parser.md');
-        assert.equal(resolved, path.join(ctx.archRoot, 'src/parser.md'));
+        assert.equal(resolved, path.join(ctx.docsRoot, 'src/parser.md'));
         assert.throws(
             () => resolveArchPath(ctx, '../leak.md'),
             (err: Error & { code?: string }) => {
@@ -280,11 +280,11 @@ test('createWorkspaceContext (loose): symlink workspaceRoot gets normalized to r
         }
         const ctx = await createWorkspaceContext({ workspaceRoot: link });
         assert.equal(ctx.workspaceRoot, fs.realpathSync(link));
-        // artifactRoot / archRoot must resolve against the realpath form
+        // artifactRoot / docsRoot must resolve against the realpath form
         // — this is the macOS `/var → /private/var` normalization the
         // factory relies on for containment to hold.
         assert.ok(ctx.artifactRoot.startsWith(fs.realpathSync(link)));
-        assert.ok(ctx.archRoot.startsWith(fs.realpathSync(link)));
+        assert.ok(ctx.docsRoot.startsWith(fs.realpathSync(link)));
     } finally {
         rm(parent);
     }

@@ -13,7 +13,7 @@
  *   Stdout is kept clean (no banner contamination) so the output is safe
  *   to pipe directly into an LLM.
  * - `--content '<json>'`: parse the JSON as the agent's `report_*_info`
- *   payload, write the design doc to `.arch/`, print the absolute path of
+ *   payload, write the design doc to `.llmem/docs/`, print the absolute path of
  *   the written file (forward-slash normalized) to stdout.
  * - `--content-file <path>`: same as `--content`, but the JSON is read
  *   from a file. Pass `-` to read stdin to EOF.
@@ -119,7 +119,7 @@ export const documentCommand: CommandSpec<typeof documentArgs> = {
             command: 'llmem document src/parser --prompt-only',
         },
         {
-            scenario: 'Pipe the agent\'s JSON output back to write .arch/src/parser/extractor.ts.md',
+            scenario: 'Pipe the agent\'s JSON output back to write .llmem/docs/src/parser/extractor.ts.md',
             command: 'llmem document src/parser/extractor.ts --content-file -',
         },
     ],
@@ -218,7 +218,7 @@ export const documentCommand: CommandSpec<typeof documentArgs> = {
                 outputs: r.outputs,
                 functions: r.functions satisfies EnrichedFunction[],
             });
-            process.stdout.write(result.archPath.replace(/\\/g, '/') + '\n');
+            process.stdout.write(result.docPath.replace(/\\/g, '/') + '\n');
         }
     },
 };

@@ -54,13 +54,13 @@ export interface DocumentFolderData {
     folderPath: RelPath;
     /** Workspace root used for all path resolution. */
     rootDir: WorkspaceRoot;
-    /** Absolute path to the .arch/{folder}/README.md target. */
+    /** Absolute path to the .llmem/docs/{folder}/README.md target. */
     readmePath: AbsPath;
     /** Prompt for the host LLM (full folder-overview generation prompt). */
     prompt: string;
     /** Auto-extracted structural summary (files, imports, calls). */
     structuralMarkdown: string;
-    /** Existing .arch README contents, if any. */
+    /** Existing .llmem/docs README contents, if any. */
     existingDocs: string | null;
     /** Raw edges relevant to the folder (for diagnostics / future use). */
     rawEdges: EdgeEntry[];

@@ -7,7 +7,7 @@
  *
  * Two concerns live here:
  *   1. `.arch` path containment (`archDocWsRel`) — preserves the contract
- *      that this surface only ever touches files under `.arch/`.
+ *      that this surface only ever touches files under `.llmem/docs/`.
  *   2. chokidar-event → `ArchFileEvent` mapping (`buildArchFileEvent`).
  */
 
@@ -35,18 +35,18 @@ export interface ArchFileEvent {
  * Compute the workspace-relative path for a doc inside `.arch`. Throws
  * `PathEscapeError` when `relativePath` traverses out of `.arch` —
  * preserves the L23-and-prior contract that this surface only ever
- * touches files under `.arch/` (the realpath layer in `WorkspaceIO`
+ * touches files under `.llmem/docs/` (the realpath layer in `WorkspaceIO`
  * adds the symlink-escape protection on top).
  *
- * `archRel` is the `.arch` path expressed as a workspace-relative string;
- * `archDir` is the absolute `.arch` directory (used only for the error).
+ * `docsRel` is the `.arch` path expressed as a workspace-relative string;
+ * `docsDir` is the absolute `.arch` directory (used only for the error).
  */
-export function archDocWsRel(archRel: string, archDir: string, relativePath: string): string {
+export function archDocWsRel(docsRel: string, docsDir: string, relativePath: string): string {
     const mdPath = relativePath.endsWith('.md') ? relativePath : `${relativePath}.md`;
-    const wsRel = path.join(archRel, mdPath).replace(/\\/g, '/');
-    const archPrefix = archRel.endsWith('/') ? archRel : `${archRel}/`;
-    if (wsRel !== archRel && !wsRel.startsWith(archPrefix)) {
-        throw new PathEscapeError(archDir, relativePath);
+    const wsRel = path.join(docsRel, mdPath).replace(/\\/g, '/');
+    const archPrefix = docsRel.endsWith('/') ? docsRel : `${docsRel}/`;
+    if (wsRel !== docsRel && !wsRel.startsWith(archPrefix)) {
+        throw new PathEscapeError(docsDir, relativePath);
     }
     return wsRel;
 }
@@ -60,11 +60,11 @@ export function archDocWsRel(archRel: string, archDir: string, relativePath: str
  */
 export async function buildArchFileEvent(
     ctx: WorkspaceContext,
-    archDir: string,
+    docsDir: string,
     type: 'created' | 'updated' | 'deleted',
     absolutePath: string,
 ): Promise<ArchFileEvent> {
-    const relativePath = path.relative(archDir, absolutePath).replace(/\\/g, '/');
+    const relativePath = path.relative(docsDir, absolutePath).replace(/\\/g, '/');
 
     log.debug('File event', { type, relativePath });
 

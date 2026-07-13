@@ -4,7 +4,7 @@
  * Background
  * ----------
  * Before VS-B1 the AI-authored documentation tree lived in `.arch/`. It now
- * lives under `.llmem/docs` (see `src/docs/arch-store.ts` — `DOCS_DIR`).
+ * lives under `.llmem/docs` (see `src/docs/doc-store.ts` — `DOCS_DIR`).
  * Existing users have hand-authored, NON-regenerable docs in the legacy
  * `.arch/` dir, so we must carry those over exactly once at workspace-context
  * init — never silently clobbering anything.
@@ -35,7 +35,7 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { DOCS_DIR } from '../docs/arch-store';
+import { DOCS_DIR } from '../docs/doc-store';
 import type { Logger } from '../core/logger';
 import { NoopLogger } from '../core/logger';
 

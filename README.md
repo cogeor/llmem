@@ -119,13 +119,13 @@ That assumes `npm i -g @cogeor/llmem`. If you can't install globally, fall back 
 
 ## Spec docs for any folder
 
-LLMem can generate per-folder and per-file spec docs into a parallel `.arch/` tree next to your source. The flow is two MCP calls:
+LLMem can generate per-folder and per-file spec docs into a parallel `.llmem/docs/` tree next to your source. The flow is two MCP calls:
 
 1. Agent calls `folder_info { path: "src/parser" }` → LLMem returns the folder's structure and an enrichment prompt.
 2. Agent runs the prompt through its LLM, then calls `report_folder_info` with the response.
-3. LLMem writes `.arch/src/parser/README.md`.
+3. LLMem writes `.llmem/docs/src/parser/README.md`.
 
-Per-file follows the same pattern: `file_info` → LLM → `report_file_info` writes `.arch/src/parser/<file>.md`.
+Per-file follows the same pattern: `file_info` → LLM → `report_file_info` writes `.llmem/docs/src/parser/<file>.md`.
 
 Without an MCP-aware agent, the same pipeline runs from the shell:
 
@@ -139,8 +139,8 @@ llmem document src/parser --content-file -   # reads LLM JSON from stdin, writes
 | Tool | What it does |
 |---|---|
 | `review` ↔ `report_review` | Two-call pair: checklist + graph evidence + prompt → completed review at `.llmem/review/{path}.md` (hard completeness gate) |
-| `folder_info` ↔ `report_folder_info` | Two-call pair: folder structure + prompt → enriched doc at `.arch/{folder}/README.md` |
-| `file_info` ↔ `report_file_info` | Two-call pair: file structure + prompt → enriched doc at `.arch/{file}.md` |
+| `folder_info` ↔ `report_folder_info` | Two-call pair: folder structure + prompt → enriched doc at `.llmem/docs/{folder}/README.md` |
+| `file_info` ↔ `report_file_info` | Two-call pair: file structure + prompt → enriched doc at `.llmem/docs/{file}.md` |
 | `open_window` | Returns a URL to the live viewer if `serve` is running, else a static `file://` snapshot |
 
 `folder_info` scans the folder on demand and refreshes any stale edges before generating the summary — no manual step needed. The first `folder_info` on a large folder does a one-time full parse; subsequent calls are incremental (a stat-walk + diff, re-parsing only what changed). Pass `refresh: "skip"` to bypass the freshness check entirely for back-to-back same-turn calls on a folder you just refreshed; `file_info` accepts the same `refresh` argument.

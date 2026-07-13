@@ -2,7 +2,7 @@
  * Branded path types. Zero-runtime: every brand widens cleanly to `string`.
  *
  * Use `as*` casts at the boundary where a plain string enters a typed
- * helper (e.g. workspace/safe-fs, docs/arch-store). Existing callers that
+ * helper (e.g. workspace/safe-fs, docs/doc-store). Existing callers that
  * pass plain strings are not retrofitted in this loop; that's a Phase-3
  * concern.
  *

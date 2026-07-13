@@ -35,7 +35,7 @@ export interface Item {
     name: string;
     /** Folder only: recursive file count shown on the right. */
     fileCount?: number;
-    /** Folder only: whether `.arch/{path}/README.md` exists. */
+    /** Folder only: whether `.llmem/docs/{path}/README.md` exists. */
     documented?: boolean;
     /** Folder only: has at least one direct file (so it can expand). */
     expandable?: boolean;

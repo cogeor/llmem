@@ -57,7 +57,7 @@ async function handleGetArch(
         doc = await ctx.archWatcher.readDoc(docPath);
     } catch (err) {
         // L24: arch-watcher surfaces PathEscapeError up to the HTTP layer
-        // when the requested path tries to escape `.arch/` (textual) or
+        // when the requested path tries to escape `.llmem/docs/` (textual) or
         // its realpath escapes the workspace (symlink attack).
         if (err instanceof Error && err.name === 'PathEscapeError') {
             ctx.httpHandler.sendJson(res, 400, {

@@ -10,7 +10,7 @@
  * in `GraphServer`; only the request-handling surface goes through here.
  *
  * Loop 04: a `ctx: WorkspaceContext` field is added so route handlers can
- * read `artifactRoot` / `archRoot` / `io` directly. The legacy `config`
+ * read `artifactRoot` / `docsRoot` / `io` directly. The legacy `config`
  * field stays — `requireApiToken` continues to read `apiToken` from it
  * (loop 05's middleware will eventually pull from `ctx.config`).
  */
@@ -29,7 +29,7 @@ import type { WorkspaceContext } from '../../application/workspace-context';
  * - `config`: validated `Required<ServerConfig>` so route code can read
  *   `apiToken`, `workspaceRoot`, etc. without optional-chain noise.
  * - `ctx`: the server's per-workspace runtime context (loop 04). Routes
- *   that need `artifactRoot` / `io` / `archRoot` read it directly.
+ *   that need `artifactRoot` / `io` / `docsRoot` read it directly.
  * - `logger`: structured logger; routes MUST NOT use `console.*`.
  * - `watchManager`, `archWatcher`: shared service singletons.
  * - `httpHandler`: only used for `sendJson`/`sendError` helpers.

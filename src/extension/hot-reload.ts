@@ -18,12 +18,12 @@ const log = createLogger('hot-reload');
  *
  * Three watch paths:
  * - Source files change (.ts, .js, etc.) -> Refresh graphs from edge list
- * - .arch files change (.md) -> Re-convert markdown to HTML
+ * - .llmem/docs files change (.md) -> Re-convert markdown to HTML
  * - Any file in project create/delete -> Refresh worktree
  *
  * Loop 04: takes a `WorkspaceContext` from the panel instead of building
  * its own `WorkspaceIO`. The context's `workspaceRoot`, `artifactRoot`,
- * `archRoot`, `io`, and `logger` replace the lazily-constructed `_io`
+ * `docsRoot`, `io`, and `logger` replace the lazily-constructed `_io`
  * field and the per-string-arg constructor.
  */
 export class HotReloadService {
@@ -56,7 +56,7 @@ export class HotReloadService {
         log.info('Starting watchers...');
         log.info('Project root', { projectRoot: this.ctx.workspaceRoot });
         log.info('Artifact root', { artifactRoot: this.ctx.artifactRoot });
-        log.info('Arch root', { archRoot: this.ctx.archRoot });
+        log.info('Arch root', { docsRoot: this.ctx.docsRoot });
 
         // Watch source files -> refresh graphs
         const extensions = ParserRegistry.getInstance().getSupportedExtensions();
@@ -75,9 +75,9 @@ export class HotReloadService {
         this.sourceWatcher.onDidDelete((uri) => this.queueSourceRebuild(uri));
         this.disposables.push(this.sourceWatcher);
 
-        // Watch .arch/src/**/*.md -> re-convert markdown
+        // Watch .llmem/docs/**/*.md -> re-convert markdown
         const archPattern = new vscode.RelativePattern(
-            vscode.Uri.file(this.ctx.archRoot),
+            vscode.Uri.file(this.ctx.docsRoot),
             'src/**/*.md'
         );
         this.archWatcher = vscode.workspace.createFileSystemWatcher(archPattern);

@@ -1,1 +1,1 @@
-export * from './arch-store';
+export * from './doc-store';

@@ -14,7 +14,7 @@ import * as path from 'path';
 import type { WorkspaceRoot, AbsPath } from '../../core/paths';
 import { asAbsPath } from '../../core/paths';
 import type { Logger } from '../../core/logger';
-import { getDesignDocKey } from '../../docs/arch-store';
+import { getDesignDocKey } from '../../docs/doc-store';
 import { ImportEdgeListStore, CallEdgeListStore } from '../../graph/edgelist';
 import { TypeScriptService } from '../../parser/ts-service';
 import { TypeScriptExtractor } from '../../parser/ts-extractor';
@@ -121,32 +121,32 @@ export async function scanAndPopulateSplitEdgeLists(
 }
 
 /**
- * Walk `.arch` and return raw markdown keyed by the design-doc key.
+ * Walk `.llmem/docs` and return raw markdown keyed by the design-doc key.
  *
  * Replaces `new DesignDocManager(projectRoot).getAllDocsAsync()`. Skips
  * the `marked` render step — callers render on consumption.
  *
- * Returns an empty map if `.arch` does not exist.
+ * Returns an empty map if `.llmem/docs` does not exist.
  */
 export async function collectRawDesignDocs(
     workspaceRoot: WorkspaceRoot,
-    archRoot: AbsPath,
+    docsRoot: AbsPath,
     io: WorkspaceIO,
     logger: Logger,
 ): Promise<Record<string, string>> {
     const docs: Record<string, string> = {};
 
-    const archRel = toWorkspaceRel(workspaceRoot, archRoot);
-    if (!(await io.exists(archRel))) {
+    const docsRel = toWorkspaceRel(workspaceRoot, docsRoot);
+    if (!(await io.exists(docsRel))) {
         return docs;
     }
 
-    // Collect all files under archRoot via the realpath-strong walker.
+    // Collect all files under docsRoot via the realpath-strong walker.
     const files: string[] = [];
     try {
-        await walkDir(io, archRel, (rel) => files.push(rel));
+        await walkDir(io, docsRel, (rel) => files.push(rel));
     } catch (e) {
-        logger.error(`[WebviewDataService] Error walking .arch: ${e instanceof Error ? e.message : String(e)}`);
+        logger.error(`[WebviewDataService] Error walking .llmem/docs: ${e instanceof Error ? e.message : String(e)}`);
     }
 
     for (const relPath of files) {
@@ -154,7 +154,7 @@ export async function collectRawDesignDocs(
         try {
             const markdown = await io.readFile(relPath, 'utf-8');
             const absPath = path.join(workspaceRoot, relPath);
-            const key = getDesignDocKey(asAbsPath(archRoot), asAbsPath(absPath));
+            const key = getDesignDocKey(asAbsPath(docsRoot), asAbsPath(absPath));
             docs[key] = markdown;
         } catch (e) {
             logger.error(`Failed to read design doc: ${relPath} — ${e instanceof Error ? e.message : String(e)}`);

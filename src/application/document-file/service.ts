@@ -23,7 +23,7 @@
 import * as path from 'path';
 import { ParserRegistry } from '../../parser/registry';
 import type { WorkspaceContext } from '../workspace-context';
-import { getFileArchPath } from '../../docs/arch-store';
+import { getFileDocPath } from '../../docs/doc-store';
 import { extractFileInfo } from '../file-info';
 import type { FileInfo } from '../file-info';
 import { refreshFileGraph } from '../refresh-graph';
@@ -106,7 +106,7 @@ export async function buildDocumentFilePrompt(
 
     const structuralMarkdown = renderStructuralMarkdown(filePath, artifact);
     const info: FileInfo = extractFileInfo(filePath, artifact, new Map());
-    const archPath = getFileArchPath(workspaceRoot, filePath);
+    const docPath = getFileDocPath(workspaceRoot, filePath);
 
     let prompt = renderEnrichmentPrompt(filePath, structuralMarkdown, sourceCode);
 
@@ -124,7 +124,7 @@ export async function buildDocumentFilePrompt(
     return {
         filePath,
         rootDir: workspaceRoot,
-        archPath,
+        docPath,
         prompt,
         structuralMarkdown,
         info,
@@ -137,7 +137,7 @@ export async function buildDocumentFilePrompt(
 // ============================================================================
 
 /**
- * Persist the LLM's enrichment for a file into .arch/{path}.md.
+ * Persist the LLM's enrichment for a file into .llmem/docs/{path}.md.
  *
  * The branded `workspaceRoot` is the only source of truth for the
  * destination — `process.cwd()` is never consulted. This is the
@@ -159,18 +159,18 @@ export async function processFileInfoReport(
         functions,
     });
 
-    const archPath = getFileArchPath(workspaceRoot, filePath);
+    const docPath = getFileDocPath(workspaceRoot, filePath);
 
     // Compute the workspace-relative path against the realpath of the
     // workspace root (handles macOS /var → /private/var, Windows short
     // paths, etc). WorkspaceIO.writeFile does NOT auto-mkdir, so we
     // explicitly mkdir-recursive the parent first.
-    const archRel = path.relative(io.getRealRoot(), archPath).replace(/\\/g, '/');
-    await io.mkdirRecursive(path.dirname(archRel));
-    await io.writeFile(archRel, designDocument);
+    const docsRel = path.relative(io.getRealRoot(), docPath).replace(/\\/g, '/');
+    await io.mkdirRecursive(path.dirname(docsRel));
+    await io.writeFile(docsRel, designDocument);
 
     return {
-        archPath,
+        docPath,
         bytesWritten: Buffer.byteLength(designDocument, 'utf-8'),
         designDocument,
     };
