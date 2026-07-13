@@ -35,6 +35,7 @@ import { makeEntityId } from '../../../core/ids';
 import type { RecallCandidate } from '../types';
 import { entitySpans, enclosingEntity } from './entity-spans';
 import type { ScopedSource, SignalResult, SignalScanner } from './source-scan';
+import { resultsForQueries } from './wiring';
 
 /**
  * Transport-sink patterns. A file matching any of these crosses a serialization
@@ -84,6 +85,8 @@ function firstSinkOffset(text: string): number {
  * `note` records the two typing flags. Returns an empty FP1 result list when no
  * file crosses a transport boundary (the harness merge tolerates empties).
  */
+export const TRANSPORT_QUERY_KEYS = ['transport'] as const;
+
 export const transportScanner: SignalScanner = (
     sources: ScopedSource[],
 ): SignalResult[] => {
@@ -104,5 +107,6 @@ export const transportScanner: SignalScanner = (
             note: `transport sink; payloadUntyped=${payloadUntyped} validatesBeforeUse=${validatesBeforeUse}`,
         });
     }
-    return [{ itemId: 'FP1', candidates }];
+    // D3: target from the registry (recallQuery 'transport').
+    return resultsForQueries(TRANSPORT_QUERY_KEYS, candidates);
 };

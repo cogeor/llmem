@@ -40,13 +40,14 @@ export {
     runSignalScanners,
     sortDedupeCandidates,
 } from './source-scan';
-export { ambientScanner } from './ambient';
-export { domSourceScanner } from './dom-source';
-export { interfaceWidthScanner } from './interface-width';
-export { listenerBalanceScanner } from './lifecycle';
-export { payloadOwnerScanner } from './payload-owners';
-export { routeLiteralScanner } from './routes';
-export { transportScanner } from './transport';
+export { ambientScanner, AMBIENT_QUERY_KEYS } from './ambient';
+export { domSourceScanner, DOM_SOURCE_QUERY_KEYS } from './dom-source';
+export { interfaceWidthScanner, INTERFACE_DECL_QUERY_KEYS } from './interface-width';
+export { listenerBalanceScanner, LIFECYCLE_QUERY_KEYS } from './lifecycle';
+export { payloadOwnerScanner, PAYLOAD_OWNERS_QUERY_KEYS } from './payload-owners';
+export { routeLiteralScanner, ROUTES_QUERY_KEYS } from './routes';
+export { transportScanner, TRANSPORT_QUERY_KEYS } from './transport';
 export { mergeSignals } from '../recall';
 export type { EntitySpan } from './entity-spans';
 export { entitySpans, enclosingEntity } from './entity-spans';
+export { itemsForQueries, resultsForQueries } from './wiring';

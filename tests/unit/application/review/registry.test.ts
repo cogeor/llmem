@@ -93,3 +93,46 @@ test('registry is frozen and its id-order is stable across two reads', () => {
     // Stable order = general block (memo order) then frontend block (memo order).
     assert.deepEqual(orderA, EXPECTED_IDS, 'id-order is not the prescribed general-then-frontend memo order');
 });
+
+// ===========================================================================
+// D3 (2026-07-13) — recallQuery is the wiring authority, not decoration.
+// ===========================================================================
+
+test('every non-instruction recallQuery has a LIVE producer (analyzer or scanner)', async () => {
+    // Analyzer buckets built inside reviewRecallFromReport.
+    const analyzerQueries = new Set(['cycles', 'clones', 'interface-width']);
+
+    // Scanner query keys, as each scanner declares them.
+    const signals = await import('../../../../src/application/review/signals');
+    const scannerQueries = new Set<string>([
+        ...signals.AMBIENT_QUERY_KEYS,
+        ...signals.INTERFACE_DECL_QUERY_KEYS,
+        ...signals.LIFECYCLE_QUERY_KEYS,
+        ...signals.DOM_SOURCE_QUERY_KEYS,
+        ...signals.ROUTES_QUERY_KEYS,
+        ...signals.PAYLOAD_OWNERS_QUERY_KEYS,
+        ...signals.TRANSPORT_QUERY_KEYS,
+    ]);
+
+    for (const item of REVIEW_REGISTRY) {
+        if (item.recallQuery === 'instruction') continue;
+        assert.ok(
+            analyzerQueries.has(item.recallQuery) || scannerQueries.has(item.recallQuery),
+            `${item.id}: recallQuery '${item.recallQuery}' has no producer — ` +
+            'wire a scanner/analyzer or set it to instruction',
+        );
+    }
+});
+
+test('a full ●●● recall glyph requires a wired producer (no lying glyphs)', () => {
+    for (const item of REVIEW_REGISTRY) {
+        if (item.recallStrength === '●●●') {
+            assert.notEqual(
+                item.recallQuery,
+                'instruction',
+                `${item.id} claims ●●● recall but has no producer — downgrade the ` +
+                'glyph or wire a recall source',
+            );
+        }
+    }
+});
