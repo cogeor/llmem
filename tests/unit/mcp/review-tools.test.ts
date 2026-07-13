@@ -25,6 +25,10 @@ import {
     handleReportReview,
     toolDefinitions,
 } from '../../../src/mcp/tools';
+import {
+    issueReviewToken,
+    clearReviewTokens,
+} from '../../../src/mcp/server';
 import { REVIEW_REGISTRY } from '../../../src/application/review/registry';
 import {
     validateCompleteness,
@@ -37,13 +41,20 @@ import {
 
 // ---- helpers --------------------------------------------------------------
 
-/** Every required id for `ruleset`, resolved to a uniform status. */
+/**
+ * Every required id for `ruleset`, resolved to a uniform status.
+ * C6: issue-validated items must carry a citing note, so the helper adds one.
+ */
 const resolveAll = (
     ruleset: 'general' | 'frontend' | 'both',
     status: SubmittedItem['status'] = 'non-issue',
 ): SubmittedItem[] =>
     REVIEW_REGISTRY.filter(i => ruleset === 'both' || i.ruleset === ruleset).map(
-        i => ({ id: i.id, status }),
+        i => ({
+            id: i.id,
+            status,
+            ...(status === 'issue-validated' ? { note: `cited: ${i.id}` } : {}),
+        }),
     );
 
 async function withTempWorkspace<T>(fn: (ws: string) => Promise<T>): Promise<T> {
@@ -182,6 +193,8 @@ describe('review tool registration', () => {
 // ===========================================================================
 
 describe('report_review handler', () => {
+    // C6: every handler test presents a live token, mirroring what the
+    // phase-1 `review` call puts in callbackArgs.
     test('incomplete checklist → error naming unresolved ids, NOTHING persisted', async () => {
         await withTempWorkspace(async ws => {
             // Resolve all-but-two general ids; D1 and DC1 left out.
@@ -193,6 +206,7 @@ describe('report_review handler', () => {
                 workspaceRoot: ws,
                 path: 'src/foo.ts',
                 ruleset: 'general',
+                reviewToken: issueReviewToken('src/foo.ts', 'general'),
                 checklist,
             });
 
@@ -222,6 +236,7 @@ describe('report_review handler', () => {
                 workspaceRoot: ws,
                 path: 'src/foo.ts',
                 ruleset: 'general',
+                reviewToken: issueReviewToken('src/foo.ts', 'general'),
                 checklist,
             });
             assert.equal(res.status, 'error');
@@ -236,6 +251,7 @@ describe('report_review handler', () => {
                 workspaceRoot: ws,
                 path: 'src/webview',
                 ruleset: 'both',
+                reviewToken: issueReviewToken('src/webview', 'both'),
                 checklist: resolveAll('both', 'issue-validated'),
             });
 
@@ -250,6 +266,79 @@ describe('report_review handler', () => {
             const written = await fs.readFile(expected, 'utf8');
             assert.ok(written.includes('- [x] D1 — '));
             assert.ok(written.startsWith('# LLMem Architecture Review — src/webview'));
+        });
+    });
+
+    // C6: two-phase integrity — phase-2 requires the phase-1 session token.
+    test('missing/never-issued token → error, nothing persisted', async () => {
+        await withTempWorkspace(async ws => {
+            clearReviewTokens();
+            const res = await handleReportReview({
+                workspaceRoot: ws,
+                path: 'src/foo.ts',
+                ruleset: 'general',
+                reviewToken: 'fabricated-token',
+                checklist: resolveAll('general'),
+            });
+            assert.equal(res.status, 'error');
+            assert.ok(
+                (res as { error: string }).error.includes('review token'),
+                `error explains the token requirement: ${(res as { error: string }).error}`,
+            );
+            await assert.rejects(fs.stat(path.join(ws, '.llmem', 'review')));
+        });
+    });
+
+    test('stale token (a second review call replaced it) → error', async () => {
+        await withTempWorkspace(async ws => {
+            const first = issueReviewToken('src/foo.ts', 'general');
+            issueReviewToken('src/foo.ts', 'general'); // re-run replaces
+            const res = await handleReportReview({
+                workspaceRoot: ws,
+                path: 'src/foo.ts',
+                ruleset: 'general',
+                reviewToken: first,
+                checklist: resolveAll('general'),
+            });
+            assert.equal(res.status, 'error');
+            assert.ok((res as { error: string }).error.includes('stale'));
+        });
+    });
+
+    test('ruleset mismatch: token issued for general does not verify for both', async () => {
+        await withTempWorkspace(async ws => {
+            const token = issueReviewToken('src/foo.ts', 'general');
+            const res = await handleReportReview({
+                workspaceRoot: ws,
+                path: 'src/foo.ts',
+                ruleset: 'both',
+                reviewToken: token,
+                checklist: resolveAll('both'),
+            });
+            assert.equal(res.status, 'error');
+            assert.ok((res as { error: string }).error.includes('review token'));
+        });
+    });
+
+    test('issue-validated without a note → schema-level rejection', async () => {
+        await withTempWorkspace(async ws => {
+            const checklist = resolveAll('general').map(i =>
+                i.id === 'D1'
+                    ? { id: 'D1', status: 'issue-validated' as const } // no note
+                    : i,
+            );
+            const res = await handleReportReview({
+                workspaceRoot: ws,
+                path: 'src/foo.ts',
+                ruleset: 'general',
+                reviewToken: issueReviewToken('src/foo.ts', 'general'),
+                checklist,
+            });
+            assert.equal(res.status, 'error');
+            assert.ok(
+                (res as { error: string }).error.includes('non-empty note'),
+                `error names the note requirement: ${(res as { error: string }).error}`,
+            );
         });
     });
 });

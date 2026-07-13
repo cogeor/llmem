@@ -31,6 +31,7 @@ import {
     setStoredConfig,
     setStoredWorkspaceRoot,
     clearStoredContext,
+    clearReviewTokens,
 } from './state';
 
 const log = createLogger('mcp-server');
@@ -216,6 +217,7 @@ export async function stopServer(): Promise<void> {
     setStoredConfig(null);
     setStoredWorkspaceRoot(null);
     clearStoredContext(); // Loop 04: clear memoized context on shutdown
+    clearReviewTokens();  // C6: review sessions do not survive a restart
 
     log.info('MCP server stopped', { correlationId });
 }

@@ -126,17 +126,20 @@ describe('mcp tool schema: report_document (kind: file)', () => {
     });
 
     test('rejects payload missing kind (the discriminator)', () => {
-        const { kind, ...bad } = KNOWN_GOOD_MINIMAL;
+        const bad: Record<string, unknown> = { ...KNOWN_GOOD_MINIMAL };
+        delete bad.kind;
         assert.throws(() => ReportDocumentSchema.parse(bad), z.ZodError);
     });
 
     test('rejects payload missing overview', () => {
-        const { overview, ...bad } = KNOWN_GOOD_MINIMAL;
+        const bad: Record<string, unknown> = { ...KNOWN_GOOD_MINIMAL };
+        delete bad.overview;
         assert.throws(() => ReportDocumentSchema.parse(bad), z.ZodError);
     });
 
     test('rejects payload missing functions', () => {
-        const { functions, ...bad } = KNOWN_GOOD_MINIMAL;
+        const bad: Record<string, unknown> = { ...KNOWN_GOOD_MINIMAL };
+        delete bad.functions;
         assert.throws(() => ReportDocumentSchema.parse(bad), z.ZodError);
     });
 
@@ -196,7 +199,8 @@ describe('mcp tool schema: report_document (kind: folder)', () => {
     });
 
     test('rejects payload missing architecture', () => {
-        const { architecture, ...bad } = KNOWN_GOOD_MINIMAL;
+        const bad: Record<string, unknown> = { ...KNOWN_GOOD_MINIMAL };
+        delete bad.architecture;
         assert.throws(() => ReportDocumentSchema.parse(bad), z.ZodError);
     });
 
@@ -270,6 +274,7 @@ describe('mcp tool schema: report_review', () => {
     const KNOWN_GOOD = {
         workspaceRoot: '/abs/path/to/project',
         path: 'src/webview',
+        reviewToken: '00000000-0000-4000-8000-000000000000',
         checklist: [
             { id: 'D1', status: 'issue-validated', note: 'owner is X' },
             { id: 'DC1', status: 'non-issue' },
@@ -285,12 +290,32 @@ describe('mcp tool schema: report_review', () => {
         assert.equal(ReportReviewSchema.parse(KNOWN_GOOD).ruleset, 'both');
     });
 
-    test('property set is exactly [checklist, path, ruleset, workspaceRoot]', () => {
+    test('property set is exactly [checklist, path, reviewToken, ruleset, workspaceRoot]', () => {
         const parsed = ReportReviewSchema.parse(KNOWN_GOOD);
         assert.deepEqual(
             Object.keys(parsed).sort(),
-            ['checklist', 'path', 'ruleset', 'workspaceRoot'],
+            ['checklist', 'path', 'reviewToken', 'ruleset', 'workspaceRoot'],
         );
+    });
+
+    test('rejects payload missing reviewToken (C6 — phase-1 session required)', () => {
+        const bad: Record<string, unknown> = { ...KNOWN_GOOD };
+        delete bad.reviewToken;
+        assert.throws(() => ReportReviewSchema.parse(bad), z.ZodError);
+    });
+
+    test('rejects issue-validated item without a non-empty note (C6)', () => {
+        for (const note of [undefined, '', '   ']) {
+            const bad = {
+                ...KNOWN_GOOD,
+                checklist: [{ id: 'D1', status: 'issue-validated', ...(note === undefined ? {} : { note }) }],
+            };
+            assert.throws(
+                () => ReportReviewSchema.parse(bad),
+                z.ZodError,
+                `note=${JSON.stringify(note)} must be rejected`,
+            );
+        }
     });
 
     test('checklist[].property set is exactly [id, note, status] (with note) / [id, status] (without)', () => {
@@ -316,7 +341,8 @@ describe('mcp tool schema: report_review', () => {
     });
 
     test('rejects payload missing checklist', () => {
-        const { checklist, ...bad } = KNOWN_GOOD;
+        const bad: Record<string, unknown> = { ...KNOWN_GOOD };
+        delete bad.checklist;
         assert.throws(() => ReportReviewSchema.parse(bad), z.ZodError);
     });
 });
