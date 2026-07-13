@@ -16,8 +16,7 @@
  */
 
 import type { WorkspaceContext } from '../workspace-context';
-import { ImportEdgeListStore, CallEdgeListStore } from '../../graph/edgelist';
-import { buildGraphsFromSplitEdgeLists } from '../../graph';
+import { loadGraphs } from './load-graphs';
 import type { ImportGraph, CallGraph } from '../../graph/types';
 import {
     excludeAggregatorEdges,
@@ -98,22 +97,13 @@ export function importCyclesFromGraph(importGraph: ImportGraph): CycleFinding[] 
 }
 
 /**
- * ctx-in / data-out: load the import + call edge-list stores, build the import
- * graph via `buildGraphsFromSplitEdgeLists`, and delegate to
- * `importCyclesFromGraph`.
+ * ctx-in / data-out: one-liner over the shared `loadGraphs` (D1) delegating
+ * to `importCyclesFromGraph`.
  */
 export async function findImportCycles(
     ctx: WorkspaceContext,
 ): Promise<CycleFinding[]> {
-    const importStore = new ImportEdgeListStore(ctx.artifactRoot, ctx.io);
-    const callStore = new CallEdgeListStore(ctx.artifactRoot, ctx.io);
-    await importStore.load();
-    await callStore.load();
-    const { importGraph } = buildGraphsFromSplitEdgeLists(
-        importStore.getData(),
-        callStore.getData(),
-    );
-    return importCyclesFromGraph(importGraph);
+    return importCyclesFromGraph((await loadGraphs(ctx)).importGraph);
 }
 
 /**
@@ -181,20 +171,11 @@ export function callCyclesFromGraph(callGraph: CallGraph): CallCycleResult {
 }
 
 /**
- * ctx-in / data-out: load the import + call edge-list stores, build the call
- * graph via `buildGraphsFromSplitEdgeLists`, and delegate to
- * `callCyclesFromGraph`.
+ * ctx-in / data-out: one-liner over the shared `loadGraphs` (D1) delegating
+ * to `callCyclesFromGraph`.
  */
 export async function findCallCycles(
     ctx: WorkspaceContext,
 ): Promise<CallCycleResult> {
-    const importStore = new ImportEdgeListStore(ctx.artifactRoot, ctx.io);
-    const callStore = new CallEdgeListStore(ctx.artifactRoot, ctx.io);
-    await importStore.load();
-    await callStore.load();
-    const { callGraph } = buildGraphsFromSplitEdgeLists(
-        importStore.getData(),
-        callStore.getData(),
-    );
-    return callCyclesFromGraph(callGraph);
+    return callCyclesFromGraph((await loadGraphs(ctx)).callGraph);
 }

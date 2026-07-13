@@ -22,8 +22,7 @@
  */
 
 import type { WorkspaceContext } from '../workspace-context';
-import { ImportEdgeListStore, CallEdgeListStore } from '../../graph/edgelist';
-import { buildGraphsFromSplitEdgeLists } from '../../graph';
+import { loadGraphs } from './load-graphs';
 import type { ImportGraph } from '../../graph/types';
 import type { HubFinding, HubLabel } from './types';
 
@@ -168,15 +167,7 @@ export function maxFanInFromGraph(importGraph: ImportGraph): number {
 export async function computeHubMetrics(
     ctx: WorkspaceContext,
 ): Promise<HubFinding[]> {
-    const importStore = new ImportEdgeListStore(ctx.artifactRoot, ctx.io);
-    const callStore = new CallEdgeListStore(ctx.artifactRoot, ctx.io);
-    await importStore.load();
-    await callStore.load();
-    const { importGraph } = buildGraphsFromSplitEdgeLists(
-        importStore.getData(),
-        callStore.getData(),
-    );
-    return hubMetricsFromGraph(importGraph);
+    return hubMetricsFromGraph((await loadGraphs(ctx)).importGraph);
 }
 
 /**
@@ -187,14 +178,7 @@ export async function computeHubMetrics(
 export async function computeHubReport(
     ctx: WorkspaceContext,
 ): Promise<{ hubs: HubFinding[]; maxFanIn: number }> {
-    const importStore = new ImportEdgeListStore(ctx.artifactRoot, ctx.io);
-    const callStore = new CallEdgeListStore(ctx.artifactRoot, ctx.io);
-    await importStore.load();
-    await callStore.load();
-    const { importGraph } = buildGraphsFromSplitEdgeLists(
-        importStore.getData(),
-        callStore.getData(),
-    );
+    const { importGraph } = await loadGraphs(ctx);
     return {
         hubs: hubMetricsFromGraph(importGraph),
         maxFanIn: maxFanInFromGraph(importGraph),

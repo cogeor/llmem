@@ -10,13 +10,13 @@
  */
 
 import type { WorkspaceContext } from '../workspace-context';
-import { ImportEdgeListStore, CallEdgeListStore } from '../../graph/edgelist';
 import type { HealthReport, HealthVector } from './types';
 import { zeroHealthVector } from './types';
-import { findImportCycles, findCallCycles } from './cycles';
+import { importCyclesFromGraph, callCyclesFromGraph } from './cycles';
 import { findClones } from './clones';
-import { computeHubReport } from './metrics';
-import { computeInterfaceWidth } from './interface-width';
+import { hubMetricsFromGraph, maxFanInFromGraph } from './metrics';
+import { interfaceWidthFromGraph } from './interface-width';
+import { loadGraphs, type LoadedGraphs } from './load-graphs';
 import { readManifest } from '../scan-manifest';
 
 /**
@@ -31,9 +31,13 @@ import { readManifest } from '../scan-manifest';
  */
 const FILE_SIZE_BUDGET_LINES = 350;
 
-/** Options for `runHealthScan`. Reserved for Loop 02+ (refresh toggle, severity floor). */
+/** Options for `runHealthScan`. */
 export interface HealthScanOptions {
-    // intentionally empty this loop
+    /**
+     * D1: pre-built graphs (a caller like `runReviewRecall` that already
+     * paid the load). Omitted ⇒ the composer loads once via `loadGraphs`.
+     */
+    graphs?: LoadedGraphs;
 }
 
 /**
@@ -48,13 +52,18 @@ export async function runHealthScan(
     ctx: WorkspaceContext,
     opts?: HealthScanOptions,
 ): Promise<HealthReport> {
-    void opts; // reserved for Loop 02+ (no options consumed yet)
-    const importCycles = await findImportCycles(ctx);
-    const { cycles: callCycles, recursion } = await findCallCycles(ctx);
+    // D1: one store load + one graph build feeds every dimension (the
+    // pure `*FromGraph` cores). `findClones` keeps its own path — it needs
+    // file CONTENTS and its incremental hash cache, not just graphs.
+    const graphs = opts?.graphs ?? (await loadGraphs(ctx));
+
+    const importCycles = importCyclesFromGraph(graphs.importGraph);
+    const { cycles: callCycles, recursion } = callCyclesFromGraph(graphs.callGraph);
 
     const clones = await findClones(ctx);
-    const { hubs, maxFanIn } = await computeHubReport(ctx);
-    const interfaceWidth = await computeInterfaceWidth(ctx);
+    const hubs = hubMetricsFromGraph(graphs.importGraph);
+    const maxFanIn = maxFanInFromGraph(graphs.importGraph);
+    const interfaceWidth = interfaceWidthFromGraph(graphs.callGraph, graphs.importGraph);
 
     const vector: HealthVector = zeroHealthVector();
     // incl-type-only: ALL cycles over the full graph (the analyzer runs the SCC
@@ -105,21 +114,9 @@ export async function runHealthScan(
     vector.filesOverBudget = Object.values(manifest.files)
         .filter(e => e.lines > FILE_SIZE_BUDGET_LINES).length;
 
-    // C1: graph size header (replaces the deleted `stats` command). One more
-    // store load on top of the per-analyzer loads — D1 consolidates them all
-    // into a single shared loader. `files` counts distinct fileIds over the
-    // import nodes (matches the old stats command's fileCount).
-    const importStore = new ImportEdgeListStore(ctx.artifactRoot, ctx.io);
-    const callStore = new CallEdgeListStore(ctx.artifactRoot, ctx.io);
-    await importStore.load();
-    await callStore.load();
-    const fileIds = new Set<string>();
-    for (const n of importStore.getData().nodes) fileIds.add(n.fileId);
-    const graph = {
-        files: fileIds.size,
-        importEdges: importStore.getStats().edges,
-        callEdges: callStore.getStats().edges,
-    };
+    // C1: graph size header (replaces the deleted `stats` command) — a
+    // by-product of the single D1 load.
+    const graph = graphs.stats;
 
     // Basename label only (no timestamp). Split on both separators so it works
     // regardless of the OS-native form of `workspaceRoot`.

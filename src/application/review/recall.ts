@@ -26,8 +26,7 @@
  */
 
 import type { WorkspaceContext } from '../workspace-context';
-import { ImportEdgeListStore, CallEdgeListStore } from '../../graph/edgelist';
-import { buildGraphsFromSplitEdgeLists } from '../../graph';
+import { loadGraphs } from '../analysis/load-graphs';
 import type { ImportGraph } from '../../graph/types';
 import type {
     HealthReport,
@@ -294,13 +293,10 @@ export async function runReviewRecall(
     path: string,
     ruleset: 'general' | 'frontend' | 'both',
 ): Promise<ReviewChecklist> {
-    const importStore = new ImportEdgeListStore(ctx.artifactRoot, ctx.io);
-    const callStore = new CallEdgeListStore(ctx.artifactRoot, ctx.io);
-    await importStore.load();
-    await callStore.load();
-
-    const importData = importStore.getData();
-    if (importData.nodes.length === 0) {
+    // D1: one load feeds the recall AND the health scan (previously this
+    // built its own graph and runHealthScan loaded four more).
+    const graphs = await loadGraphs(ctx);
+    if (graphs.importNodeCount === 0) {
         throw new ReviewRecallError(
             'No edge lists found. Please scan workspace first.',
         );
@@ -308,13 +304,10 @@ export async function runReviewRecall(
 
     // The import-edgelist JSON already carries an ISO `timestamp`; surface it as
     // the graph-snapshot note. Deterministic-by-data — no `fs.stat`, no `Date`.
-    const graphSnapshot = importData.timestamp;
+    const graphSnapshot = graphs.timestamp;
+    const importGraph = graphs.importGraph;
 
-    const { importGraph } = buildGraphsFromSplitEdgeLists(
-        importData,
-        callStore.getData(),
-    );
-    const report = await runHealthScan(ctx);
+    const report = await runHealthScan(ctx, { graphs });
     const checklist = reviewRecallFromReport(
         report,
         importGraph,

@@ -22,6 +22,8 @@ export {
     calibrateInterfaceWidthSeverity,
 } from './interface-width';
 export { runHealthScan, reportHasFindingKind } from './health';
+export { loadGraphs } from './load-graphs';
+export type { LoadedGraphs } from './load-graphs';
 export type { HealthScanOptions } from './health';
 export { renderHealthReport } from './report-markdown';
 export { findClones, clusterClones, CLONE_MIN_TOKENS } from './clones';
