@@ -27,7 +27,7 @@ const PACKAGE_VERSION: string = require('../../../package.json').version as stri
 
 const describeArgs = z.object({
     json: z.boolean().default(false),
-});
+}).strict();
 
 interface DescribedCommand {
     name: string;

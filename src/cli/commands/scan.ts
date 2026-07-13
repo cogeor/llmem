@@ -25,7 +25,7 @@ const scanArgs = z.object({
     workspace: z.string().optional().describe('Workspace root directory (auto-detected if omitted)'),
     folder: z.string().default('.').describe('Workspace-relative folder to scan (defaults to the whole workspace)'),
     external: z.boolean().default(false).describe('Include external-module import edges (default: internal-only)'),
-});
+}).strict();
 
 export const scanCommand: CommandSpec<typeof scanArgs> = {
     name: 'scan',

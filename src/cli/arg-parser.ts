@@ -40,6 +40,7 @@ export interface ParsedArgv {
     command: CommandSpec<any> | null;
     flagMap: Record<string, unknown>;
     helpRequested: boolean;
+    versionRequested: boolean;
 }
 
 const SHORT_ALIASES: Record<string, string> = {
@@ -48,6 +49,7 @@ const SHORT_ALIASES: Record<string, string> = {
     r: 'regenerate',
     o: 'open',
     v: 'verbose',
+    V: 'version',
     h: 'help',
 };
 
@@ -72,6 +74,7 @@ export function parseArgv(argv: string[]): ParsedArgv {
     const flagMap: Record<string, unknown> = {};
     const positional: string[] = [];
     let helpRequested = false;
+    let versionRequested = false;
 
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i];
@@ -88,6 +91,7 @@ export function parseArgv(argv: string[]): ParsedArgv {
             }
             const rawKey = arg.slice(2);
             if (rawKey === 'help') { helpRequested = true; continue; }
+            if (rawKey === 'version') { versionRequested = true; continue; }
             if (rawKey.startsWith('no-')) {
                 flagMap[kebabToCamel(rawKey.slice(3))] = false;
                 continue;
@@ -110,6 +114,7 @@ export function parseArgv(argv: string[]): ParsedArgv {
             const short = arg.slice(1);
             const long = SHORT_ALIASES[short];
             if (long === 'help') { helpRequested = true; continue; }
+            if (long === 'version') { versionRequested = true; continue; }
             if (long === undefined) {
                 throw new CliError(
                     `Unknown option: ${arg}\nUse --help for usage information`,
@@ -144,7 +149,7 @@ export function parseArgv(argv: string[]): ParsedArgv {
         flagMap._ = remaining;
     }
 
-    return { command, flagMap, helpRequested };
+    return { command, flagMap, helpRequested, versionRequested };
 }
 
 /**

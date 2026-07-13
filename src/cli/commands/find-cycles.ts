@@ -68,7 +68,7 @@ export function buildCycleReport(importGraph: ImportGraph): string {
 
 const findCyclesArgs = z.object({
     workspace: z.string().optional(),
-});
+}).strict();
 
 export const findCyclesCommand: CommandSpec<typeof findCyclesArgs> = {
     name: 'find-cycles',

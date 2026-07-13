@@ -100,7 +100,7 @@ const documentArgs = z.object({
     // test (which asserts every property has a `description`) keeps passing.
     _: z.array(z.string()).optional()
         .describe('(internal) Positional arguments routed by the dispatcher.'),
-});
+}).strict();
 
 // ============================================================================
 // Command spec

@@ -38,7 +38,7 @@ const serveArgs = z.object({
     regenerate: z.boolean().default(false),
     open: z.boolean().default(true),      // Loop 03: default-on per design/06.
     verbose: z.boolean().default(false),
-});
+}).strict();
 
 export const serveCommand: CommandSpec<typeof serveArgs> = {
     name: 'serve',

@@ -2,9 +2,10 @@
 /**
  * LLMem CLI — argv → command dispatch
  *
- * Loop 01 contract: NO user-visible behavior change. Help text matches the
- * old `printHelp` from the original CLI module verbatim. No-args still
- * prints help and exits 1.
+ * B1 (2026-07-13): `--version`/`-V` prints the package version; an unknown
+ * command exits 1 with a loud error (the old print-help-exit-0 made typos
+ * look like success in scripts); command schemas are `.strict()` so a
+ * typo'd flag errors naming the flag instead of being silently ignored.
  *
  * Loop 20 (phase 15): the argv parser, flag coercion, and help-text
  * formatter moved to `./arg-parser` so this entry shell stays under the
@@ -25,16 +26,31 @@ import { CliError } from './errors';
  * `process.exit` owner. arg-parser and command handlers follow the same
  * rule — neither calls `process.exit` (A-grade #2).
  */
+/** camelCase schema key → the kebab-case flag the user actually typed. */
+function camelToKebab(key: string): string {
+    return key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+}
+
 async function runCli(): Promise<void> {
     const argv = process.argv.slice(2);
 
-    // Global --help / -h short-circuit (handled before dispatch). `parseArgv`
-    // throws `CliError` on an unknown option.
+    // Global --help / -h / --version / -V short-circuits (handled before
+    // dispatch). `parseArgv` throws `CliError` on an unknown short option.
     const parsedArgv = parseArgv(argv);
-    const { flagMap, helpRequested } = parsedArgv;
+    const { flagMap, helpRequested, versionRequested } = parsedArgv;
     // `command` is `let` so the no-args branch can route to `serveCommand`
-    // (see below). Everything else (`flagMap`, `helpRequested`) stays const.
+    // (see below). Everything else stays const.
     let command = parsedArgv.command;
+
+    if (versionRequested) {
+        // Resolved relative to the compiled entry (dist/cli/main.js) — the
+        // repo/package root's package.json in both the esbuild bundle
+        // (inlined at build time) and the tsc output (resolved at runtime).
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const pkg = require('../../package.json') as { version: string };
+        console.log(pkg.version);
+        return; // exit 0
+    }
 
     if (helpRequested) {
         printHelp();
@@ -42,20 +58,22 @@ async function runCli(): Promise<void> {
     }
 
     if (command === null) {
-        // No-args path (`llmem`): route to `serveCommand` so the help-text
-        // "(default)" label is honest. `flagMap` is `{}` here; the Zod
-        // defaults on `serveArgs` fill in port=5757, open=true,
-        // regenerate=false, verbose=false. Falls through to the standard
-        // coerce → safeParse → run pipeline below.
+        // `llmem` / `llmem [flags]` with NO positionals: route to
+        // `serveCommand` so the help-text "(default)" label is honest. The
+        // Zod defaults on `serveArgs` fill in port=5757, open=true, etc.
         //
-        // Unknown-command path (`llmem fnord`): preserve today's exact
-        // behavior — print help and exit 0. (Changing the unknown-command
-        // exit code is a separate behavior change, deliberately not bundled.)
-        if (argv.length === 0) {
+        // `llmem fnord`: an unrecognized command name is now a LOUD error
+        // (exit 1). The old behavior — print help, exit 0 — made typos look
+        // like success in scripts/CI. (B1: the behavior change the Loop-01
+        // comment deliberately deferred.)
+        const positionals = (flagMap._ as string[] | undefined) ?? [];
+        if (positionals.length === 0) {
             command = serveCommand;
         } else {
-            printHelp();
-            return; // exit 0
+            throw new CliError(
+                `Unknown command '${positionals[0]}'. Run 'llmem --help' for the command list.`,
+                1,
+            );
         }
     }
 
@@ -64,9 +82,25 @@ async function runCli(): Promise<void> {
     if (!parsed.success) {
         const lines = [`Invalid args for '${command.name}':`];
         for (const issue of parsed.error.issues) {
+            // B1: schemas are `.strict()`, so a typo'd flag surfaces as an
+            // `unrecognized_keys` issue — name the flag the user typed
+            // (kebab-case) instead of the internal camelCase key. The `_`
+            // key holds stray positionals, not a flag.
+            if (issue.code === 'unrecognized_keys') {
+                for (const key of issue.keys) {
+                    if (key === '_') {
+                        const stray = (flagMap._ as string[]).join(' ');
+                        lines.push(`  unexpected argument(s): ${stray}`);
+                    } else {
+                        lines.push(`  unknown option --${camelToKebab(key)}`);
+                    }
+                }
+                continue;
+            }
             const path = issue.path.length > 0 ? issue.path.join('.') : '(root)';
             lines.push(`  ${path} — ${issue.message}`);
         }
+        lines.push(`Run 'llmem --help' for usage.`);
         throw new CliError(lines.join('\n'), 1);
     }
 
