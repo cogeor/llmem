@@ -26,10 +26,18 @@ export function renderHealthReport(report: HealthReport): string {
     lines.push(
         `call cycles: ${v.callCyclesMutual} (mutual) / ${v.callCyclesRecursion} (recursion)`,
     );
+    // A4: the headline clone count is the actionable subset — exact-body
+    // clusters at `high` (which, post test-clamping, means their non-test
+    // members span modules). The vector keeps its recall-first totals.
+    const exactBodyHigh = report.clones.filter(
+        c => c.cloneType === 'exact-body' && c.severity === 'high',
+    ).length;
     lines.push(
-        `clone clusters: ${v.cloneClustersHigh} (high) / ${v.cloneClustersTotal} (total)`,
+        `clone clusters: ${exactBodyHigh} high (exact-body, cross-module, non-test) / ${v.cloneClustersTotal} total`,
     );
-    lines.push(`hub outliers: ${v.hubOutliers} (max fan-in ${v.maxFanIn})`);
+    lines.push(
+        `hubs: ${v.hubUnstable} unstable / ${v.hubOutliers - v.hubUnstable} kernel (max fan-in ${v.maxFanIn})`,
+    );
     lines.push(
         `interface width: max W_eff ${v.maxEffectiveWidth.toFixed(2)}, ${v.interfaceWidthShallowWide} shallow-wide module(s)`,
     );
@@ -42,6 +50,7 @@ export function renderHealthReport(report: HealthReport): string {
         lines.push('No import cycles found.');
     } else {
         lines.push(`Found ${cycles.length} import cycle(s):`);
+        const MEMBER_CAP = 20;
         cycles.forEach((f, i) => {
             lines.push('');
             lines.push(
@@ -50,7 +59,18 @@ export function renderHealthReport(report: HealthReport): string {
                     `edges are type-only (erased at compile time); ` +
                     `runtime cycle is ${f.runtimeMembers?.length ?? f.members.length} files`,
             );
-            lines.push(`  ${f.shortestPath.join(' -> ')}`);
+            // The header counts the WHOLE SCC, so list its members — the
+            // shortest loop below is one example path, not the full cycle.
+            const shown =
+                f.members.length <= MEMBER_CAP
+                    ? f.members
+                    : f.members.slice(0, MEMBER_CAP);
+            const more =
+                f.members.length > MEMBER_CAP
+                    ? `, … +${f.members.length - MEMBER_CAP} more`
+                    : '';
+            lines.push(`  members: ${shown.join(', ')}${more}`);
+            lines.push(`  example loop (shortest): ${f.shortestPath.join(' -> ')}`);
         });
     }
 
@@ -83,44 +103,73 @@ export function renderHealthReport(report: HealthReport): string {
     // §3 Duplication (Loop 06 exact-body + Loop 07 shared-literal). Clusters are
     // already combined + ranked by `findClones` (severity band → strength → id);
     // the renderer must NOT re-sort. Deterministic, no timestamp.
+    //
+    // A4: the markdown lists EXACT-BODY clusters only. Shared-literal clusters
+    // (colors, ports, marker arrays) are recall bait for the review checklist —
+    // they dominated the human report (500+ clusters on llmem itself) without
+    // being actionable, so they collapse to one summary line here. They remain
+    // untouched in the JSON report and clone-edgelist.json.
     lines.push('');
     lines.push('## 3. Duplication');
-    const clones = report.clones;
-    if (clones.length === 0) {
-        lines.push('No duplication found.');
+    const exactBodyClones = report.clones.filter(c => c.cloneType === 'exact-body');
+    const literalClusterCount = report.clones.length - exactBodyClones.length;
+    if (exactBodyClones.length === 0) {
+        lines.push('No exact-body duplication found.');
     } else {
-        lines.push(`Found ${clones.length} clone cluster(s):`);
-        clones.forEach((c, i) => {
+        lines.push(`Found ${exactBodyClones.length} exact-body clone cluster(s):`);
+        exactBodyClones.forEach((c, i) => {
             lines.push('');
             const note =
                 c.severity === 'low' ? ' [sibling-boilerplate]' : '';
-            const kind =
-                c.cloneType === 'shared-literal'
-                    ? ` [shared-literal: ${c.sharedKind}]`
-                    : '';
             lines.push(
-                `Cluster ${i + 1} (${c.severity})${kind}${note}: ${c.members.length} members`,
+                `Cluster ${i + 1} (${c.severity})${note}: ${c.members.length} members`,
             );
             lines.push(`  members: ${c.members.join(', ')}`);
             lines.push(`  files: ${c.relatedFiles.join(', ')}`);
         });
     }
+    if (literalClusterCount > 0) {
+        lines.push('');
+        lines.push(
+            `shared-literal clusters: ${literalClusterCount} (feeding review items D1/D2) — see JSON`,
+        );
+    }
 
     // Order-preserving: the hubs array is already sorted by metrics.ts (degree
-    // desc, id asc) — do NOT re-sort.
+    // desc, id asc) — do NOT re-sort. A3: unstable hubs are the SIGNAL (all
+    // listed); kernels are healthy shared dependencies shown as capped context
+    // so they stop drowning the report (llmem itself has ~100 of them).
     lines.push('');
     lines.push('## 4. Hubs & instability');
     const hubs = report.hubs;
-    if (hubs.length === 0) {
-        lines.push('No hub outliers found.');
+    const unstableHubs = hubs.filter(h => h.label === 'unstable-hub');
+    const kernels = hubs.filter(h => h.label === 'kernel');
+    const hubRow = (h: (typeof hubs)[number]): string =>
+        `| ${h.relatedFiles[0]} | ${h.ca} | ${h.ce} | ${h.instability.toFixed(2)} |`;
+
+    lines.push('');
+    lines.push('### Unstable hubs');
+    if (unstableHubs.length === 0) {
+        lines.push('No unstable hubs found.');
     } else {
-        lines.push('| File | Ca (in) | Ce (out) | I | Label |');
-        lines.push('| --- | --- | --- | --- | --- |');
-        hubs.forEach(h => {
-            lines.push(
-                `| ${h.relatedFiles[0]} | ${h.ca} | ${h.ce} | ${h.instability.toFixed(2)} | ${h.label} |`,
-            );
-        });
+        lines.push('| File | Ca (in) | Ce (out) | I |');
+        lines.push('| --- | --- | --- | --- |');
+        unstableHubs.forEach(h => lines.push(hubRow(h)));
+    }
+
+    const KERNEL_CAP = 10;
+    lines.push('');
+    lines.push('### Kernels (context — healthy shared dependencies)');
+    if (kernels.length === 0) {
+        lines.push('No kernels flagged.');
+    } else {
+        lines.push('| File | Ca (in) | Ce (out) | I |');
+        lines.push('| --- | --- | --- | --- |');
+        kernels.slice(0, KERNEL_CAP).forEach(h => lines.push(hubRow(h)));
+        if (kernels.length > KERNEL_CAP) {
+            lines.push('');
+            lines.push(`… +${kernels.length - KERNEL_CAP} more kernels (see JSON)`);
+        }
     }
 
     // §5 Module interfaces (Loop 05 interface-width). The findings array is

@@ -3,7 +3,7 @@
  *
  * Thin CLI adapter over the pure `runHealthScan` + `renderHealthReport`
  * capability (`src/application/analysis`). It:
- *   1. detects the workspace + guards that edge lists exist,
+ *   1. detects the workspace + auto-scans if no edge lists exist (ensureGraph),
  *   2. builds a `WorkspaceContext` and runs the scan,
  *   3. writes `<workspace>/.llmem/health-report.{md,json}` to the WORKSPACE
  *      ROOT (NOT `ctx.artifactRoot`, which is `.llmem/graph`) — mirroring the
@@ -22,11 +22,11 @@ import { z } from 'zod';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
-import { hasEdgeLists } from '../../viewer-generator';
 import { detectWorkspace } from '../../workspace';
 import { runHealthScan, renderHealthReport, reportHasFindingKind } from '../../application/analysis';
 import type { CommandSpec } from '../registry';
 import { CliError } from '../errors';
+import { ensureGraph } from './ensure-graph';
 
 const healthArgs = z.object({
     workspace: z.string().optional()
@@ -97,11 +97,12 @@ export const healthCommand: CommandSpec<typeof healthArgs> = {
     async run(args, cli) {
         const workspace = detectWorkspace(args.workspace);
 
-        if (!hasEdgeLists(workspace)) {
-            throw new CliError('Error: No edge lists found. Please scan workspace first.', 1);
-        }
-
         const ctx = await cli.createWorkspace(workspace);
+
+        // A5: zero-config — auto-scan on first run instead of demanding a
+        // prior `llmem scan`. Probes ctx.config.artifactRoot (bug 1.3: the
+        // old guard probed the DEFAULT root, breaking LLMEM_ARTIFACT_ROOT).
+        await ensureGraph(ctx, { requireGraph: true });
 
         // TODO(Loop 09): forward refresh/severity once HealthScanOptions accepts
         // them. `HealthScanOptions` is empty this loop, so pass undefined to

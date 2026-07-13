@@ -17,6 +17,10 @@ import {
     type EntityHash,
 } from '../../../../src/application/analysis/clones';
 import {
+    clusterSeverity,
+    isTestFile,
+} from '../../../../src/application/analysis/clones-literals';
+import {
     normalizeBody,
     sha256Hex,
 } from '../../../../src/application/analysis/clones-normalize';
@@ -103,5 +107,60 @@ test('same-file pair ranks lower (low) than cross-layer pair (high)', () => {
     assert.ok(
         rank[sameFile!.severity] < rank[crossLayer!.severity],
         'same-file ranks lower than cross-layer',
+    );
+});
+
+// A4 (2026-07-13): severity distance is measured over NON-TEST files only —
+// a src file mirrored by its own test must not earn cross-layer `high`.
+test('isTestFile: tests/ prefix, __tests__/, .test./.spec. segments', () => {
+    assert.equal(isTestFile('tests/unit/core/ids.test.ts'), true);
+    assert.equal(isTestFile('packages/x/tests/helper.ts'), true);
+    assert.equal(isTestFile('src/__tests__/x.ts'), true);
+    assert.equal(isTestFile('src/foo.test.ts'), true);
+    assert.equal(isTestFile('src/foo.spec.tsx'), true);
+    assert.equal(isTestFile('src/application/clones.ts'), false);
+    assert.equal(isTestFile('src/testing-utils.ts'), false, 'name containing "test" is not a test file');
+});
+
+test('clusterSeverity: test members never raise severity', () => {
+    const eh2 = (entityId: string, fileId: string): EntityHash =>
+        ({ entityId, fileId, normalizedHash: 'H', tokenCount: 30, literalHashes: [] });
+
+    // src + its own test mirror → low (was high: src vs tests span modules).
+    assert.equal(
+        clusterSeverity([
+            eh2('src/graph/scc.ts::f', 'src/graph/scc.ts'),
+            eh2('tests/unit/graph/scc.test.ts::f', 'tests/unit/graph/scc.test.ts'),
+        ]),
+        'low',
+    );
+
+    // two src files, same module (+ a test member) → medium.
+    assert.equal(
+        clusterSeverity([
+            eh2('src/graph/a.ts::f', 'src/graph/a.ts'),
+            eh2('src/graph/b.ts::g', 'src/graph/b.ts'),
+            eh2('tests/unit/graph/a.test.ts::f', 'tests/unit/graph/a.test.ts'),
+        ]),
+        'medium',
+    );
+
+    // two src files across modules (+ a test member) → still high.
+    assert.equal(
+        clusterSeverity([
+            eh2('src/cli/x.ts::f', 'src/cli/x.ts'),
+            eh2('src/webview/y.ts::g', 'src/webview/y.ts'),
+            eh2('tests/unit/cli/x.test.ts::f', 'tests/unit/cli/x.test.ts'),
+        ]),
+        'high',
+    );
+
+    // all-test cluster → low.
+    assert.equal(
+        clusterSeverity([
+            eh2('tests/unit/a.test.ts::f', 'tests/unit/a.test.ts'),
+            eh2('tests/integration/b.test.ts::g', 'tests/integration/b.test.ts'),
+        ]),
+        'low',
     );
 });

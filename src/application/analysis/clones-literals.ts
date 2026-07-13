@@ -208,38 +208,11 @@ export interface EntityHash {
     literalHashes: string[]; // Loop 07: kind-prefixed literal-payload hashes
 }
 
-/**
- * Top-level module of a workspace-relative fileId for the distance dimension:
- * the first TWO segments (`src/application`), so two files under the SAME
- * capability area count as same-module. Outside `src/` → first segment.
- */
-function moduleOf(fileId: string): string {
-    const parts = fileId.split('/');
-    if (parts[0] === 'src' && parts.length >= 2) return parts.slice(0, 2).join('/');
-    return parts[0] ?? fileId;
-}
-
-/**
- * Severity = strength × distance (RANKING ONLY); distance clamps it:
- *   - all members SAME file              → low  (sibling boilerplate)
- *   - different files, SAME top-level mod → medium
- *   - members span DIFFERENT modules      → high (cross-layer)
- */
-export function clusterSeverity(members: EntityHash[]): Severity {
-    const files = new Set(members.map(m => m.fileId));
-    if (files.size <= 1) return 'low';
-    const modules = new Set([...files].map(moduleOf));
-    return modules.size <= 1 ? 'medium' : 'high';
-}
-
-/** Human distance tag for a severity (shared by both bucketing passes). */
-export function distanceNote(severity: Severity): string {
-    return severity === 'low'
-        ? ' (same-file sibling-boilerplate)'
-        : severity === 'medium'
-          ? ' (same-module)'
-          : ' (cross-layer)';
-}
+// Severity/distance ranking lives in `clones-severity.ts` (extracted to keep
+// this file within its layer budget); re-exported here so `clones.ts` and
+// tests keep one import site for the bucketing toolkit.
+export { clusterSeverity, distanceNote, isTestFile } from './clones-severity';
+import { clusterSeverity, distanceNote } from './clones-severity';
 
 /**
  * Consecutive-chain clone edges (n-1, deterministic — avoids O(n²) on large

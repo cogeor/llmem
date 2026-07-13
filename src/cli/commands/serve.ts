@@ -20,11 +20,11 @@ import * as fs from 'fs';
 import { z } from 'zod';
 
 import { GraphServer } from '../../http-server';
-import { hasEdgeLists, generateGraph } from '../../viewer-generator';
-import { scanFolderRecursive, formatUnsupportedSourceHints } from '../../application/scan';
+import { generateGraph } from '../../viewer-generator';
 import { detectWorkspace } from '../../workspace';
-import { DEFAULT_PORT, DEFAULT_CONFIG } from '../../config-defaults';
+import { DEFAULT_PORT } from '../../config-defaults';
 import type { CommandSpec } from '../registry';
+import { ensureGraph } from './ensure-graph';
 
 // Loop 21 — optional explicit override for the webview asset directory.
 // When set, the launcher uses this path verbatim; otherwise it falls back
@@ -62,32 +62,17 @@ export const serveCommand: CommandSpec<typeof serveArgs> = {
         const artifactRoot = ctx.config.artifactRoot;
 
         // Loop 03: zero-config. If no edge lists exist, run the canonical
-        // application-layer scan over the workspace root. We never abort the
-        // user's `serve` invocation for a missing index — they get one for free.
-        if (!hasEdgeLists(workspace, artifactRoot)) {
-            console.log('Indexing workspace... (first run)');
-            const result = await scanFolderRecursive(ctx, { folderPath: '.' });
+        // application-layer scan over the workspace root (shared `ensureGraph`
+        // since A5). We never abort the user's `serve` invocation for a
+        // missing index — they get one for free.
+        const ensured = await ensureGraph(ctx);
+        if (ensured.scanned && ensured.filesProcessed === 0) {
             console.log(
-                `Indexed ${result.filesProcessed} files ` +
-                `(${result.filesSkipped} skipped, ${result.errors.length} errors).`,
+                'No supported source files found. LLMem ships with TypeScript/JavaScript ' +
+                'support out of the box; install peer grammars (tree-sitter-python, ' +
+                'tree-sitter-rust, tree-sitter-cpp, @davisvaughan/tree-sitter-r) for ' +
+                'additional languages. Starting server anyway with an empty graph.',
             );
-            // Loop-03 / code-polish: surface skipped-language counts so
-            // users know which peer grammars to install. Zero lines when
-            // no allowlist files were silently dropped. Placed BEFORE
-            // the existing zero-files message so the two complement
-            // each other — this one covers "found some, missed others",
-            // the next one covers "found nothing".
-            for (const line of formatUnsupportedSourceHints(result.unsupportedSourceLikeCounts)) {
-                console.log(line);
-            }
-            if (result.filesProcessed === 0) {
-                console.log(
-                    'No supported source files found. LLMem ships with TypeScript/JavaScript ' +
-                    'support out of the box; install peer grammars (tree-sitter-python, ' +
-                    'tree-sitter-rust, tree-sitter-cpp, @davisvaughan/tree-sitter-r) for ' +
-                    'additional languages. Starting server anyway with an empty graph.',
-                );
-            }
         }
 
         // Regenerate if requested or if webview doesn't exist

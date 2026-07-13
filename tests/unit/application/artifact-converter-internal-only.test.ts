@@ -120,3 +120,36 @@ describe('artifactToEdgeList — internalOnly option', () => {
         assert.ok(importEdges.some((e) => e.target === 'react'), 'external edge present when internalOnly=false');
     });
 });
+
+describe('artifactToEdgeList — root-level files (regression, 2026-07-13 bug 1.1)', () => {
+    // A file at the repo ROOT has no '/' in its id. Its relative imports
+    // resolve to slashless ids too (`./b` from `a.ts` → `b.ts`), which the
+    // old classifier mistook for external modules — so internal-only scans
+    // dropped EVERY import edge of a flat repo (0 edges for a real a<->b
+    // cycle). The extension-aware classifier keeps them internal.
+    test('root importer + root target: internal edge survives internalOnly', () => {
+        const rootArtifact = artifact('a.ts', [importSpec('./b', ['helper'])]);
+
+        const { importEdges } = artifactToEdgeList(rootArtifact, 'a.ts', {
+            internalOnly: true,
+        });
+
+        assert.equal(
+            importEdges.length,
+            1,
+            `expected exactly one internal edge; got: ${importEdges.map((e) => e.target).join(', ') || '(none)'}`,
+        );
+        assert.equal(importEdges[0].source, 'a.ts');
+        assert.equal(importEdges[0].target, 'b.ts');
+    });
+
+    test('root importer + bare external specifier: still dropped in internalOnly', () => {
+        const rootArtifact = artifact('a.ts', [importSpec('react', ['useState'])]);
+
+        const { importEdges } = artifactToEdgeList(rootArtifact, 'a.ts', {
+            internalOnly: true,
+        });
+
+        assert.equal(importEdges.length, 0, 'bare specifier must remain external');
+    });
+});

@@ -136,6 +136,10 @@ export interface HealthVector {
     cloneClustersTotal: number;
     maxFanIn: number;
     hubOutliers: number;
+    // 2026-07-13 (A3): count of outliers labeled `unstable-hub` — the actual
+    // signal; `hubOutliers - hubUnstable` = kernels (healthy shared deps,
+    // context only). ADDITIVE: the vector is a diff format, never rename.
+    hubUnstable: number;
     filesOverBudget: number;
     // Loop 05 (interface-width): max W_eff over folder-scope findings (0 if
     // none) and the count of shallow-wide folder smells (severity === 'medium'
@@ -179,6 +183,7 @@ export function zeroHealthVector(): HealthVector {
         cloneClustersTotal: 0,
         maxFanIn: 0,
         hubOutliers: 0,
+        hubUnstable: 0,
         filesOverBudget: 0,
         maxEffectiveWidth: 0,
         interfaceWidthShallowWide: 0,
