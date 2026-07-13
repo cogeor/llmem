@@ -36,6 +36,7 @@
 
 import type { RecallCandidate } from '../types';
 import type { ScopedSource, SignalResult, SignalScanner } from './source-scan';
+import { resultsForQueries } from './wiring';
 
 /**
  * Match a route/view-ish type-alias declaration and capture its union body.
@@ -122,6 +123,8 @@ function registeredNames(sources: ScopedSource[]): Set<string> {
  * message. Returns an empty FD2 result list when every member is registered (the
  * harness merge tolerates empties).
  */
+export const ROUTES_QUERY_KEYS = ['routes'] as const;
+
 export const routeLiteralScanner: SignalScanner = (
     sources: ScopedSource[],
 ): SignalResult[] => {
@@ -137,5 +140,6 @@ export const routeLiteralScanner: SignalScanner = (
             note: 'route/view literal with no register* call — possibly dormant',
         });
     }
-    return [{ itemId: 'FD2', candidates }];
+    // D3: target from the registry (recallQuery 'routes').
+    return resultsForQueries(ROUTES_QUERY_KEYS, candidates);
 };

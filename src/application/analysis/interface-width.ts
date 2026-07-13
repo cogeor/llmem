@@ -63,8 +63,7 @@
  */
 
 import type { WorkspaceContext } from '../workspace-context';
-import { ImportEdgeListStore, CallEdgeListStore } from '../../graph/edgelist';
-import { buildGraphsFromSplitEdgeLists } from '../../graph';
+import { loadGraphs } from './load-graphs';
 import type { CallGraph, ImportGraph } from '../../graph/types';
 import type { InterfaceWidthFinding, Severity } from './types';
 
@@ -540,13 +539,6 @@ export function calibrateInterfaceWidthSeverity(
 export async function computeInterfaceWidth(
     ctx: WorkspaceContext,
 ): Promise<InterfaceWidthFinding[]> {
-    const importStore = new ImportEdgeListStore(ctx.artifactRoot, ctx.io);
-    const callStore = new CallEdgeListStore(ctx.artifactRoot, ctx.io);
-    await importStore.load();
-    await callStore.load();
-    const { importGraph, callGraph } = buildGraphsFromSplitEdgeLists(
-        importStore.getData(),
-        callStore.getData(),
-    );
+    const { importGraph, callGraph } = await loadGraphs(ctx);
     return interfaceWidthFromGraph(callGraph, importGraph);
 }

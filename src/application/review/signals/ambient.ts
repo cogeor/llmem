@@ -21,6 +21,7 @@
 
 import type { RecallCandidate } from '../types';
 import type { ScopedSource, SignalResult, SignalScanner } from './source-scan';
+import { resultsForQueries } from './wiring';
 
 /**
  * The host-injected globals LLMem hands the webview at bootstrap. A `window.`/
@@ -77,6 +78,8 @@ function candidatesFor(source: ScopedSource): RecallCandidate[] {
  * every (in-scope file, injected-global) pair. Returns empty result lists when
  * nothing matches (the harness merge tolerates empties).
  */
+export const AMBIENT_QUERY_KEYS = ['ambient'] as const;
+
 export const ambientScanner: SignalScanner = (
     sources: ScopedSource[],
 ): SignalResult[] => {
@@ -84,9 +87,7 @@ export const ambientScanner: SignalScanner = (
     for (const source of sources) {
         candidates.push(...candidatesFor(source));
     }
-    // Same candidates feed both the frontend (FB1) and generic (DEP3) framings.
-    return [
-        { itemId: 'FB1', candidates: [...candidates] },
-        { itemId: 'DEP3', candidates: [...candidates] },
-    ];
+    // D3: targets come from the registry (items with recallQuery 'ambient' —
+    // the frontend FB1 and generic DEP3 framings share the candidates).
+    return resultsForQueries(AMBIENT_QUERY_KEYS, candidates);
 };

@@ -30,6 +30,7 @@
 
 import type { RecallCandidate } from '../types';
 import type { ScopedSource, SignalResult, SignalScanner } from './source-scan';
+import { resultsForQueries } from './wiring';
 
 /**
  * Match the head of an object-typed declaration up to its opening brace:
@@ -213,6 +214,8 @@ function candidatesFor(source: ScopedSource): RecallCandidate[] {
  * for every wide `interface`/object-`type` declaration in scope. Returns empty
  * result lists when nothing matches (the harness merge tolerates empties).
  */
+export const INTERFACE_DECL_QUERY_KEYS = ['interface-decl', 'interface-width'] as const;
+
 export const interfaceWidthScanner: SignalScanner = (
     sources: ScopedSource[],
 ): SignalResult[] => {
@@ -220,9 +223,11 @@ export const interfaceWidthScanner: SignalScanner = (
     for (const source of sources) {
         candidates.push(...candidatesFor(source));
     }
-    // Same candidates feed the frontend God-facade (FI1) and generic ISP (ENC5).
-    return [
-        { itemId: 'FI1', candidates: [...candidates] },
-        { itemId: 'ENC5', candidates: [...candidates] },
-    ];
+    // D3: targets from the registry. 'interface-decl' wires the generic ISP
+    // item (ENC5 — previously fed only by a hard-coded literal while its
+    // registry query mapped to nothing); 'interface-width' keeps the
+    // frontend God-facade (FI1) feed and now ALSO reaches ENC3 (deliberate
+    // recall increase — decl-level wide interfaces are evidence for the
+    // wide-module item too; the LLM filter ranks).
+    return resultsForQueries(INTERFACE_DECL_QUERY_KEYS, candidates);
 };

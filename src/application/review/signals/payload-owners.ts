@@ -27,6 +27,7 @@
 
 import type { RecallCandidate } from '../types';
 import type { ScopedSource, SignalResult, SignalScanner } from './source-scan';
+import { resultsForQueries } from './wiring';
 
 /**
  * Server-payload DTO set (from the webview memos). A binding/field annotated as
@@ -86,6 +87,8 @@ function ownershipMap(sources: ScopedSource[]): Map<string, Set<string>> {
  * the sorted owner file ids. Returns an empty FR1 result list when no DTO is
  * multi-owned (the harness merge tolerates empties).
  */
+export const PAYLOAD_OWNERS_QUERY_KEYS = ['payload-owners'] as const;
+
 export const payloadOwnerScanner: SignalScanner = (
     sources: ScopedSource[],
 ): SignalResult[] => {
@@ -101,5 +104,6 @@ export const payloadOwnerScanner: SignalScanner = (
             note: `held by ${files.length} modules: ${files.join(', ')}`,
         });
     }
-    return [{ itemId: 'FR1', candidates }];
+    // D3: target from the registry (recallQuery 'payload-owners').
+    return resultsForQueries(PAYLOAD_OWNERS_QUERY_KEYS, candidates);
 };

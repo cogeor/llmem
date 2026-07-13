@@ -33,6 +33,7 @@ import { makeEntityId } from '../../../core/ids';
 import type { RecallCandidate } from '../types';
 import { entitySpans, enclosingEntity } from './entity-spans';
 import type { ScopedSource, SignalResult, SignalScanner } from './source-scan';
+import { resultsForQueries } from './wiring';
 
 /**
  * REGISTER lexemes. `addEventListener(` is its own pattern; the method-name
@@ -132,6 +133,8 @@ function candidatesFor(source: ScopedSource): RecallCandidate[] {
  * count. Returns empty result lists when nothing is unbalanced (the harness merge
  * tolerates empties).
  */
+export const LIFECYCLE_QUERY_KEYS = ['lifecycle'] as const;
+
 export const listenerBalanceScanner: SignalScanner = (
     sources: ScopedSource[],
 ): SignalResult[] => {
@@ -140,8 +143,6 @@ export const listenerBalanceScanner: SignalScanner = (
         candidates.push(...candidatesFor(source));
     }
     // Same candidates feed the frontend leak (FL1) and generic lifecycle (ST4).
-    return [
-        { itemId: 'FL1', candidates: [...candidates] },
-        { itemId: 'ST4', candidates: [...candidates] },
-    ];
+    // D3: targets from the registry (recallQuery 'lifecycle' — FL1 + ST4).
+    return resultsForQueries(LIFECYCLE_QUERY_KEYS, candidates);
 };

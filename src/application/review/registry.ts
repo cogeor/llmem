@@ -73,7 +73,7 @@ export const REVIEW_REGISTRY: readonly ChecklistItem[] = Object.freeze([
         category: 'Dead / unreachable / misleading code',
         ruleset: 'general',
         scope: 'repo',
-        recallStrength: '●●●',
+        recallStrength: '●●○',
         title: 'Unreferenced surface',
         recallQuery: 'instruction',
         promptInstruction:
@@ -84,7 +84,7 @@ export const REVIEW_REGISTRY: readonly ChecklistItem[] = Object.freeze([
         category: 'Dead / unreachable / misleading code',
         ruleset: 'general',
         scope: 'file',
-        recallStrength: '●●●',
+        recallStrength: '●●○',
         title: 'Locally dead code',
         recallQuery: 'instruction',
         promptInstruction:
@@ -119,7 +119,7 @@ export const REVIEW_REGISTRY: readonly ChecklistItem[] = Object.freeze([
         category: 'Dependency structure & layering',
         ruleset: 'general',
         scope: 'repo',
-        recallStrength: '●●●',
+        recallStrength: '●●○',
         title: 'Layer-rank violations',
         recallQuery: 'instruction',
         promptInstruction:
@@ -154,7 +154,7 @@ export const REVIEW_REGISTRY: readonly ChecklistItem[] = Object.freeze([
         category: 'Encapsulation, representation & interface shape',
         ruleset: 'general',
         scope: 'file',
-        recallStrength: '●●●',
+        recallStrength: '●●○',
         title: 'Returned internal mutable reference',
         recallQuery: 'instruction',
         promptInstruction:
@@ -211,7 +211,7 @@ export const REVIEW_REGISTRY: readonly ChecklistItem[] = Object.freeze([
         category: 'State, concurrency & lifecycle',
         ruleset: 'general',
         scope: 'file',
-        recallStrength: '●●●',
+        recallStrength: '●●○',
         title: 'Global mutable state / singletons',
         recallQuery: 'instruction',
         promptInstruction:
@@ -419,7 +419,7 @@ export const REVIEW_REGISTRY: readonly ChecklistItem[] = Object.freeze([
         category: 'Dead / dormant UI surface',
         ruleset: 'frontend',
         scope: 'repo',
-        recallStrength: '●●●',
+        recallStrength: '●●○',
         title: 'Orphan UI modules',
         recallQuery: 'instruction',
         promptInstruction:
@@ -581,7 +581,7 @@ export const REVIEW_REGISTRY: readonly ChecklistItem[] = Object.freeze([
         category: 'Component lifecycle & resource disposal',
         ruleset: 'frontend',
         scope: 'file',
-        recallStrength: '●●●',
+        recallStrength: '●●○',
         title: 'Side-effect on import',
         recallQuery: 'instruction',
         promptInstruction:
@@ -605,7 +605,7 @@ export const REVIEW_REGISTRY: readonly ChecklistItem[] = Object.freeze([
         category: 'State-model integrity',
         ruleset: 'frontend',
         scope: 'file',
-        recallStrength: '●●●',
+        recallStrength: '●●○',
         title: 'Leaked mutable state handle',
         recallQuery: 'instruction',
         promptInstruction:

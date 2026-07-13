@@ -39,13 +39,34 @@ const SKIP_EXTENSIONS = new Set([
     '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx'
 ]);
 
+/**
+ * Injectable fs seam for the file-discovery walk (D6). Production uses the
+ * real `fs`; tests inject a throwing `statSync` to exercise the
+ * unreadable-path bookkeeping without platform-specific permission tricks.
+ */
+export interface TsServiceFs {
+    readdirSync(dir: string): string[];
+    statSync(p: string): { isDirectory(): boolean };
+}
+
 export class TypeScriptService {
     private program: ts.Program | undefined;
     private workspaceRoot: string;
+    private readonly fsSeam: TsServiceFs;
+    // D6 (2026-07-13): paths the discovery walk SKIPPED because stat/readdir
+    // threw. Previously a bare `catch { continue }` — an unreadable subtree
+    // silently vanished from the ts.Program (and thus the whole graph).
+    private readonly skippedUnreadable: string[] = [];
 
-    constructor(root: string) {
+    constructor(root: string, fsSeam: TsServiceFs = fs) {
         this.workspaceRoot = root;
+        this.fsSeam = fsSeam;
         this.initializeProgram();
+    }
+
+    /** Paths skipped as unreadable during discovery (D6 breadcrumb). */
+    getSkippedUnreadable(): readonly string[] {
+        return this.skippedUnreadable;
     }
 
     private initializeProgram() {
@@ -157,9 +178,11 @@ export class TypeScriptService {
     private getTypeScriptFiles(dir: string, fileList: string[] = []): string[] {
         let entries: string[];
         try {
-            entries = fs.readdirSync(dir);
-        } catch {
-            // Directory not accessible
+            entries = this.fsSeam.readdirSync(dir);
+        } catch (e) {
+            // Directory not accessible — record + warn instead of vanishing
+            // the whole subtree silently (D6).
+            this.recordUnreadable(dir, e);
             return fileList;
         }
 
@@ -184,18 +207,29 @@ export class TypeScriptService {
             }
 
             try {
-                const stat = fs.statSync(fullPath);
+                const stat = this.fsSeam.statSync(fullPath);
                 if (stat.isDirectory()) {
                     this.getTypeScriptFiles(fullPath, fileList);
                 } else if (TS_EXTENSIONS.has(ext)) {
                     fileList.push(fullPath);
                 }
-            } catch {
-                // File not accessible - skip silently
+            } catch (e) {
+                // File not accessible — record + warn (D6); a stat failure
+                // here used to drop the path with no trace anywhere.
+                this.recordUnreadable(fullPath, e);
                 continue;
             }
         }
 
         return fileList;
+    }
+
+    /** D6: one warn breadcrumb per unreadable path, plus the counter. */
+    private recordUnreadable(p: string, cause: unknown): void {
+        this.skippedUnreadable.push(p);
+        log.warn('Skipped unreadable path during TS file discovery', {
+            path: p,
+            error: cause instanceof Error ? cause.message : String(cause),
+        });
     }
 }

@@ -227,7 +227,12 @@ export abstract class BaseEdgeListStore {
         }
     }
 
-    getNodes(): NodeEntry[] {
+    // D5 (2026-07-13): getters expose the store's INTERNAL arrays. Readonly
+    // return types make external mutation a compile error (zero runtime cost,
+    // no copying on hot paths) — mutations go through the store's mutators so
+    // the dirty flag stays truthful. Filter-getters return fresh arrays and
+    // stay mutable.
+    getNodes(): readonly NodeEntry[] {
         return this.data.nodes;
     }
 
@@ -270,25 +275,8 @@ export abstract class BaseEdgeListStore {
         }
     }
 
-    removeEdgesBySourceFile(fileId: string): void {
-        if (mutations.removeEdgesBySourceFile(this.data, fileId)) {
-            this.dirty = true;
-        }
-    }
-
-    getEdges(): EdgeEntry[] {
+    getEdges(): readonly EdgeEntry[] {
         return this.data.edges;
-    }
-
-    // ========================================================================
-    // Bulk Operations
-    // ========================================================================
-
-    updateFile(fileId: string, nodes: NodeEntry[], edges: EdgeEntry[]): void {
-        this.removeNodesByFile(fileId);
-        this.removeEdgesBySourceFile(fileId);
-        this.addNodes(nodes);
-        this.addEdges(edges);
     }
 
     clear(): void {
@@ -333,7 +321,7 @@ export abstract class BaseEdgeListStore {
         }
     }
 
-    getData(): EdgeListData {
+    getData(): Readonly<EdgeListData> {
         return this.data;
     }
 

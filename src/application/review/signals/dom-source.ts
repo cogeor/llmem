@@ -24,6 +24,7 @@
 
 import type { RecallCandidate } from '../types';
 import type { ScopedSource, SignalResult, SignalScanner } from './source-scan';
+import { resultsForQueries } from './wiring';
 
 /**
  * DOM-read-as-source patterns, tried in order; the first match in a file becomes
@@ -63,6 +64,8 @@ function firstDomReadIn(text: string): string | null {
  * `note` quotes the first matched snippet. Returns an empty FV1 result list when
  * no file reads the DOM as a source (the harness merge tolerates empties).
  */
+export const DOM_SOURCE_QUERY_KEYS = ['dom-source'] as const;
+
 export const domSourceScanner: SignalScanner = (
     sources: ScopedSource[],
 ): SignalResult[] => {
@@ -77,5 +80,6 @@ export const domSourceScanner: SignalScanner = (
             note: `reads model facts from the DOM (${snippet})`,
         });
     }
-    return [{ itemId: 'FV1', candidates }];
+    // D3: target from the registry (recallQuery 'dom-source').
+    return resultsForQueries(DOM_SOURCE_QUERY_KEYS, candidates);
 };

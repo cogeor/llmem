@@ -22,8 +22,7 @@
  */
 
 import type { WorkspaceContext } from '../workspace-context';
-import { ImportEdgeListStore, CallEdgeListStore } from '../../graph/edgelist';
-import { buildGraphsFromSplitEdgeLists } from '../../graph';
+import { loadGraphs } from './load-graphs';
 import type { ImportGraph } from '../../graph/types';
 import type { HubFinding, HubLabel } from './types';
 
@@ -161,25 +160,6 @@ export function maxFanInFromGraph(importGraph: ImportGraph): number {
 }
 
 /**
- * ctx-in / data-out: load the import + call edge-list stores, build the import
- * graph via `buildGraphsFromSplitEdgeLists`, and delegate to
- * `hubMetricsFromGraph`.
- */
-export async function computeHubMetrics(
-    ctx: WorkspaceContext,
-): Promise<HubFinding[]> {
-    const importStore = new ImportEdgeListStore(ctx.artifactRoot, ctx.io);
-    const callStore = new CallEdgeListStore(ctx.artifactRoot, ctx.io);
-    await importStore.load();
-    await callStore.load();
-    const { importGraph } = buildGraphsFromSplitEdgeLists(
-        importStore.getData(),
-        callStore.getData(),
-    );
-    return hubMetricsFromGraph(importGraph);
-}
-
-/**
  * ctx-in / data-out: build the import graph ONCE and return both the hub
  * findings and the global max fan-in (so `health.ts` avoids a double store
  * load). `maxFanIn` is the global max Ca over ALL file nodes, not `max(hubs.ca)`.
@@ -187,14 +167,7 @@ export async function computeHubMetrics(
 export async function computeHubReport(
     ctx: WorkspaceContext,
 ): Promise<{ hubs: HubFinding[]; maxFanIn: number }> {
-    const importStore = new ImportEdgeListStore(ctx.artifactRoot, ctx.io);
-    const callStore = new CallEdgeListStore(ctx.artifactRoot, ctx.io);
-    await importStore.load();
-    await callStore.load();
-    const { importGraph } = buildGraphsFromSplitEdgeLists(
-        importStore.getData(),
-        callStore.getData(),
-    );
+    const { importGraph } = await loadGraphs(ctx);
     return {
         hubs: hubMetricsFromGraph(importGraph),
         maxFanIn: maxFanInFromGraph(importGraph),
