@@ -31,7 +31,6 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { spawnSync } from 'node:child_process';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { z } from 'zod';
@@ -175,89 +174,34 @@ test('spawned describe --json deep-equals in-process buildDescribeOutput()', () 
 });
 
 // -----------------------------------------------------------------------------
-// Loop 07: explicit hidden-command behavior. Two assertions on top of the
-// REGISTRY-derived parity tests above. The previous tests pass when the
-// REGISTRY-vs-described sets agree; these two pin the loop-07 contract that
-// (a) `generate` and `stats` are absent from `describe --json`, and (b) the
-// commands remain callable despite being hidden — `findCommand` looks them
-// up by name regardless of `hidden`.
+// C1 (2026-07-13): `generate` and `stats` are DELETED (they had been hidden
+// since loop 07). They are absent from describe --json AND no longer
+// dispatch — a call gets the B1 unknown-command error (exit 1). Their jobs
+// live elsewhere: `serve` regenerates the webview; the health report header
+// carries the graph counts.
 // -----------------------------------------------------------------------------
 
-test('generate and stats are hidden — absent from describe --json', () => {
+test('generate and stats are deleted — absent from describe --json', () => {
     ensureBuilt();
     const { stdout, status } = spawnDescribe(['--json']);
     assert.equal(status, 0);
     const parsed = JSON.parse(stdout) as { commands: { name: string }[] };
-    assert.equal(
-        parsed.commands.find(c => c.name === 'generate'),
-        undefined,
-        '`generate` must not appear in describe --json (hidden in loop 07)',
-    );
-    assert.equal(
-        parsed.commands.find(c => c.name === 'stats'),
-        undefined,
-        '`stats` must not appear in describe --json (hidden in loop 07)',
-    );
+    assert.equal(parsed.commands.find(c => c.name === 'generate'), undefined);
+    assert.equal(parsed.commands.find(c => c.name === 'stats'), undefined);
 });
 
-test('generate and stats remain callable despite being hidden', () => {
+test('generate and stats are deleted — invoking them is an unknown-command error', () => {
     ensureBuilt();
-
-    // Build a tmp workspace seeded with minimal edge lists so `generate` /
-    // `stats` find what they expect (`hasEdgeLists` is just a file
-    // existence check). Inline rather than reusing a helper — the test is
-    // narrow enough that an extracted utility would obscure the intent.
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-hidden-'));
-    try {
-        fs.writeFileSync(path.join(tmp, 'package.json'), '{}', 'utf8');
-        const artifactDir = path.join(tmp, '.llmem', 'graph');
-        fs.mkdirSync(artifactDir, { recursive: true });
-        // Edge-list shape is the current wire shape from `edgelist-schema.ts`
-        // (schemaVersion: 4 + resolverVersion + nodes/edges arrays +
-        // timestamp). An empty edge list parses cleanly — `generate` will
-        // render an empty webview, `stats` will report all zeros.
-        const emptyEdgelist = JSON.stringify({
-            schemaVersion: 4,
-            resolverVersion: 'ts-resolveModuleName-v1',
-            timestamp: new Date().toISOString(),
-            nodes: [],
-            edges: [],
-        });
-        fs.writeFileSync(path.join(artifactDir, 'import-edgelist.json'), emptyEdgelist, 'utf8');
-        fs.writeFileSync(path.join(artifactDir, 'call-edgelist.json'), emptyEdgelist, 'utf8');
-
-        // `generate` exits 0 — hiding does not gate dispatch.
-        const gen = spawnSync('node', [BIN, 'generate', '--workspace', tmp], {
+    for (const name of ['generate', 'stats']) {
+        const res = spawnSync('node', [BIN, name], {
             encoding: 'utf8',
             env: { ...process.env, FORCE_COLOR: '0', LOG_LEVEL: 'error' },
         });
-        const genStdout = (gen.stdout ?? '').replace(/\r\n/g, '\n');
-        const genStderr = (gen.stderr ?? '').replace(/\r\n/g, '\n');
-        assert.equal(
-            gen.status, 0,
-            `expected generate to exit 0 (hidden but callable); stdout=${genStdout}\nstderr=${genStderr}`,
-        );
-
-        // `stats` exits 0 with the statistics header.
-        const stats = spawnSync('node', [BIN, 'stats', '--workspace', tmp], {
-            encoding: 'utf8',
-            env: { ...process.env, FORCE_COLOR: '0', LOG_LEVEL: 'error' },
-        });
-        const statsStdout = (stats.stdout ?? '').replace(/\r\n/g, '\n');
-        const statsStderr = (stats.stderr ?? '').replace(/\r\n/g, '\n');
-        assert.equal(
-            stats.status, 0,
-            `expected stats to exit 0 (hidden but callable); stdout=${statsStdout}\nstderr=${statsStderr}`,
-        );
+        const stderr = (res.stderr ?? '').replace(/\r\n/g, '\n');
+        assert.equal(res.status, 1, `'${name}' must exit 1; stderr=${stderr}`);
         assert.ok(
-            statsStdout.includes('Graph Statistics:'),
-            `stats should still print its header; got:\n${statsStdout}`,
+            stderr.includes(`Unknown command '${name}'`),
+            `'${name}' gets the unknown-command error; got:\n${stderr}`,
         );
-    } finally {
-        try {
-            fs.rmSync(tmp, { recursive: true, force: true });
-        } catch {
-            // Best-effort cleanup — Windows file watchers can delay release.
-        }
     }
 });

@@ -151,6 +151,11 @@ export interface HealthVector {
 /** Composed report assembled by `runHealthScan`. */
 export interface HealthReport {
     repo: string; // repo label (basename of workspace root)
+    /**
+     * C1 (2026-07-13): graph size header (replaces the deleted `stats`
+     * command). OPTIONAL so hand-built fixture reports keep compiling.
+     */
+    graph?: { files: number; importEdges: number; callEdges: number };
     vector: HealthVector; // the scorecard
     importCycles: CycleFinding[];
     callCycles: CycleFinding[]; // multi-node call SCCs (Loop 04)

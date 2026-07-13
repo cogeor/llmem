@@ -6,8 +6,8 @@
  * to the right handler.
  *
  * Loop 04 added the `describe` command and the optional `examples` field
- * on `CommandSpec`. Loops 05-07 will add `scan` / `document` / `init` and
- * mark legacy commands `hidden: true`.
+ * on `CommandSpec`. C1 (2026-07-13) deleted the legacy `generate` / `stats`
+ * commands — their counts live in the health report header now.
  */
 
 import { z } from 'zod';
@@ -26,8 +26,6 @@ export interface CommandSpec<A extends z.ZodTypeAny = z.ZodTypeAny> {
 
 import { serveCommand } from './commands/serve';
 import { mcpCommand } from './commands/mcp';
-import { generateCommand } from './commands/generate';
-import { statsCommand } from './commands/stats';
 import { describeCommand } from './commands/describe';
 import { scanCommand } from './commands/scan';          // Loop 05
 import { documentCommand } from './commands/document';  // Loop 06
@@ -41,8 +39,6 @@ import { reviewCommand } from './commands/review'; // review-checklist L06
 export const REGISTRY: CommandSpec<any>[] = [
     serveCommand,
     mcpCommand,
-    generateCommand,
-    statsCommand,
     findCyclesCommand,  // cycle-detection L03
     healthCommand,      // health-analysis L02
     reviewCommand,      // review-checklist L06

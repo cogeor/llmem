@@ -10,6 +10,7 @@
  */
 
 import type { WorkspaceContext } from '../workspace-context';
+import { ImportEdgeListStore, CallEdgeListStore } from '../../graph/edgelist';
 import type { HealthReport, HealthVector } from './types';
 import { zeroHealthVector } from './types';
 import { findImportCycles, findCallCycles } from './cycles';
@@ -104,12 +105,28 @@ export async function runHealthScan(
     vector.filesOverBudget = Object.values(manifest.files)
         .filter(e => e.lines > FILE_SIZE_BUDGET_LINES).length;
 
+    // C1: graph size header (replaces the deleted `stats` command). One more
+    // store load on top of the per-analyzer loads — D1 consolidates them all
+    // into a single shared loader. `files` counts distinct fileIds over the
+    // import nodes (matches the old stats command's fileCount).
+    const importStore = new ImportEdgeListStore(ctx.artifactRoot, ctx.io);
+    const callStore = new CallEdgeListStore(ctx.artifactRoot, ctx.io);
+    await importStore.load();
+    await callStore.load();
+    const fileIds = new Set<string>();
+    for (const n of importStore.getData().nodes) fileIds.add(n.fileId);
+    const graph = {
+        files: fileIds.size,
+        importEdges: importStore.getStats().edges,
+        callEdges: callStore.getStats().edges,
+    };
+
     // Basename label only (no timestamp). Split on both separators so it works
     // regardless of the OS-native form of `workspaceRoot`.
     const repo =
         ctx.workspaceRoot.split(/[\\/]/).pop() ?? ctx.workspaceRoot;
 
-    return { repo, vector, importCycles, callCycles, recursion, clones, hubs, interfaceWidth };
+    return { repo, graph, vector, importCycles, callCycles, recursion, clones, hubs, interfaceWidth };
 }
 
 /**
