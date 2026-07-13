@@ -65,9 +65,9 @@ export type {
 
 export interface BuildFolderEdgesInput {
     /** File→file import edges (source/target are file IDs already). */
-    importEdges: { source: string; target: string }[];
+    importEdges: readonly { source: string; target: string }[];
     /** Entity→entity call edges; resolve each side via `fileOf`. */
-    callEdges: { source: string; target: string }[];
+    callEdges: readonly { source: string; target: string }[];
     /**
      * Resolve a graph ID (entity or file) to its file ID, or `null` if
      * the ID does not belong to a workspace file (external / unknown).
