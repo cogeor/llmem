@@ -119,6 +119,8 @@ test('llmem --help: honest header, llmem-first examples, no npm run serve', asyn
     );
     assert.match(stdout, /llmem health/, 'health example present');
     assert.ok(!stdout.includes('npm run serve'), `npm-run examples dropped:\n${stdout}`);
+    // C2: find-cycles is a hidden alias — absent from the command list.
+    assert.ok(!stdout.includes('find-cycles'), `find-cycles hidden from help:\n${stdout}`);
 });
 
 test('llmem scan with a stray positional exits 1 with unexpected-argument', async () => {

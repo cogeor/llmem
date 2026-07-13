@@ -68,26 +68,6 @@
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false,
         "properties": {
-          "workspace": {
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
-      "description": "Report import dependency cycles",
-      "examples": [
-        {
-          "command": "llmem find-cycles",
-          "scenario": "List import cycles in the auto-detected workspace"
-        }
-      ],
-      "name": "find-cycles"
-    },
-    {
-      "args": {
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "additionalProperties": false,
-        "properties": {
           "failOn": {
             "description": "Exit non-zero if the report has >=1 finding of this kind (e.g. import-cycle)",
             "type": "string"
