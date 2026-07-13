@@ -4,7 +4,7 @@
  * Thin CLI adapter over the pure WS-2 recall (`runReviewRecall`) + WS-3 render
  * (`renderReviewChecklist`) capability (`src/application/review`). It mirrors
  * `src/cli/commands/health.ts` exactly:
- *   1. detects the workspace + guards that edge lists exist (SAME CliError),
+ *   1. detects the workspace + auto-scans if no edge lists exist (ensureGraph),
  *   2. builds a `WorkspaceContext`, runs the recall pass for `path` (empty =
  *      repo root, folder scope, whole tree),
  *   3. writes `<workspace>/.llmem/review/<sanitized path>.{md,json}` to the
@@ -20,7 +20,6 @@ import { z } from 'zod';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
-import { hasEdgeLists } from '../../viewer-generator';
 import { detectWorkspace } from '../../workspace';
 import {
     runReviewRecall,
@@ -28,7 +27,7 @@ import {
     reviewArtifactRelPath,
 } from '../../application/review';
 import type { CommandSpec } from '../registry';
-import { CliError } from '../errors';
+import { ensureGraph } from './ensure-graph';
 
 const reviewArgs = z.object({
     workspace: z.string().optional()
@@ -109,11 +108,11 @@ export const reviewCommand: CommandSpec<typeof reviewArgs> = {
     async run(args, cli) {
         const workspace = detectWorkspace(args.workspace);
 
-        if (!hasEdgeLists(workspace)) {
-            throw new CliError('Error: No edge lists found. Please scan workspace first.', 1);
-        }
-
         const ctx = await cli.createWorkspace(workspace);
+
+        // A5: zero-config — auto-scan on first run instead of demanding a
+        // prior `llmem scan`. Probes ctx.config.artifactRoot (bug 1.3).
+        await ensureGraph(ctx, { requireGraph: true });
 
         // Empty path = whole-repo review (folder scope, every in-subtree
         // finding). `normalizeReviewPath('') === ''` and

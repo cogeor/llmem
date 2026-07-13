@@ -15,14 +15,13 @@
 
 import { z } from 'zod';
 
-import { hasEdgeLists } from '../../viewer-generator';
 import { buildGraphsFromSplitEdgeLists } from '../../graph';
 import { ImportEdgeListStore, CallEdgeListStore } from '../../graph/edgelist';
 import { ImportGraph } from '../../graph/types';
 import { importCyclesFromGraph } from '../../application/analysis';
 import { detectWorkspace } from '../../workspace';
 import type { CommandSpec } from '../registry';
-import { CliError } from '../errors';
+import { ensureGraph } from './ensure-graph';
 
 /**
  * Render an `ImportGraph` into the printable cycle report.
@@ -84,11 +83,11 @@ export const findCyclesCommand: CommandSpec<typeof findCyclesArgs> = {
     async run(args, cli) {
         const workspace = detectWorkspace(args.workspace);
 
-        if (!hasEdgeLists(workspace)) {
-            throw new CliError('Error: No edge lists found. Please scan workspace first.', 1);
-        }
-
         const ctx = await cli.createWorkspace(workspace);
+
+        // A5: zero-config — auto-scan on first run instead of demanding a
+        // prior `llmem scan`. Probes ctx.config.artifactRoot (bug 1.3).
+        await ensureGraph(ctx, { requireGraph: true });
 
         const importStore = new ImportEdgeListStore(ctx.artifactRoot, ctx.io);
         const callStore = new CallEdgeListStore(ctx.artifactRoot, ctx.io);

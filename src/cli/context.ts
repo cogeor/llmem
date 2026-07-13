@@ -16,6 +16,7 @@ import {
     type RuntimeConfig,
     type WorkspaceContext,
 } from '../application/workspace-context';
+import { ENV_VARS } from '../config-defaults';
 import type { Logger } from '../core/logger';
 
 export interface CliContext {
@@ -60,11 +61,21 @@ export function createCliContext(): CliContext {
         env: process.env,
         log,
         error,
-        createWorkspace: (workspaceRoot, configOverrides) =>
-            initWorkspaceContext({
+        // A5 (bug 1.3): honor LLMEM_ARTIFACT_ROOT for CLI commands. The help
+        // text has always documented it (and the MCP server honors it), but
+        // the loose context factory only merges explicit overrides over
+        // DEFAULT_CONFIG — so without this seam the env var was dead for the
+        // CLI. Explicit per-command overrides still win.
+        createWorkspace: (workspaceRoot, configOverrides) => {
+            const envArtifactRoot = process.env[ENV_VARS.ARTIFACT_ROOT];
+            return initWorkspaceContext({
                 workspaceRoot,
-                configOverrides,
+                configOverrides: {
+                    ...(envArtifactRoot ? { artifactRoot: envArtifactRoot } : {}),
+                    ...configOverrides,
+                },
                 logger: cliLogger,
-            }),
+            });
+        },
     };
 }
