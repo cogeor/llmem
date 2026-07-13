@@ -107,7 +107,10 @@ async function runCli(): Promise<void> {
         throw new CliError(lines.join('\n'), 1);
     }
 
-    const ctx = createCliContext();
+    // B3: `--verbose` (where a command declares it) surfaces logger.debug
+    // diagnostics through the CLI logger.
+    const verbose = (parsed.data as { verbose?: boolean }).verbose === true;
+    const ctx = createCliContext({ verbose });
     await command.run(parsed.data, ctx);
 }
 

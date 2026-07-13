@@ -102,7 +102,7 @@ export async function runParser(
     // post-null-check placement) and only when the caller opts in.
     if (logProgress) {
         const langId = registry.getLanguageId(absPath);
-        logger.info(`[GenerateEdges] Processing ${langId} file: ${rel}`);
+        logger.debug?.(`[GenerateEdges] Processing ${langId} file: ${rel}`);
     }
 
     try {

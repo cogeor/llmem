@@ -125,9 +125,12 @@ async function runServeZeroConfig(extraEnv: Record<string, string>): Promise<voi
     });
 
     try {
+        // B3: wait on the stdout ready line — it prints AFTER the structured
+        // "Server running" stderr announcement, so both are in the buffer
+        // when it matches.
         const out = await waitForOutput(
             child,
-            /Server running.*127\.0\.0\.1:(\d+)/,
+            /➜ Open http:\/\/localhost:(\d+)/,
             60_000,
         );
         const m = out.match(/127\.0\.0\.1:(\d+)/);
@@ -164,6 +167,19 @@ async function runServeZeroConfig(extraEnv: Record<string, string>): Promise<voi
             out,
             /Indexed \d+ files/,
             'expected an "Indexed N files" summary line in output',
+        );
+
+        // B3: the human-facing ready line on stdout, with the ACTUAL bound
+        // port; diagnostic [GenerateEdges] chatter is debug-only (absent
+        // without --verbose).
+        assert.match(
+            out,
+            /➜ Open http:\/\/localhost:\d+/,
+            `expected the "➜ Open http://localhost:<port>" ready line:\n${out}`,
+        );
+        assert.ok(
+            !out.includes('[GenerateEdges]'),
+            `no [GenerateEdges] diagnostics without --verbose:\n${out}`,
         );
     } finally {
         child.kill('SIGINT');

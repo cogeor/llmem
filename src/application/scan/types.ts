@@ -23,6 +23,14 @@ export interface ScanError {
 export interface ScanFolderRequest {
     /** Workspace-relative folder path (forward slashes). */
     folderPath: string;
+    /**
+     * B3 (2026-07-13): invoked once per file handed to a parser, BEFORE the
+     * parse, with the workspace-relative path. `scanFolderRecursive` threads
+     * the same callback to every subfolder. Hosts use it for progress output
+     * (the application layer stays console-free — this is a callback seam,
+     * not a print). Callers wanting a running count keep their own counter.
+     */
+    onFile?: (relPath: string) => void;
 }
 
 /** Per-call request fields for `scanFile`. */

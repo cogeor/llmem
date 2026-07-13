@@ -111,6 +111,12 @@ export const serveCommand: CommandSpec<typeof serveArgs> = {
 
         await server.start();
 
+        // B3: the one line a first-time user needs, on stdout (the
+        // structured "Server running" announcement goes to stderr and is
+        // easy to miss). getPort() reports the ACTUAL bound port after the
+        // EADDRINUSE walk-up, so the printed URL always works.
+        console.log(`➜ Open http://localhost:${server.getPort()}`);
+
         // Handle Ctrl+C gracefully. This is the one legitimate `process.exit`
         // in a command module (A-grade #2): a SIGINT handler must terminate the
         // long-running server process itself — there is no `run()` caller left

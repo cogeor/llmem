@@ -20,6 +20,7 @@ import { hasEdgeLists } from '../../viewer-generator';
 import { scanFolderRecursive, formatUnsupportedSourceHints } from '../../application/scan';
 import type { WorkspaceContext } from '../../application/workspace-context';
 import { CliError } from '../errors';
+import { createScanProgress } from '../progress';
 
 export interface EnsureGraphResult {
     /** True when a first-run scan was performed (edge lists were missing). */
@@ -48,7 +49,13 @@ export async function ensureGraph(
     }
 
     console.log('Indexing workspace... (first run)');
-    const result = await scanFolderRecursive(ctx, { folderPath: '.' });
+    // B3: live progress (overwriting TTY line / CI dots via the onFile seam).
+    const progress = createScanProgress();
+    const result = await scanFolderRecursive(ctx, {
+        folderPath: '.',
+        onFile: progress.onFile,
+    });
+    progress.finish();
     console.log(
         `Indexed ${result.filesProcessed} files ` +
         `(${result.filesSkipped} skipped, ${result.errors.length} errors).`,

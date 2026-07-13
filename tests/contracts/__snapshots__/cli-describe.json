@@ -238,6 +238,11 @@
             "description": "Workspace-relative folder to scan (defaults to the whole workspace)",
             "type": "string"
           },
+          "verbose": {
+            "default": false,
+            "description": "Show per-file scan diagnostics",
+            "type": "boolean"
+          },
           "workspace": {
             "description": "Workspace root directory (auto-detected if omitted)",
             "type": "string"

@@ -20,11 +20,13 @@ import { buildAndSaveFolderArtifacts } from '../../application/folder-artifacts'
 import { detectWorkspace } from '../../workspace';
 import type { CommandSpec } from '../registry';
 import { CliError } from '../errors';
+import { createScanProgress } from '../progress';
 
 const scanArgs = z.object({
     workspace: z.string().optional().describe('Workspace root directory (auto-detected if omitted)'),
     folder: z.string().default('.').describe('Workspace-relative folder to scan (defaults to the whole workspace)'),
     external: z.boolean().default(false).describe('Include external-module import edges (default: internal-only)'),
+    verbose: z.boolean().default(false).describe('Show per-file scan diagnostics'),
 }).strict();
 
 export const scanCommand: CommandSpec<typeof scanArgs> = {
@@ -52,7 +54,15 @@ export const scanCommand: CommandSpec<typeof scanArgs> = {
 
         console.log(`Scanning ${args.folder}...`);
 
-        const result = await scanFolderRecursive(ctx, { folderPath: args.folder });
+        // B3: live progress — an overwriting status line on a TTY, dots in
+        // CI/piped output. Suppressed under --verbose (the per-file debug
+        // diagnostics already narrate progress there).
+        const progress = createScanProgress();
+        const result = await scanFolderRecursive(ctx, {
+            folderPath: args.folder,
+            onFile: args.verbose ? undefined : progress.onFile,
+        });
+        progress.finish();
 
         console.log(
             `Indexed ${result.filesProcessed} files ` +

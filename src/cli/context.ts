@@ -41,7 +41,7 @@ export interface CliContext {
     ) => Promise<WorkspaceContext>;
 }
 
-export function createCliContext(): CliContext {
+export function createCliContext(opts: { verbose?: boolean } = {}): CliContext {
     // eslint-disable-next-line no-console
     const log = (msg: string) => console.log(msg);
     // eslint-disable-next-line no-console
@@ -49,11 +49,13 @@ export function createCliContext(): CliContext {
 
     // Bridge CLI hooks to the application `Logger` shape. info/warn route
     // through `log`; error routes through `error`. Application services
-    // call `logger.info(...)` for progress.
+    // call `logger.info(...)` for progress. `debug` (B3) is diagnostic
+    // chatter ([GenerateEdges] et al.) — surfaced only under --verbose.
     const cliLogger: Logger = {
         info: (m) => log(m),
         warn: (m) => log(m),
         error: (m) => error(m),
+        debug: opts.verbose ? (m) => log(m) : undefined,
     };
 
     return {

@@ -44,12 +44,12 @@ export async function scanFolder(
     const existingCallEdgeCount = callStore.getStats().edges;
     const existingImportEdgeCount = importStore.getStats().edges;
 
-    logger.info(`[GenerateEdges] Processing folder: ${folderPath}`);
-    logger.info(`[GenerateEdges] Existing edges - call: ${existingCallEdgeCount}, import: ${existingImportEdgeCount}`);
+    logger.debug?.(`[GenerateEdges] Processing folder: ${folderPath}`);
+    logger.debug?.(`[GenerateEdges] Existing edges - call: ${existingCallEdgeCount}, import: ${existingImportEdgeCount}`);
 
     // Count lines in folder
     const lineCount = countFolderLines(workspaceRoot, absoluteFolder);
-    logger.info(`[GenerateEdges] Folder stats: ${lineCount.fileCount} files, ${lineCount.totalLines} lines`);
+    logger.debug?.(`[GenerateEdges] Folder stats: ${lineCount.fileCount} files, ${lineCount.totalLines} lines`);
 
     // Get parser registry (language-agnostic)
     const registry = ParserRegistry.getInstance();
@@ -132,7 +132,7 @@ export async function scanFolder(
         // 'unsupported' → not parsed, not a §7 gate; nothing recorded here.
     }
 
-    logger.info(`[GenerateEdges] Found ${sourceFiles.length} supported files in folder`);
+    logger.debug?.(`[GenerateEdges] Found ${sourceFiles.length} supported files in folder`);
 
     let processedCount = 0;
     let skippedCount = 0;
@@ -142,6 +142,10 @@ export async function scanFolder(
 
     for (const absoluteFilePath of sourceFiles) {
         const relativePath = path.relative(workspaceRoot, absoluteFilePath).replace(/\\/g, '/');
+
+        // B3: progress seam — fires before the parse so hosts can show the
+        // file currently being worked on.
+        req.onFile?.(relativePath);
 
         // runParser instantiates the language extractor, which lazily
         // require()s the tree-sitter native core inside its constructor. If
@@ -213,7 +217,7 @@ export async function scanFolder(
     const actualNewCallEdges = finalCallEdgeCount - existingCallEdgeCount;
     const actualNewImportEdges = finalImportEdgeCount - existingImportEdgeCount;
 
-    logger.info(`[GenerateEdges] Processed ${processedCount} files, added ${actualNewCallEdges} call edges, ${actualNewImportEdges} import edges`);
+    logger.debug?.(`[GenerateEdges] Processed ${processedCount} files, added ${actualNewCallEdges} call edges, ${actualNewImportEdges} import edges`);
 
     // Suppress unused-var lints for raw counters (kept for parity with legacy
     // logging shape where these increment per parser-success).
