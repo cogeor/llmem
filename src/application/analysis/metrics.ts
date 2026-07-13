@@ -160,17 +160,6 @@ export function maxFanInFromGraph(importGraph: ImportGraph): number {
 }
 
 /**
- * ctx-in / data-out: load the import + call edge-list stores, build the import
- * graph via `buildGraphsFromSplitEdgeLists`, and delegate to
- * `hubMetricsFromGraph`.
- */
-export async function computeHubMetrics(
-    ctx: WorkspaceContext,
-): Promise<HubFinding[]> {
-    return hubMetricsFromGraph((await loadGraphs(ctx)).importGraph);
-}
-
-/**
  * ctx-in / data-out: build the import graph ONCE and return both the hub
  * findings and the global max fan-in (so `health.ts` avoids a double store
  * load). `maxFanIn` is the global max Ca over ALL file nodes, not `max(hubs.ca)`.

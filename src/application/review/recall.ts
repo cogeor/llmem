@@ -322,7 +322,7 @@ export async function runReviewRecall(
         ctx,
         importGraph,
         checklist.path,
-        checklist.scope === 'repo' ? 'folder' : checklist.scope,
+        checklist.scope,
     );
     const signalMap = runSignalScanners(sources, ALL_SCANNERS);
     return mergeSignals(checklist, signalMap);

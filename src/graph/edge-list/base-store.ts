@@ -270,25 +270,8 @@ export abstract class BaseEdgeListStore {
         }
     }
 
-    removeEdgesBySourceFile(fileId: string): void {
-        if (mutations.removeEdgesBySourceFile(this.data, fileId)) {
-            this.dirty = true;
-        }
-    }
-
     getEdges(): EdgeEntry[] {
         return this.data.edges;
-    }
-
-    // ========================================================================
-    // Bulk Operations
-    // ========================================================================
-
-    updateFile(fileId: string, nodes: NodeEntry[], edges: EdgeEntry[]): void {
-        this.removeNodesByFile(fileId);
-        this.removeEdgesBySourceFile(fileId);
-        this.addNodes(nodes);
-        this.addEdges(edges);
     }
 
     clear(): void {

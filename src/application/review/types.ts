@@ -71,7 +71,12 @@ export interface ChecklistEntry {
 /** The composed checklist for one reviewed unit. */
 export interface ReviewChecklist {
     readonly path: string;
-    readonly scope: ItemScope; // the unit scope this checklist was built for
+    /**
+     * The unit scope this checklist was built for. Never 'repo':
+     * `detectPathKind` maps every path (incl. '' = whole repo) to
+     * file|folder — a repo review IS a folder review of the root (D4).
+     */
+    readonly scope: Exclude<ItemScope, 'repo'>;
     readonly ruleset: 'general' | 'frontend' | 'both';
     readonly entries: readonly ChecklistEntry[];
     /**

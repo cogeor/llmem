@@ -65,17 +65,6 @@ export function addEdge(
     return 'duplicate';
 }
 
-/** Remove edges whose source starts with `fileId`. Returns true if any removed. */
-export function removeEdgesBySourceFile(data: EdgeListData, fileId: string): boolean {
-    const before = data.edges.length;
-    data.edges = data.edges.filter(e => {
-        // For import edges: source is the file ID.
-        // For call edges: source is an entity graph-ID; see src/core/ids.ts.
-        return !e.source.startsWith(fileId);
-    });
-    return data.edges.length !== before;
-}
-
 // ============================================================================
 // Folder / file removal
 // ============================================================================

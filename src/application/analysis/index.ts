@@ -9,7 +9,6 @@
 export * from './types';
 export { findImportCycles, importCyclesFromGraph } from './cycles';
 export {
-    computeHubMetrics,
     hubMetricsFromGraph,
     computeHubReport,
     maxFanInFromGraph,
