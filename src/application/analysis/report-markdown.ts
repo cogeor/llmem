@@ -42,6 +42,7 @@ export function renderHealthReport(report: HealthReport): string {
         lines.push('No import cycles found.');
     } else {
         lines.push(`Found ${cycles.length} import cycle(s):`);
+        const MEMBER_CAP = 20;
         cycles.forEach((f, i) => {
             lines.push('');
             lines.push(
@@ -50,7 +51,18 @@ export function renderHealthReport(report: HealthReport): string {
                     `edges are type-only (erased at compile time); ` +
                     `runtime cycle is ${f.runtimeMembers?.length ?? f.members.length} files`,
             );
-            lines.push(`  ${f.shortestPath.join(' -> ')}`);
+            // The header counts the WHOLE SCC, so list its members — the
+            // shortest loop below is one example path, not the full cycle.
+            const shown =
+                f.members.length <= MEMBER_CAP
+                    ? f.members
+                    : f.members.slice(0, MEMBER_CAP);
+            const more =
+                f.members.length > MEMBER_CAP
+                    ? `, … +${f.members.length - MEMBER_CAP} more`
+                    : '';
+            lines.push(`  members: ${shown.join(', ')}${more}`);
+            lines.push(`  example loop (shortest): ${f.shortestPath.join(' -> ')}`);
         });
     }
 

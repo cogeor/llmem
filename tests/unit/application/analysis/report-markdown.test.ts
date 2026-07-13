@@ -133,6 +133,61 @@ test('renderHealthReport: includes the import-cycles section and the closed hop 
     assert.ok(out.includes('src/a.ts -> src/b.ts -> src/a.ts'));
 });
 
+// A2 (2026-07-13 review, bug 1.2): the cycle header counts the whole SCC but
+// the body only showed the SHORTEST loop — "13-file cycle" followed by a
+// 2-file path read as a contradiction. The renderer now lists the members
+// (capped at 20) and labels the path as an example loop.
+function reportWithCycle(members: string[], shortestPath: string[]): HealthReport {
+    const base = makeReport([]);
+    return {
+        ...base,
+        importCycles: [
+            {
+                id: `import-cycle:${members.join('|')}`,
+                type: 'import-cycle',
+                kind: 'import-cycle',
+                severity: 'high',
+                title: `${members.length}-file import cycle`,
+                detail: `Import cycle through ${shortestPath.join(' -> ')}`,
+                relatedFiles: members,
+                members,
+                shortestPath,
+                typeOnlyEdgeCount: 0,
+                totalEdgeCount: members.length,
+                runtimeMembers: members,
+            },
+        ],
+    };
+}
+
+test('renderHealthReport: cycle lists all members and labels the example loop', () => {
+    const members = ['src/a.ts', 'src/b.ts', 'src/c.ts'];
+    const out = renderHealthReport(
+        reportWithCycle(members, ['src/a.ts', 'src/b.ts', 'src/a.ts']),
+    );
+    assert.ok(out.includes('Cycle 1: 3-file cycle'), `header counts SCC:\n${out}`);
+    assert.ok(
+        out.includes('  members: src/a.ts, src/b.ts, src/c.ts'),
+        `members line lists the whole SCC:\n${out}`,
+    );
+    assert.ok(
+        out.includes('  example loop (shortest): src/a.ts -> src/b.ts -> src/a.ts'),
+        `path is labeled as an example loop:\n${out}`,
+    );
+});
+
+test('renderHealthReport: cycle members cap at 20 with a +N more suffix', () => {
+    const members = Array.from({ length: 25 }, (_, i) =>
+        `src/m${String(i).padStart(2, '0')}.ts`,
+    );
+    const out = renderHealthReport(
+        reportWithCycle(members, [members[0], members[1], members[0]]),
+    );
+    assert.ok(out.includes('Cycle 1: 25-file cycle'));
+    assert.ok(out.includes('src/m19.ts, … +5 more'), `cap line present:\n${out}`);
+    assert.ok(!out.includes('src/m20.ts,'), `members beyond the cap are elided:\n${out}`);
+});
+
 test('renderHealthReport: renders the Module interfaces section with the shallow-wide row', () => {
     const out = renderHealthReport(report);
     assert.ok(out.includes('## 5. Module interfaces'), 'section header present');
