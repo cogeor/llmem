@@ -64,7 +64,7 @@ npm run scan               # node bin/llmem scan — build edge lists
 npm run serve              # build entrypoints + webview, then llmem serve
 npm run serve:dev          # ts-node src/cli/main.ts serve (no build)
 npm run view               # generate static webview
-npm run graph / graph:stats# llmem generate / stats
+npm run graph / graph:stats# llmem scan / health
 npm run health:ci          # llmem health --fail-on import-cycle (CI gate convenience)
 npm run file-info[:sig|:semantic]   # file-info CLI for debugging the MCP extractor
 ```
@@ -120,13 +120,15 @@ Phase-1 tools return `prompt_ready` with `promptForHostLLM` + `callbackTool` + `
 the agent runs the prompt through its own LLM and calls the phase-2 tool to persist.
 
 ### `src/cli/` — CLI
-`main.ts` dispatches; `registry.ts` lists commands; `arg-parser.ts` parses. Commands:
-`serve` (default; zero-config — auto-scans, regenerates webview, opens browser), `mcp`, `scan`,
-`find-cycles`, `health` (`--json`, `--out`, `--fail-on <kind>`), `review [path]`
-(`--ruleset general|frontend|both`), `describe` (`--json`, stable command schema), `document`,
-`init`, `install` (registers the MCP server with Claude Code / Codex / Claude Desktop), plus
-hidden `generate` and `stats`. `scan`/`serve` build the edge lists; `find-cycles`/`health`/
-`review`/`generate`/`stats` require they exist first.
+`main.ts` dispatches; `registry.ts` lists commands; `arg-parser.ts` parses (`help.ts` /
+`schema-info.ts` render help). Commands: `serve` (default; zero-config — auto-scans,
+regenerates webview, opens browser), `mcp`, `scan`, `health` (`--json`, `--out`,
+`--fail-on <kind>`), `review [path]` (`--ruleset general|frontend|both`), `describe`
+(`--json`, stable command schema), `document`, `install` (registers the MCP server with
+Claude Code / Codex / Claude Desktop), plus hidden alias `find-cycles` (health's cycle
+dimension). Every graph consumer auto-scans on first run via `commands/ensure-graph.ts`
+(honors `LLMEM_ARTIFACT_ROOT`). `generate`/`stats`/`init` were deleted 2026-07-13 (C1/C3);
+graph counts live in the health report header.
 
 ### `src/graph/` — graph storage & queries
 `edge-list/` (the `*EdgeListStore` classes + `base-store.ts` atomic write/dirty-flag CRUD),

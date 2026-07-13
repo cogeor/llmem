@@ -29,7 +29,6 @@ import { mcpCommand } from './commands/mcp';
 import { describeCommand } from './commands/describe';
 import { scanCommand } from './commands/scan';          // Loop 05
 import { documentCommand } from './commands/document';  // Loop 06
-import { initCommand } from './commands/init';          // Loop 07
 import { installCommand } from './commands/install';    // LI-03
 import { findCyclesCommand } from './commands/find-cycles'; // cycle-detection L03
 import { healthCommand } from './commands/health'; // health-analysis L02
@@ -45,6 +44,5 @@ export const REGISTRY: CommandSpec<any>[] = [
     describeCommand,    // Loop 04
     scanCommand,        // Loop 05
     documentCommand,    // Loop 06
-    initCommand,        // Loop 07
     installCommand,     // LI-03
 ];
