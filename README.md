@@ -1,8 +1,8 @@
 # LLMem
 
-See your codebase as a graph of imports and function calls. Have an agent generate spec docs for any folder in seconds.
+See your codebase as a graph of imports and function calls — then put that graph to work: an interactive viewer, a deterministic health report (cycles, hubs, clones), an AI-driven architecture review checklist, and agent-generated spec docs.
 
-Built as an MCP server so Claude Code / Antigravity can use it as native tools — or run it standalone with the live-reloading web viewer.
+Built as an MCP server so Claude Code / Antigravity can use it as native tools — or run it standalone from the CLI.
 
 ![Spec doc and import graph side-by-side for src/parser](images/graph-preview.png)
 
@@ -12,24 +12,69 @@ Built as an MCP server so Claude Code / Antigravity can use it as native tools �
 ## Quickstart
 
 ```bash
-npm install -g @cogeor/llmem
 cd path/to/your/project
-llmem serve
+npx @cogeor/llmem
 ```
 
-Your browser opens at `http://localhost:5757`. Click circles in the left tree to add files to the graph; the view live-reloads as you edit.
+That's it — the first run indexes your project and opens the interactive graph viewer in your browser (port 5757, or the next free port; the URL is printed). Click circles in the left tree to add files to the graph; the view live-reloads as you edit.
 
-To use it from an agent (Claude Code / Codex / Claude Desktop), let LLMem wire itself up:
+Prefer a persistent install?
+
+```bash
+npm install -g @cogeor/llmem
+llmem            # same zero-config viewer (serve is the default command)
+```
+
+Every command that needs the graph builds it automatically on first run — there is no separate indexing step to remember. `llmem <command> --help` shows the flags of any command.
+
+## `llmem health` — the smell report
+
+```bash
+llmem health
+```
+
+Scans the import + call graphs and writes `.llmem/health-report.{md,json}` — deterministic (no timestamps), so two runs on the same code are byte-identical and CI can diff before/after. The scorecard from LLMem run on itself:
+
+```
+## Scorecard (measurement vector)
+import cycles: 0 (runtime) / 1 (incl. type-only edges)
+call cycles: 3 (mutual) / 70 (recursion)
+clone clusters: 3 high (exact-body, cross-module, non-test) / 546 total
+hubs: 55 unstable / 46 kernel (max fan-in 66)
+interface width: max W_eff 42.46, 1 shallow-wide module(s)
+files over budget: 1
+```
+
+Six dimensions: import cycles (runtime vs type-only split), call cycles + self-recursion, exact-body/shared-literal duplication, hub instability (unstable hubs are the signal; healthy kernels are listed as capped context), interface width (Ousterhout deep-module analysis), and files over the size budget.
+
+Gate CI on any dimension:
+
+```bash
+llmem health --fail-on import-cycle   # exit 1 iff a RUNTIME import cycle exists
+```
+
+## `llmem review` — the architecture review checklist
+
+```bash
+llmem review              # whole repo
+llmem review src/webview  # one subtree
+```
+
+Recalls a 65-item architecture-review checklist (34 general + 31 frontend items) against your graph: each item comes pre-loaded with the graph's candidate evidence (cycle members, hub tables, clone clusters, scanner hits) so a reviewer — human or LLM — checks *findings*, not vibes. Writes `.llmem/review/<path>.{md,json}`.
+
+The full loop is agent-driven: via MCP, the `review` tool returns the checklist plus a prompt; the agent's LLM works through every item and `report_review` persists the completed report — with a hard completeness gate (unresolved checklist items are named, and nothing is written until all are resolved).
+
+## `llmem install` — wire up your agent
 
 ```bash
 llmem install
 ```
 
-`llmem install` detects the agents you have installed, adds llmem to each one's MCP config, and tells you to restart the agent. Target a single client by name — `llmem install claude` or `llmem install codex` — and preview before touching anything:
+Detects the agents you have installed (Claude Code, Codex, Claude Desktop), adds llmem to each one's MCP config, and tells you to restart the agent. Target one client by name — `llmem install claude` or `llmem install codex` — and preview before touching anything:
 
 ```bash
 llmem install --dry-run   # show what would be written, change nothing
-llmem install --print      # print the config snippets to paste by hand
+llmem install --print     # print the config snippets to paste by hand
 ```
 
 <details>
@@ -63,10 +108,6 @@ That assumes `npm i -g @cogeor/llmem`. If you can't install globally, fall back 
 
 </details>
 
-### Registering with your agent
-
-`llmem install` supports these clients today:
-
 | Client | Supported | Notes |
 |---|:---:|---|
 | Claude Code | yes | Uses the native `claude mcp add` when the CLI is on PATH; otherwise merges a project-local `.mcp.json`. |
@@ -97,9 +138,10 @@ llmem document src/parser --content-file -   # reads LLM JSON from stdin, writes
 
 | Tool | What it does |
 |---|---|
+| `review` ↔ `report_review` | Two-call pair: checklist + graph evidence + prompt → completed review at `.llmem/review/{path}.md` (hard completeness gate) |
 | `folder_info` ↔ `report_folder_info` | Two-call pair: folder structure + prompt → enriched doc at `.arch/{folder}/README.md` |
 | `file_info` ↔ `report_file_info` | Two-call pair: file structure + prompt → enriched doc at `.arch/{file}.md` |
-| `open_window` | Returns a `file://` URL to a static snapshot of the graph (for agents that can open links) |
+| `open_window` | Returns a URL to the live viewer if `serve` is running, else a static `file://` snapshot |
 
 `folder_info` scans the folder on demand and refreshes any stale edges before generating the summary — no manual step needed. The first `folder_info` on a large folder does a one-time full parse; subsequent calls are incremental (a stat-walk + diff, re-parsing only what changed). Pass `refresh: "skip"` to bypass the freshness check entirely for back-to-back same-turn calls on a folder you just refreshed; `file_info` accepts the same `refresh` argument.
 
