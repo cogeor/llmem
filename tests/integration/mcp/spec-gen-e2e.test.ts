@@ -9,10 +9,10 @@
  *
  *   1. `tools/list` — asserts exactly the five trimmed tools survive,
  *      and that `inspect_source` is gone (locks in Loop 01).
- *   2. `file_info` → `report_file_info` — proves the file-doc pair
+ *   2. `document`(file) → `report_document` — proves the file-doc pair
  *      writes `.llmem/docs/<path>.md` containing the stub's overview/purpose
  *      text.
- *   3. `folder_info` → `report_folder_info` — proves the folder-doc
+ *   3. `document`(folder) → `report_document` — proves the folder-doc
  *      pair writes `.llmem/docs/<folder>/README.md` containing the stub's
  *      overview/architecture/key-file strings.
  *
@@ -38,7 +38,7 @@
  * - All `.llmem/docs/` assertion paths are `path.join(tempDir, ...)`, never
  *   relative — the test must never write under the llmem repo.
  * - First `callTool` after handshake uses a 10s timeout to absorb lazy
- *   parser registry init (the first `file_info` after a cold spawn
+ *   parser registry init (the first `document` after a cold spawn
  *   pays a 1-3s init cost).
  * - `stderr: 'pipe'` keeps the child's logger output off the test
  *   runner's console; we tee stderr into a buffer and surface it in
@@ -87,7 +87,7 @@ interface Fixture {
  * `.git/` marker so the server's auto-detect would also find it (we set
  * `LLMEM_WORKSPACE` explicitly, but the marker is belt-and-suspenders).
  *
- * Also seeds an empty `.llmem/graph/` directory. Historically `folder_info`
+ * Also seeds an empty `.llmem/graph/` directory. Historically the folder path
  * hard-failed with "Artifacts directory not found ... run 'npm run scan'
  * first" if the directory was missing; LS-06 removed that throw —
  * `refreshFolderGraph` now creates the artifact root on demand. The seed is
@@ -278,7 +278,7 @@ function unwrapToolResult(
 // Tests
 // ============================================================================
 
-test('MCP spec-gen e2e: tools/list returns exactly the 7 trimmed tools', async (t) => {
+test('MCP spec-gen e2e: tools/list returns exactly the 5 merged tools (C5)', async (t) => {
     const { client, stderrBuf } = await setupSpecGenE2E(t);
 
     const { tools } = await client.listTools();
@@ -287,30 +287,27 @@ test('MCP spec-gen e2e: tools/list returns exactly the 7 trimmed tools', async (
     assert.deepEqual(
         names,
         [
-            'file_info',
-            'folder_info',
+            'document',
             'open_window',
-            'report_file_info',
-            'report_folder_info',
+            'report_document',
             'report_review',
             'review',
         ],
         `tools/list returned unexpected name set. Child stderr:\n${stderrBuf.value}`,
     );
 
-    // Explicit negative for diagnostic clarity if Loop 01 ever regresses.
-    assert.ok(
-        !names.includes('inspect_source'),
-        'inspect_source must be dropped (loop 01)',
-    );
+    // Explicit negatives: the pre-C5 pair names must be gone (clean break).
+    for (const legacy of ['file_info', 'folder_info', 'report_file_info', 'report_folder_info']) {
+        assert.ok(!names.includes(legacy), `${legacy} must be dropped (C5 merge)`);
+    }
 });
 
-test('MCP spec-gen e2e: file_info → report_file_info writes .llmem/docs/<path>.md', async (t) => {
+test('MCP spec-gen e2e: document(file) → report_document writes .llmem/docs/<path>.md', async (t) => {
     const { client, tempDir, fixtureFile, stderrBuf } = await setupSpecGenE2E(t);
 
     // First call: 10s timeout absorbs lazy parser registry init.
     const fileInfoResult = await client.callTool(
-        { name: 'file_info', arguments: { workspaceRoot: tempDir, path: fixtureFile } },
+        { name: 'document', arguments: { workspaceRoot: tempDir, path: fixtureFile } },
         undefined,
         { timeout: 10_000 },
     );
@@ -319,20 +316,22 @@ test('MCP spec-gen e2e: file_info → report_file_info writes .llmem/docs/<path>
     assert.equal(
         fileInfoPayload.status,
         'prompt_ready',
-        `file_info status should be prompt_ready: ${JSON.stringify(fileInfoPayload)}`,
+        `document status should be prompt_ready: ${JSON.stringify(fileInfoPayload)}`,
     );
     const promptForHostLLM = fileInfoPayload.promptForHostLLM;
     assert.ok(
         typeof promptForHostLLM === 'string' && promptForHostLLM.length > 0,
-        'file_info should return a non-empty promptForHostLLM',
+        'document should return a non-empty promptForHostLLM',
     );
-    assert.equal(fileInfoPayload.callbackTool, 'report_file_info');
-    const callbackArgs = fileInfoPayload.callbackArgs as { workspaceRoot: string; path: string };
+    assert.equal(fileInfoPayload.callbackTool, 'report_document');
+    const callbackArgs = fileInfoPayload.callbackArgs as { workspaceRoot: string; path: string; kind: string };
     assert.equal(callbackArgs.workspaceRoot, tempDir);
     assert.equal(callbackArgs.path, fixtureFile);
+    assert.equal(callbackArgs.kind, 'file');
 
-    // Stub the LLM step — matches ReportFileInfoSchema.
+    // Stub the LLM step — matches ReportDocumentSchema (kind: file).
     const stub = {
+        kind: 'file',
         workspaceRoot: tempDir,
         path: fixtureFile,
         overview: 'STUB-OVERVIEW: a.ts re-exports helloA which calls helloB.',
@@ -346,7 +345,7 @@ test('MCP spec-gen e2e: file_info → report_file_info writes .llmem/docs/<path>
     };
 
     const reportResult = await client.callTool(
-        { name: 'report_file_info', arguments: stub },
+        { name: 'report_document', arguments: stub },
         undefined,
         { timeout: 10_000 },
     );
@@ -355,13 +354,13 @@ test('MCP spec-gen e2e: file_info → report_file_info writes .llmem/docs/<path>
     assert.equal(
         reportPayload.status,
         'success',
-        `report_file_info status should be success: ${JSON.stringify(reportPayload)}`,
+        `report_document status should be success: ${JSON.stringify(reportPayload)}`,
     );
     const reportData = reportPayload.data as { artifactPath?: unknown };
     assert.equal(
         typeof reportData.artifactPath,
         'string',
-        `report_file_info should return an artifactPath string: ${JSON.stringify(reportData)}`,
+        `report_document should return an artifactPath string: ${JSON.stringify(reportData)}`,
     );
 
     // Matches getFileDocPath in src/docs/doc-store.ts:32-34
@@ -369,7 +368,7 @@ test('MCP spec-gen e2e: file_info → report_file_info writes .llmem/docs/<path>
     const docPath = path.join(tempDir, '.llmem', 'docs', 'src', 'a.ts.md');
     assert.ok(
         fs.existsSync(docPath),
-        `expected ${docPath} to exist after report_file_info. Child stderr:\n${stderrBuf.value}`,
+        `expected ${docPath} to exist after report_document. Child stderr:\n${stderrBuf.value}`,
     );
 
     const content = fs.readFileSync(docPath, 'utf8');
@@ -378,11 +377,11 @@ test('MCP spec-gen e2e: file_info → report_file_info writes .llmem/docs/<path>
     assert.ok(content.includes('helloA'), `archived doc missing helloA: ${content}`);
 });
 
-test('MCP spec-gen e2e: folder_info → report_folder_info writes .llmem/docs/<folder>/README.md', async (t) => {
+test('MCP spec-gen e2e: document(folder) → report_document writes .llmem/docs/<folder>/README.md', async (t) => {
     const { client, tempDir, fixtureFolder, stderrBuf } = await setupSpecGenE2E(t);
 
     const folderInfoResult = await client.callTool(
-        { name: 'folder_info', arguments: { workspaceRoot: tempDir, path: fixtureFolder } },
+        { name: 'document', arguments: { workspaceRoot: tempDir, path: fixtureFolder } },
         undefined,
         { timeout: 10_000 },
     );
@@ -391,16 +390,22 @@ test('MCP spec-gen e2e: folder_info → report_folder_info writes .llmem/docs/<f
     assert.equal(
         folderInfoPayload.status,
         'prompt_ready',
-        `folder_info status should be prompt_ready: ${JSON.stringify(folderInfoPayload)}`,
+        `document status should be prompt_ready: ${JSON.stringify(folderInfoPayload)}`,
     );
     const folderPrompt = folderInfoPayload.promptForHostLLM;
     assert.ok(
         typeof folderPrompt === 'string' && folderPrompt.length > 0,
-        'folder_info should return a non-empty promptForHostLLM',
+        'document should return a non-empty promptForHostLLM',
     );
-    assert.equal(folderInfoPayload.callbackTool, 'report_folder_info');
+    assert.equal(folderInfoPayload.callbackTool, 'report_document');
+    assert.equal(
+        (folderInfoPayload.callbackArgs as { kind: string }).kind,
+        'folder',
+        'callback carries the detected folder kind',
+    );
 
     const folderStub = {
+        kind: 'folder',
         workspaceRoot: tempDir,
         path: fixtureFolder,
         overview: 'STUB-FOLDER-OVERVIEW: src contains a.ts and b.ts.',
@@ -412,7 +417,7 @@ test('MCP spec-gen e2e: folder_info → report_folder_info writes .llmem/docs/<f
     };
 
     const reportResult = await client.callTool(
-        { name: 'report_folder_info', arguments: folderStub },
+        { name: 'report_document', arguments: folderStub },
         undefined,
         { timeout: 10_000 },
     );
@@ -421,13 +426,13 @@ test('MCP spec-gen e2e: folder_info → report_folder_info writes .llmem/docs/<f
     assert.equal(
         reportPayload.status,
         'success',
-        `report_folder_info status should be success: ${JSON.stringify(reportPayload)}`,
+        `report_document status should be success: ${JSON.stringify(reportPayload)}`,
     );
     const reportData = reportPayload.data as { artifactPath?: unknown };
     assert.equal(
         typeof reportData.artifactPath,
         'string',
-        `report_folder_info should return an artifactPath string: ${JSON.stringify(reportData)}`,
+        `report_document should return an artifactPath string: ${JSON.stringify(reportData)}`,
     );
 
     // Matches getFolderDocPath in src/docs/doc-store.ts:36-38
@@ -435,7 +440,7 @@ test('MCP spec-gen e2e: folder_info → report_folder_info writes .llmem/docs/<f
     const readmePath = path.join(tempDir, '.llmem', 'docs', 'src', 'README.md');
     assert.ok(
         fs.existsSync(readmePath),
-        `expected ${readmePath} to exist after report_folder_info. Child stderr:\n${stderrBuf.value}`,
+        `expected ${readmePath} to exist after report_document. Child stderr:\n${stderrBuf.value}`,
     );
 
     const content = fs.readFileSync(readmePath, 'utf8');

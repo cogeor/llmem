@@ -122,6 +122,21 @@ test('renderHealthReport: byte-identical across two calls on the same input', ()
     assert.equal(renderHealthReport(report), renderHealthReport(report));
 });
 
+// C1: the graph size header replaces the deleted `stats` command.
+test('renderHealthReport: graph header line when report.graph present, absent otherwise', () => {
+    const withGraph: HealthReport = {
+        ...makeReport([]),
+        graph: { files: 42, importEdges: 100, callEdges: 250 },
+    };
+    const out = renderHealthReport(withGraph);
+    assert.ok(
+        out.includes('graph: 42 files, 100 import edges, 250 call edges'),
+        `graph header rendered:\n${out}`,
+    );
+    // Hand-built fixture reports (no graph field) stay renderable, no header.
+    assert.ok(!renderHealthReport(makeReport([])).includes('graph: '), 'no header without data');
+});
+
 test('renderHealthReport: contains no ISO date / timestamp', () => {
     const out = renderHealthReport(report);
     assert.ok(!/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(out), 'no ISO datetime');

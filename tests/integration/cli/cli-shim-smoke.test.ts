@@ -44,18 +44,19 @@ test('bin/llmem --help exits 0 and lists every visible command, no hidden ones',
     const result = spawnSync('node', [BIN, '--help'], { encoding: 'utf8' });
     assert.equal(result.status, 0, `expected exit 0, got ${result.status}; stderr=${result.stderr}`);
     const out = result.stdout;
-    // The six visible commands as of loop 07 (REGISTRY filter `!hidden`).
-    for (const cmd of ['serve', 'mcp', 'describe', 'scan', 'document', 'init']) {
+    // The visible commands as of the C1–C3 surface diet (REGISTRY filter
+    // `!hidden`): generate/stats/init deleted, find-cycles a hidden alias.
+    for (const cmd of ['serve', 'mcp', 'health', 'review', 'describe', 'scan', 'document', 'install']) {
         assert.match(out, new RegExp(`\\b${cmd}\\b`), `help text mentions '${cmd}'`);
     }
-    // Hidden command names must NOT appear as word tokens. Word-boundary
-    // regex avoids false positives from English usage like "Generate" in
-    // `document`'s description (see cli-describe.test.ts for the longer
-    // commentary on this).
-    for (const cmd of ['generate', 'stats']) {
+    // Deleted / hidden command names must NOT appear as word tokens.
+    // Word-boundary regex avoids false positives from English usage like
+    // "Generate" in `document`'s description (see cli-describe.test.ts for
+    // the longer commentary on this).
+    for (const cmd of ['generate', 'stats', 'init', 'find-cycles']) {
         assert.ok(
             !new RegExp(`\\b${cmd}\\b`).test(out),
-            `help must NOT mention hidden command '${cmd}'`,
+            `help must NOT mention deleted/hidden command '${cmd}'`,
         );
     }
 });

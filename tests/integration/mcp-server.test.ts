@@ -261,8 +261,8 @@ describe('MCP Protocol Compliance', { skip: skipReason }, () => {
             `Should log registered tools. Stderr: ${result.stderr}`
         );
 
-        // Should have the expected tools
-        const expectedTools = ['file_info', 'report_file_info', 'folder_info'];
+        // Should have the expected tools (C5: merged document/report_document pair)
+        const expectedTools = ['document', 'report_document', 'review', 'report_review', 'open_window'];
         for (const tool of expectedTools) {
             assert.ok(
                 result.stderr.includes(tool),

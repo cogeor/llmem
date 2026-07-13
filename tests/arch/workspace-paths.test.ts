@@ -208,14 +208,6 @@ const WRITE_ALLOWLIST_ENTRIES: readonly WriteAllowlistEntry[] = [
       'init on absolute paths under the workspace root, by design.',
   },
   {
-    file: 'src/cli/commands/init.ts',
-    phase: 'permanent',
-    reason:
-      'Bootstraps the `.llmem/` workspace marker before any ' +
-      '`WorkspaceIO` exists — the marker file is what later code reads ' +
-      'to discover the workspace root.',
-  },
-  {
     file: 'src/cli/commands/health.ts',
     phase: 'permanent',
     reason:

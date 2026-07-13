@@ -26,7 +26,7 @@ import {
     validateWorkspaceRoot,
     validateWorkspacePath,
 } from '../path-utils';
-import { getStoredContext } from '../server';
+import { getStoredContext, issueReviewToken } from '../server';
 import { assertWorkspaceRootMatch } from './shared';
 import { runReviewRecall } from '../../application/review/recall';
 import { renderReviewChecklist } from '../../application/review/render';
@@ -53,8 +53,9 @@ export type ReviewInput = z.infer<typeof ReviewSchema>;
 /** The closing instruction appended after the rendered checklist. */
 const CLOSING_INSTRUCTION =
     'Resolve EVERY box to issue-validated | non-issue; then call report_review ' +
-    'with { workspaceRoot, path, ruleset, checklist:[{id,status,note?}] } for ALL ' +
-    'items. A box left not-yet-checked will be REJECTED.';
+    'with { workspaceRoot, path, ruleset, reviewToken, checklist:[{id,status,note?}] } ' +
+    'for ALL items (reviewToken is in callbackArgs). A box left not-yet-checked will ' +
+    'be REJECTED, and issue-validated items require a non-empty note citing the finding.';
 
 async function handleReviewImpl(
     args: unknown,
@@ -82,10 +83,16 @@ async function handleReviewImpl(
         CLOSING_INSTRUCTION,
     ].join('\n\n---\n\n');
 
+    // C6: issue the session token — report_review must present it, which
+    // makes fabricate-phase-2-without-phase-1 and ruleset mismatch
+    // structurally impossible. Re-running review replaces the token.
+    const reviewToken = issueReviewToken(relativePath, ruleset);
+
     return formatPromptResponse(prompt, 'report_review', {
         workspaceRoot,
         path: relativePath,
         ruleset,
+        reviewToken,
     });
 }
 
@@ -106,7 +113,9 @@ export const reviewTool = {
         'Run the LLMem architecture-review checklist over a file/folder. Returns the ' +
         'embedded review methodology plus a recalled, graph-backed checklist and a prompt ' +
         'for LLM enrichment. You MUST process the returned prompt through the LLM, resolving ' +
-        'EVERY box, then call report_review with the per-item verdicts to record the review.',
+        'EVERY box, then call report_review with the per-item verdicts (and the returned ' +
+        'reviewToken) to record the review. NOTHING is persisted until report_review ' +
+        'succeeds — review work is lost if you never call it.',
     schema: ReviewSchema,
     handler: handleReview,
 };

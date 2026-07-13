@@ -49,3 +49,19 @@ export const MAX_FILE_LINES_CAP = 100000;
  * `init` TOML stub (`commands/init.ts`). Change here and rebuild.
  */
 export const DEFAULT_PORT = 5757;
+
+/**
+ * How many consecutive ports (starting at the requested port) `serve` tries
+ * on EADDRINUSE before giving up (`bindWithPortFallback`), and therefore the
+ * SAME range the MCP `open_window` tool probes when looking for a live
+ * server. C7 (2026-07-13): one constant so the walk-up and the probe can
+ * never drift apart again (the probe used to check only +1 while serve
+ * walked +9).
+ */
+export const PORT_FALLBACK_ATTEMPTS = 10;
+
+/**
+ * Response header the GraphServer stamps on every response so probes can
+ * verify a listener actually IS llmem (not just something on the port).
+ */
+export const LLMEM_MARKER_HEADER = 'x-llmem';

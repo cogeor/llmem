@@ -44,6 +44,10 @@ import {
     type EnrichedFolderKeyFile,
 } from '../../application/document-folder';
 import { asRelPath } from '../../core/paths';
+import {
+    fileReportPayloadSchema,
+    folderReportPayloadSchema,
+} from '../../contracts/doc-reports';
 import { detectWorkspace } from '../../workspace';
 import type { CommandSpec } from '../registry';
 import { CliError } from '../errors';
@@ -52,32 +56,18 @@ import { CliError } from '../errors';
 // Wire-level report payload schemas
 // ============================================================================
 //
-// These mirror the shape the MCP `report_file_info` / `report_folder_info`
-// tools accept. They live at the CLI boundary because the wire shape is a
-// CLI / MCP contract, not an application-domain type — the application
-// layer takes already-validated EnrichedFunction[] / EnrichedFolderKeyFile[]
-// arrays. Keep these in sync with `src/mcp/handlers.ts`.
+// C4 (2026-07-13): the payload shapes are the SHARED contract in
+// `src/contracts/doc-reports.ts` — the same Zod objects the MCP
+// `report_file_info` / `report_folder_info` tools extend with their
+// routing fields. One declaration; no keep-in-sync comment needed. The
+// CLI face relaxes the enrichment arrays to `.default([])` (hand-driven
+// pipelines may omit them); the MCP face keeps them required.
 
-const fileReportSchema = z.object({
-    overview: z.string(),
-    inputs: z.string().optional(),
-    outputs: z.string().optional(),
-    functions: z.array(z.object({
-        name: z.string(),
-        purpose: z.string(),
-        implementation: z.string(),
-    })).default([]),
+const fileReportSchema = fileReportPayloadSchema.extend({
+    functions: fileReportPayloadSchema.shape.functions.default([]),
 });
-
-const folderReportSchema = z.object({
-    overview: z.string(),
-    inputs: z.string().optional(),
-    outputs: z.string().optional(),
-    key_files: z.array(z.object({
-        name: z.string(),
-        summary: z.string(),
-    })).default([]),
-    architecture: z.string(),
+const folderReportSchema = folderReportPayloadSchema.extend({
+    key_files: folderReportPayloadSchema.shape.key_files.default([]),
 });
 
 // ============================================================================

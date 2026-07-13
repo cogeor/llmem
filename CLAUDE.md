@@ -64,7 +64,7 @@ npm run scan               # node bin/llmem scan — build edge lists
 npm run serve              # build entrypoints + webview, then llmem serve
 npm run serve:dev          # ts-node src/cli/main.ts serve (no build)
 npm run view               # generate static webview
-npm run graph / graph:stats# llmem generate / stats
+npm run graph / graph:stats# llmem scan / health
 npm run health:ci          # llmem health --fail-on import-cycle (CI gate convenience)
 npm run file-info[:sig|:semantic]   # file-info CLI for debugging the MCP extractor
 ```
@@ -106,11 +106,13 @@ One folder per use-case: `scan/`, `refresh-graph/`, `file-info/`, `document-file
 - `artifact-converter.ts` lives here because it's the only layer allowed to import **both**
   `parser` and `graph` (documented in its header; enforced by the layer matrix).
 
-### `src/mcp/` — MCP server (7 tools)
+### `src/mcp/` — MCP server (5 tools)
 `server/lifecycle.ts` registers tools over stdio; `tools/*.ts` define them; `handlers.ts`
-validates/formats. Three two-phase pairs + one standalone:
-- `file_info` ↔ `report_file_info` → `.llmem/docs/{path}.md`
-- `folder_info` ↔ `report_folder_info` → `.llmem/docs/{path}/README.md`
+validates/formats. Two two-phase pairs + one standalone:
+- `document` ↔ `report_document` → `.llmem/docs/{path}.md` (file) or
+  `.llmem/docs/{path}/README.md` (folder); kind auto-detected by stat, phase-2 payload is a
+  discriminated union on `kind` and cross-checks it against the path (C5, 2026-07-13 —
+  merged the former file_info/folder_info pairs)
 - `review` ↔ `report_review` → `.llmem/review/{path}.md` (phase-2 enforces a hard completeness
   gate — if any required checklist box is unresolved, it writes nothing and names them)
 - `open_window` — returns a live `http://localhost:{port}` URL if `serve` is up, else a static
@@ -120,13 +122,15 @@ Phase-1 tools return `prompt_ready` with `promptForHostLLM` + `callbackTool` + `
 the agent runs the prompt through its own LLM and calls the phase-2 tool to persist.
 
 ### `src/cli/` — CLI
-`main.ts` dispatches; `registry.ts` lists commands; `arg-parser.ts` parses. Commands:
-`serve` (default; zero-config — auto-scans, regenerates webview, opens browser), `mcp`, `scan`,
-`find-cycles`, `health` (`--json`, `--out`, `--fail-on <kind>`), `review [path]`
-(`--ruleset general|frontend|both`), `describe` (`--json`, stable command schema), `document`,
-`init`, `install` (registers the MCP server with Claude Code / Codex / Claude Desktop), plus
-hidden `generate` and `stats`. `scan`/`serve` build the edge lists; `find-cycles`/`health`/
-`review`/`generate`/`stats` require they exist first.
+`main.ts` dispatches; `registry.ts` lists commands; `arg-parser.ts` parses (`help.ts` /
+`schema-info.ts` render help). Commands: `serve` (default; zero-config — auto-scans,
+regenerates webview, opens browser), `mcp`, `scan`, `health` (`--json`, `--out`,
+`--fail-on <kind>`), `review [path]` (`--ruleset general|frontend|both`), `describe`
+(`--json`, stable command schema), `document`, `install` (registers the MCP server with
+Claude Code / Codex / Claude Desktop), plus hidden alias `find-cycles` (health's cycle
+dimension). Every graph consumer auto-scans on first run via `commands/ensure-graph.ts`
+(honors `LLMEM_ARTIFACT_ROOT`). `generate`/`stats`/`init` were deleted 2026-07-13 (C1/C3);
+graph counts live in the health report header.
 
 ### `src/graph/` — graph storage & queries
 `edge-list/` (the `*EdgeListStore` classes + `base-store.ts` atomic write/dirty-flag CRUD),

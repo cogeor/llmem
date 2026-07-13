@@ -14,6 +14,7 @@
 
 import * as http from 'http';
 import { createLogger } from '../common/logger';
+import { LLMEM_MARKER_HEADER } from '../config-defaults';
 import { serveStatic } from './http-static';
 
 const log = createLogger('http-handler');
@@ -127,6 +128,11 @@ export class HttpRequestHandler {
      */
     async handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
         const url = req.url || '/';
+
+        // C7: marker header on EVERY response (static, API, errors) so the
+        // MCP open_window probe can verify the listener is llmem before
+        // handing its URL to an agent.
+        res.setHeader(LLMEM_MARKER_HEADER, '1');
 
         if (this.config.verbose) {
             log.debug('Request', { method: req.method, url });

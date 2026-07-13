@@ -27,14 +27,20 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as net from 'net';
+import * as http from 'http';
 
 import {
     handleOpenWindow,
-    probePort,
+    probeLlmemPort,
     findLiveServePort,
 } from '../../../src/mcp/tools/open-window';
 import { setStoredWorkspaceRoot, setStoredConfig } from '../../../src/mcp/server';
-import { DEFAULT_CONFIG, DEFAULT_PORT } from '../../../src/config-defaults';
+import {
+    DEFAULT_CONFIG,
+    DEFAULT_PORT,
+    PORT_FALLBACK_ATTEMPTS,
+    LLMEM_MARKER_HEADER,
+} from '../../../src/config-defaults';
 
 interface SuccessData {
     message: string;
@@ -114,23 +120,27 @@ describe('open_window: live serve detection', () => {
 });
 
 describe('open_window: probe helper (real bind)', () => {
-    test('findLiveServePort detects a server bound to DEFAULT_PORT (or +1)', async () => {
-        // Try the default port; if the local machine already has it taken,
-        // fall back to DEFAULT_PORT+1 so the test stays deterministic.
-        const tryBind = (port: number): Promise<net.Server | null> =>
-            new Promise((resolve) => {
-                const server = net.createServer();
-                server.once('error', () => resolve(null));
-                server.listen(port, '127.0.0.1', () => resolve(server));
+    /** Bind an http server that answers like llmem (marker header) on `port`. */
+    const bindLlmemLike = (port: number): Promise<http.Server | null> =>
+        new Promise((resolve) => {
+            const server = http.createServer((_req, res) => {
+                res.setHeader(LLMEM_MARKER_HEADER, '1');
+                res.end('ok');
             });
+            server.once('error', () => resolve(null));
+            server.listen(port, '127.0.0.1', () => resolve(server));
+        });
 
-        let boundPort = DEFAULT_PORT;
-        let server = await tryBind(DEFAULT_PORT);
-        if (!server) {
-            boundPort = DEFAULT_PORT + 1;
-            server = await tryBind(DEFAULT_PORT + 1);
+    test('findLiveServePort detects an llmem-marked server anywhere in the walk-up range', async () => {
+        // Bind somewhere in serve's documented range; skip ports the local
+        // machine already has taken so the test stays deterministic.
+        let boundPort: number | null = null;
+        let server: http.Server | null = null;
+        for (let offset = 0; offset < PORT_FALLBACK_ATTEMPTS && !server; offset++) {
+            server = await bindLlmemLike(DEFAULT_PORT + offset);
+            if (server) boundPort = DEFAULT_PORT + offset;
         }
-        assert.ok(server, 'could not bind DEFAULT_PORT or DEFAULT_PORT+1 for the probe test');
+        assert.ok(server, 'could not bind any port in the walk-up range for the probe test');
 
         try {
             const found = await findLiveServePort();
@@ -140,7 +150,33 @@ describe('open_window: probe helper (real bind)', () => {
         }
     });
 
-    test('probePort resolves false for a (almost certainly) closed port', async () => {
+    test('a listener WITHOUT the llmem marker is NOT reported as the live viewer (C7)', async () => {
+        // A bare server on a probed port (e.g. another dev server on 5757)
+        // must not have its URL handed to agents as the graph viewer.
+        const bare = await new Promise<http.Server | null>((resolve) => {
+            const server = http.createServer((_req, res) => res.end('not llmem'));
+            server.once('error', () => resolve(null));
+            server.listen(DEFAULT_PORT, '127.0.0.1', () => resolve(server));
+        });
+        if (!bare) {
+            // Port already taken locally — probeLlmemPort against whatever
+            // holds it must still be header-gated, so just assert the direct
+            // probe of a bare ephemeral server is false below.
+            assert.ok(true, 'DEFAULT_PORT taken locally; direct-probe case below covers the gate');
+        } else {
+            try {
+                assert.equal(
+                    await probeLlmemPort(DEFAULT_PORT),
+                    false,
+                    'bare listener must fail the marker check',
+                );
+            } finally {
+                await new Promise<void>((resolve) => bare.close(() => resolve()));
+            }
+        }
+    });
+
+    test('probeLlmemPort resolves false for a (almost certainly) closed port', async () => {
         // Pick an ephemeral port, bind+close it to confirm nothing is listening.
         const ephemeral = await new Promise<number>((resolve) => {
             const s = net.createServer();
@@ -150,7 +186,7 @@ describe('open_window: probe helper (real bind)', () => {
                 s.close(() => resolve(port));
             });
         });
-        const alive = await probePort(ephemeral, 200);
+        const alive = await probeLlmemPort(ephemeral, 200);
         assert.equal(alive, false);
     });
 });

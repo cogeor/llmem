@@ -18,6 +18,13 @@ export function renderHealthReport(report: HealthReport): string {
     const lines: string[] = [];
 
     lines.push(`# LLMem Health Report — ${report.repo}`);
+    if (report.graph) {
+        // C1: one-line graph size header (the deleted `stats` command's job).
+        lines.push('');
+        lines.push(
+            `graph: ${report.graph.files} files, ${report.graph.importEdges} import edges, ${report.graph.callEdges} call edges`,
+        );
+    }
     lines.push('');
     lines.push('## Scorecard (measurement vector)');
     lines.push(

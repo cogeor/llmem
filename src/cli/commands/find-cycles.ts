@@ -72,7 +72,13 @@ const findCyclesArgs = z.object({
 
 export const findCyclesCommand: CommandSpec<typeof findCyclesArgs> = {
     name: 'find-cycles',
-    description: 'Report import dependency cycles',
+    // C2 (2026-07-13): hidden alias. `llmem health` runs the same
+    // importCyclesFromGraph analyzer as one of its six dimensions, so this
+    // command adds no capability — it survives (hidden, still callable) only
+    // for muscle memory and external docs links. New surfaces should point
+    // at `health`.
+    hidden: true,
+    description: 'Report import dependency cycles (alias — included in llmem health)',
     examples: [
         {
             scenario: 'List import cycles in the auto-detected workspace',
@@ -100,5 +106,7 @@ export const findCyclesCommand: CommandSpec<typeof findCyclesArgs> = {
         );
 
         console.log(buildCycleReport(importGraph));
+        console.log('');
+        console.log("(cycles are also one dimension of 'llmem health')");
     },
 };

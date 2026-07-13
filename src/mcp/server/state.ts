@@ -16,6 +16,7 @@
  * the `./server` barrel.
  */
 
+import { randomUUID } from 'crypto';
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import type { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { Config } from '../../core/config-types';
@@ -147,4 +148,38 @@ export function setStoredConfig(config: Config | null): void {
  */
 export function clearStoredContext(): void {
     storedContext = null;
+}
+
+// ============================================================================
+// Review session tokens (C6, 2026-07-13)
+// ============================================================================
+//
+// Phase-1 `review` issues a token per (path, ruleset); phase-2
+// `report_review` must present it. This makes two failure modes structural
+// rather than conventional: fabricating a phase-2 report without ever
+// running phase-1 (R-1), and reporting under a different ruleset than was
+// recalled (R-4 — the ruleset is part of the key, so a mismatch never
+// verifies). Re-running phase-1 REPLACES the token, so a stale phase-2
+// from before the re-run is rejected too.
+
+const reviewTokens = new Map<string, string>();
+
+const reviewTokenKey = (path: string, ruleset: string): string =>
+    JSON.stringify([path, ruleset]);
+
+/** Issue (and store, replacing any prior) the token for one review session. */
+export function issueReviewToken(path: string, ruleset: string): string {
+    const token = randomUUID();
+    reviewTokens.set(reviewTokenKey(path, ruleset), token);
+    return token;
+}
+
+/** True iff `token` is the CURRENT token for (path, ruleset). */
+export function verifyReviewToken(path: string, ruleset: string, token: string): boolean {
+    return reviewTokens.get(reviewTokenKey(path, ruleset)) === token;
+}
+
+/** Reset all review sessions (server shutdown / tests). */
+export function clearReviewTokens(): void {
+    reviewTokens.clear();
 }

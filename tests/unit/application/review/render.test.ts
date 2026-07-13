@@ -282,3 +282,38 @@ test('rendering a snapshot-bearing checklist twice is byte-identical', () => {
         'snapshot-bearing checklist in → identical markdown out',
     );
 });
+
+// ---- Case 10 (C8): 64-hex hashes shortened on the human surface only ------
+
+test('64-hex content hashes in candidate refs render shortened; JSON keeps full refs', () => {
+    const HASH = 'a'.repeat(64);
+    const base = buildChecklist();
+    // Graft a clone-lit style ref (the shape that carries sha256 hashes)
+    // onto the first entry that has candidates (immutably — the recall
+    // candidate arrays are readonly).
+    const FULL_REF = `clone-lit:arr:${HASH}:src/a.ts|src/b.ts`;
+    let grafted = false;
+    const checklist = {
+        ...base,
+        entries: base.entries.map(e => {
+            if (grafted || e.candidates.length === 0) return e;
+            grafted = true;
+            return {
+                ...e,
+                candidates: [{ ...e.candidates[0], ref: FULL_REF }, ...e.candidates.slice(1)],
+            };
+        }),
+    };
+    assert.ok(grafted, 'fixture has at least one candidate-bearing entry');
+    const entry = checklist.entries.find(e => e.candidates.some(c => c.ref === FULL_REF));
+
+    const md = renderReviewChecklist(checklist);
+    assert.ok(
+        md.includes(`clone-lit:arr:${HASH.slice(0, 8)}…:src/a.ts|src/b.ts`),
+        `markdown shows the 8-char hash: ${md.split('\n').find(l => l.includes('clone-lit'))}`,
+    );
+    assert.ok(!md.includes(HASH), 'full 64-hex hash absent from markdown');
+    // The checklist OBJECT (what --json emits / report_review correlates on)
+    // still carries the full ref.
+    assert.equal(entry!.candidates[0].ref, FULL_REF, 'JSON-side ref untouched');
+});

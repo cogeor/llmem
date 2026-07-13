@@ -23,71 +23,66 @@ import assert from 'node:assert/strict';
 import { z } from 'zod';
 
 import {
-    FileInfoSchema,
-    ReportFileInfoSchema,
-    FolderInfoSchema,
-    ReportFolderInfoSchema,
+    DocumentSchema,
+    ReportDocumentSchema,
     ReviewSchema,
     ReportReviewSchema,
     OpenWindowSchema,
 } from '../../src/mcp/tools';
 
 // =============================================================================
-// file_info
+// document (C5: merged file_info + folder_info — identical payload)
 // =============================================================================
 
-describe('mcp tool schema: file_info', () => {
+describe('mcp tool schema: document', () => {
     const KNOWN_GOOD = {
         workspaceRoot: '/abs/path/to/project',
         path: 'src/foo.ts',
     };
 
     test('parses a known-good payload (refresh defaults to auto)', () => {
-        const got = FileInfoSchema.parse(KNOWN_GOOD);
+        const got = DocumentSchema.parse(KNOWN_GOOD);
         assert.deepEqual(got, { ...KNOWN_GOOD, refresh: 'auto' });
     });
 
-    test('refresh defaults to auto when omitted', () => {
-        const parsed = FileInfoSchema.parse(KNOWN_GOOD);
-        assert.equal(parsed.refresh, 'auto');
-    });
-
     test("accepts refresh: 'skip'", () => {
-        const got = FileInfoSchema.parse({ ...KNOWN_GOOD, refresh: 'skip' });
+        const got = DocumentSchema.parse({ ...KNOWN_GOOD, refresh: 'skip' });
         assert.equal(got.refresh, 'skip');
     });
 
     test('rejects an unknown refresh value', () => {
         assert.throws(
-            () => FileInfoSchema.parse({ ...KNOWN_GOOD, refresh: 'always' }),
+            () => DocumentSchema.parse({ ...KNOWN_GOOD, refresh: 'always' }),
             z.ZodError,
         );
     });
 
     test('property set is exactly [path, refresh, workspaceRoot]', () => {
-        const parsed = FileInfoSchema.parse(KNOWN_GOOD);
+        const parsed = DocumentSchema.parse(KNOWN_GOOD);
         assert.deepEqual(
             Object.keys(parsed).sort(),
             ['path', 'refresh', 'workspaceRoot'],
-            'A new property in FileInfoSchema requires an explicit pin update.',
+            'A new property in DocumentSchema requires an explicit pin update.',
         );
     });
 
     test('rejects payload missing workspaceRoot', () => {
-        assert.throws(() => FileInfoSchema.parse({ path: 'src/foo.ts' }), z.ZodError);
+        assert.throws(() => DocumentSchema.parse({ path: 'src/foo.ts' }), z.ZodError);
     });
 
     test('rejects payload missing path', () => {
-        assert.throws(() => FileInfoSchema.parse({ workspaceRoot: '/abs/path' }), z.ZodError);
+        assert.throws(() => DocumentSchema.parse({ workspaceRoot: '/abs/path' }), z.ZodError);
     });
 });
 
 // =============================================================================
-// report_file_info
+// report_document (C5: discriminated union on kind over the shared
+// contracts/doc-reports payloads + routing fields)
 // =============================================================================
 
-describe('mcp tool schema: report_file_info', () => {
+describe('mcp tool schema: report_document (kind: file)', () => {
     const KNOWN_GOOD_MINIMAL = {
+        kind: 'file',
         workspaceRoot: '/abs/path/to/project',
         path: 'src/foo.ts',
         overview: 'Overview text.',
@@ -103,35 +98,26 @@ describe('mcp tool schema: report_file_info', () => {
     };
 
     test('parses a known-good payload (minimal — no optional inputs/outputs)', () => {
-        const got = ReportFileInfoSchema.parse(KNOWN_GOOD_MINIMAL);
+        const got = ReportDocumentSchema.parse(KNOWN_GOOD_MINIMAL);
         assert.deepEqual(got, KNOWN_GOOD_MINIMAL);
     });
 
     test('parses a known-good payload (full — with inputs/outputs)', () => {
-        const got = ReportFileInfoSchema.parse(KNOWN_GOOD_FULL);
+        const got = ReportDocumentSchema.parse(KNOWN_GOOD_FULL);
         assert.deepEqual(got, KNOWN_GOOD_FULL);
     });
 
-    test('property set (minimal) is exactly [functions, overview, path, workspaceRoot]', () => {
-        // Optional fields that are absent from the input do not appear in the
-        // parsed output (Zod default behaviour). Pin both shapes explicitly.
-        const parsed = ReportFileInfoSchema.parse(KNOWN_GOOD_MINIMAL);
+    test('property set (minimal) is exactly [functions, kind, overview, path, workspaceRoot]', () => {
+        const parsed = ReportDocumentSchema.parse(KNOWN_GOOD_MINIMAL);
         assert.deepEqual(
             Object.keys(parsed).sort(),
-            ['functions', 'overview', 'path', 'workspaceRoot'],
-        );
-    });
-
-    test('property set (full) is exactly [functions, inputs, outputs, overview, path, workspaceRoot]', () => {
-        const parsed = ReportFileInfoSchema.parse(KNOWN_GOOD_FULL);
-        assert.deepEqual(
-            Object.keys(parsed).sort(),
-            ['functions', 'inputs', 'outputs', 'overview', 'path', 'workspaceRoot'],
+            ['functions', 'kind', 'overview', 'path', 'workspaceRoot'],
         );
     });
 
     test('functions[].property set is exactly [implementation, name, purpose]', () => {
-        const parsed = ReportFileInfoSchema.parse(KNOWN_GOOD_MINIMAL);
+        const parsed = ReportDocumentSchema.parse(KNOWN_GOOD_MINIMAL);
+        if (parsed.kind !== 'file') assert.fail('expected file variant');
         assert.equal(parsed.functions.length, 1);
         assert.deepEqual(
             Object.keys(parsed.functions[0]).sort(),
@@ -139,14 +125,22 @@ describe('mcp tool schema: report_file_info', () => {
         );
     });
 
+    test('rejects payload missing kind (the discriminator)', () => {
+        const bad: Record<string, unknown> = { ...KNOWN_GOOD_MINIMAL };
+        delete bad.kind;
+        assert.throws(() => ReportDocumentSchema.parse(bad), z.ZodError);
+    });
+
     test('rejects payload missing overview', () => {
-        const { overview, ...bad } = KNOWN_GOOD_MINIMAL;
-        assert.throws(() => ReportFileInfoSchema.parse(bad), z.ZodError);
+        const bad: Record<string, unknown> = { ...KNOWN_GOOD_MINIMAL };
+        delete bad.overview;
+        assert.throws(() => ReportDocumentSchema.parse(bad), z.ZodError);
     });
 
     test('rejects payload missing functions', () => {
-        const { functions, ...bad } = KNOWN_GOOD_MINIMAL;
-        assert.throws(() => ReportFileInfoSchema.parse(bad), z.ZodError);
+        const bad: Record<string, unknown> = { ...KNOWN_GOOD_MINIMAL };
+        delete bad.functions;
+        assert.throws(() => ReportDocumentSchema.parse(bad), z.ZodError);
     });
 
     test('rejects payload with function missing required nested field', () => {
@@ -154,62 +148,13 @@ describe('mcp tool schema: report_file_info', () => {
             ...KNOWN_GOOD_MINIMAL,
             functions: [{ name: 'fn', purpose: 'does X' /* missing implementation */ }],
         };
-        assert.throws(() => ReportFileInfoSchema.parse(bad), z.ZodError);
+        assert.throws(() => ReportDocumentSchema.parse(bad), z.ZodError);
     });
 });
 
-// =============================================================================
-// folder_info
-// =============================================================================
-
-describe('mcp tool schema: folder_info', () => {
-    const KNOWN_GOOD = {
-        workspaceRoot: '/abs/path/to/project',
-        path: 'src/utils',
-    };
-
-    test('parses a known-good payload (refresh defaults to auto)', () => {
-        const got = FolderInfoSchema.parse(KNOWN_GOOD);
-        assert.deepEqual(got, { ...KNOWN_GOOD, refresh: 'auto' });
-    });
-
-    test('refresh defaults to auto when omitted', () => {
-        const parsed = FolderInfoSchema.parse(KNOWN_GOOD);
-        assert.equal(parsed.refresh, 'auto');
-    });
-
-    test("accepts refresh: 'skip'", () => {
-        const got = FolderInfoSchema.parse({ ...KNOWN_GOOD, refresh: 'skip' });
-        assert.equal(got.refresh, 'skip');
-    });
-
-    test('rejects an unknown refresh value', () => {
-        assert.throws(
-            () => FolderInfoSchema.parse({ ...KNOWN_GOOD, refresh: 'always' }),
-            z.ZodError,
-        );
-    });
-
-    test('property set is exactly [path, refresh, workspaceRoot]', () => {
-        const parsed = FolderInfoSchema.parse(KNOWN_GOOD);
-        assert.deepEqual(Object.keys(parsed).sort(), ['path', 'refresh', 'workspaceRoot']);
-    });
-
-    test('rejects payload missing workspaceRoot', () => {
-        assert.throws(() => FolderInfoSchema.parse({ path: 'src/utils' }), z.ZodError);
-    });
-
-    test('rejects payload missing path', () => {
-        assert.throws(() => FolderInfoSchema.parse({ workspaceRoot: '/abs/path' }), z.ZodError);
-    });
-});
-
-// =============================================================================
-// report_folder_info
-// =============================================================================
-
-describe('mcp tool schema: report_folder_info', () => {
+describe('mcp tool schema: report_document (kind: folder)', () => {
     const KNOWN_GOOD_MINIMAL = {
+        kind: 'folder',
         workspaceRoot: '/abs/path/to/project',
         path: 'src/utils',
         overview: 'Folder overview text.',
@@ -226,33 +171,26 @@ describe('mcp tool schema: report_folder_info', () => {
     };
 
     test('parses a known-good payload (minimal)', () => {
-        const got = ReportFolderInfoSchema.parse(KNOWN_GOOD_MINIMAL);
+        const got = ReportDocumentSchema.parse(KNOWN_GOOD_MINIMAL);
         assert.deepEqual(got, KNOWN_GOOD_MINIMAL);
     });
 
     test('parses a known-good payload (full — with inputs/outputs)', () => {
-        const got = ReportFolderInfoSchema.parse(KNOWN_GOOD_FULL);
+        const got = ReportDocumentSchema.parse(KNOWN_GOOD_FULL);
         assert.deepEqual(got, KNOWN_GOOD_FULL);
     });
 
-    test('property set (minimal) is exactly [architecture, key_files, overview, path, workspaceRoot]', () => {
-        const parsed = ReportFolderInfoSchema.parse(KNOWN_GOOD_MINIMAL);
+    test('property set (minimal) is exactly [architecture, key_files, kind, overview, path, workspaceRoot]', () => {
+        const parsed = ReportDocumentSchema.parse(KNOWN_GOOD_MINIMAL);
         assert.deepEqual(
             Object.keys(parsed).sort(),
-            ['architecture', 'key_files', 'overview', 'path', 'workspaceRoot'],
-        );
-    });
-
-    test('property set (full) is exactly [architecture, inputs, key_files, outputs, overview, path, workspaceRoot]', () => {
-        const parsed = ReportFolderInfoSchema.parse(KNOWN_GOOD_FULL);
-        assert.deepEqual(
-            Object.keys(parsed).sort(),
-            ['architecture', 'inputs', 'key_files', 'outputs', 'overview', 'path', 'workspaceRoot'],
+            ['architecture', 'key_files', 'kind', 'overview', 'path', 'workspaceRoot'],
         );
     });
 
     test('key_files[].property set is exactly [name, summary]', () => {
-        const parsed = ReportFolderInfoSchema.parse(KNOWN_GOOD_MINIMAL);
+        const parsed = ReportDocumentSchema.parse(KNOWN_GOOD_MINIMAL);
+        if (parsed.kind !== 'folder') assert.fail('expected folder variant');
         assert.equal(parsed.key_files.length, 1);
         assert.deepEqual(
             Object.keys(parsed.key_files[0]).sort(),
@@ -260,22 +198,23 @@ describe('mcp tool schema: report_folder_info', () => {
         );
     });
 
-    test('rejects payload missing overview', () => {
-        const { overview, ...bad } = KNOWN_GOOD_MINIMAL;
-        assert.throws(() => ReportFolderInfoSchema.parse(bad), z.ZodError);
-    });
-
     test('rejects payload missing architecture', () => {
-        const { architecture, ...bad } = KNOWN_GOOD_MINIMAL;
-        assert.throws(() => ReportFolderInfoSchema.parse(bad), z.ZodError);
+        const bad: Record<string, unknown> = { ...KNOWN_GOOD_MINIMAL };
+        delete bad.architecture;
+        assert.throws(() => ReportDocumentSchema.parse(bad), z.ZodError);
     });
 
-    test('rejects payload with key_file missing required nested field', () => {
-        const bad = {
-            ...KNOWN_GOOD_MINIMAL,
-            key_files: [{ name: 'foo.ts' /* missing summary */ }],
-        };
-        assert.throws(() => ReportFolderInfoSchema.parse(bad), z.ZodError);
+    test('rejects a file body under kind:folder (cross-variant fields)', () => {
+        assert.throws(
+            () => ReportDocumentSchema.parse({
+                kind: 'folder',
+                workspaceRoot: '/abs',
+                path: 'src/utils',
+                overview: 'x',
+                functions: [],
+            }),
+            z.ZodError,
+        );
     });
 });
 
@@ -335,6 +274,7 @@ describe('mcp tool schema: report_review', () => {
     const KNOWN_GOOD = {
         workspaceRoot: '/abs/path/to/project',
         path: 'src/webview',
+        reviewToken: '00000000-0000-4000-8000-000000000000',
         checklist: [
             { id: 'D1', status: 'issue-validated', note: 'owner is X' },
             { id: 'DC1', status: 'non-issue' },
@@ -350,12 +290,32 @@ describe('mcp tool schema: report_review', () => {
         assert.equal(ReportReviewSchema.parse(KNOWN_GOOD).ruleset, 'both');
     });
 
-    test('property set is exactly [checklist, path, ruleset, workspaceRoot]', () => {
+    test('property set is exactly [checklist, path, reviewToken, ruleset, workspaceRoot]', () => {
         const parsed = ReportReviewSchema.parse(KNOWN_GOOD);
         assert.deepEqual(
             Object.keys(parsed).sort(),
-            ['checklist', 'path', 'ruleset', 'workspaceRoot'],
+            ['checklist', 'path', 'reviewToken', 'ruleset', 'workspaceRoot'],
         );
+    });
+
+    test('rejects payload missing reviewToken (C6 — phase-1 session required)', () => {
+        const bad: Record<string, unknown> = { ...KNOWN_GOOD };
+        delete bad.reviewToken;
+        assert.throws(() => ReportReviewSchema.parse(bad), z.ZodError);
+    });
+
+    test('rejects issue-validated item without a non-empty note (C6)', () => {
+        for (const note of [undefined, '', '   ']) {
+            const bad = {
+                ...KNOWN_GOOD,
+                checklist: [{ id: 'D1', status: 'issue-validated', ...(note === undefined ? {} : { note }) }],
+            };
+            assert.throws(
+                () => ReportReviewSchema.parse(bad),
+                z.ZodError,
+                `note=${JSON.stringify(note)} must be rejected`,
+            );
+        }
     });
 
     test('checklist[].property set is exactly [id, note, status] (with note) / [id, status] (without)', () => {
@@ -381,7 +341,8 @@ describe('mcp tool schema: report_review', () => {
     });
 
     test('rejects payload missing checklist', () => {
-        const { checklist, ...bad } = KNOWN_GOOD;
+        const bad: Record<string, unknown> = { ...KNOWN_GOOD };
+        delete bad.checklist;
         assert.throws(() => ReportReviewSchema.parse(bad), z.ZodError);
     });
 });

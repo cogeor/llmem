@@ -30,6 +30,16 @@ const GRAPH_BLIND_LINE = '      0 candidates — graph blind here, read for it';
 const capLine = (total: number, shown: number): string =>
     `        … +${total - shown} more (capped)`;
 
+/**
+ * C8 (2026-07-13): shorten 64-hex content hashes inside a candidate ref to
+ * 8 chars for the HUMAN surface (a `clone-lit:arr:<sha256>:members` ref is
+ * unreadable at full length). The JSON checklist keeps full refs — they are
+ * correlation keys; the report_review round-trip matches on ITEM ids
+ * (D1, FB3, …), never on candidate refs, so this is presentation-only.
+ */
+const shortenHashes = (ref: string): string =>
+    ref.replace(/\b[0-9a-f]{64}\b/g, (h) => `${h.slice(0, 8)}…`);
+
 /** Render a `ReviewChecklist` as deterministic, timestamp-free markdown. */
 export function renderReviewChecklist(checklist: ReviewChecklist): string {
     const lines: string[] = [];
@@ -77,7 +87,7 @@ export function renderReviewChecklist(checklist: ReviewChecklist): string {
             lines.push('      candidates:');
             for (const candidate of candidates) {
                 const note = candidate.note ? ` — ${candidate.note}` : '';
-                lines.push(`        - ${candidate.ref}${note}`);
+                lines.push(`        - ${shortenHashes(candidate.ref)}${note}`);
             }
             if (capped) {
                 lines.push(capLine(capped.total, capped.shown));

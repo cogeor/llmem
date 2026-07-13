@@ -26,6 +26,7 @@ import {
     validateWorkspacePath,
 } from '../path-utils';
 import { assertWorkspaceRootMatch } from './shared';
+import { verifyReviewToken } from '../server';
 import { validateCompleteness } from '../../application/review/validate';
 import type { SubmittedItem } from '../../application/review/validate';
 import {
@@ -42,6 +43,12 @@ export const ReportReviewSchema = z.object({
         .enum(['general', 'frontend', 'both'])
         .default('both')
         .describe('Which checklist ruleset was reviewed (must match the review call)'),
+    // C6: session token issued by the phase-1 `review` call (in its
+    // callbackArgs). Required — a phase-2 report without a live phase-1
+    // session is rejected.
+    reviewToken: z
+        .string()
+        .describe('Session token from the review call (callbackArgs.reviewToken)'),
     checklist: z
         .array(
             z.object({
@@ -52,8 +59,23 @@ export const ReportReviewSchema = z.object({
                 note: z
                     .string()
                     .optional()
-                    .describe('Optional justification / finding note'),
-            }),
+                    .describe(
+                        'Justification / finding note. REQUIRED (non-empty, citing the ' +
+                        'finding) when status is issue-validated.',
+                    ),
+            })
+            // C6: "reviewed" must mean "cited" — an issue-validated verdict
+            // with no note is an unusable finding.
+            .refine(
+                (item) =>
+                    item.status !== 'issue-validated' ||
+                    (typeof item.note === 'string' && item.note.trim().length > 0),
+                {
+                    message:
+                        'issue-validated requires a non-empty note citing the finding',
+                    path: ['note'],
+                },
+            ),
         )
         .describe('Per-item verdicts for ALL required items'),
 });
@@ -76,6 +98,18 @@ async function handleReportReviewImpl(
     validateWorkspaceRoot(workspaceRoot);
     assertWorkspaceRootMatch(workspaceRoot);
     validateWorkspacePath(workspaceRoot, relativePath);
+
+    // C6: the token is keyed by (path, ruleset), so a report against a
+    // different ruleset than was recalled — or without any phase-1 call at
+    // all — never verifies. Re-running `review` replaces the token, which
+    // invalidates reports drafted against the earlier recall.
+    if (!verifyReviewToken(relativePath, ruleset, validation.data!.reviewToken)) {
+        return formatError(
+            'Missing or stale review token for this path/ruleset. Call the review ' +
+            'tool first (each call issues a fresh reviewToken in callbackArgs) and ' +
+            'pass that token back unchanged.',
+        );
+    }
 
     const submitted: SubmittedItem[] = checklist;
     const completeness = validateCompleteness(submitted, ruleset);
@@ -116,9 +150,11 @@ export const handleReportReview = (args: unknown) =>
 export const reportReviewTool = {
     name: 'report_review',
     description:
-        'Record an architecture-review checklist for a file/folder. Rejects (persisting ' +
-        'nothing) if any required box is left not-yet-checked or missing; otherwise writes ' +
-        'the filled checklist to .llmem/review/{path}.md in the workspace.',
+        'Record an architecture-review checklist for a file/folder. Requires the ' +
+        'reviewToken issued by the review call. Rejects (persisting nothing) if any ' +
+        'required box is left not-yet-checked or missing, or if an issue-validated item ' +
+        'lacks a citing note; otherwise writes the filled checklist to ' +
+        '.llmem/review/{path}.md in the workspace.',
     schema: ReportReviewSchema,
     handler: handleReportReview,
 };

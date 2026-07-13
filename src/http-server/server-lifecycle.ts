@@ -13,6 +13,7 @@ import * as http from 'http';
 import { hasEdgeLists } from '../viewer-generator';
 import { scanFolderRecursive } from '../application/scan';
 import { createLogger } from '../common/logger';
+import { PORT_FALLBACK_ATTEMPTS } from '../config-defaults';
 import type { WorkspaceContext } from '../application/workspace-context';
 
 const log = createLogger('graph-server');
@@ -58,7 +59,7 @@ export async function bindWithPortFallback(
     startPort: number,
 ): Promise<number> {
     const tried: number[] = [];
-    for (let attempt = 0; attempt < 10; attempt++) {
+    for (let attempt = 0; attempt < PORT_FALLBACK_ATTEMPTS; attempt++) {
         const candidatePort = startPort + attempt;
         tried.push(candidatePort);
         try {

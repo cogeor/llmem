@@ -148,8 +148,8 @@
     "file-info:semantic": "npx ts-node src/scripts/file-info-cli.ts --semantic",
     "serve": "npm run build:entrypoints && npm run build:webview && node ./bin/llmem serve",
     "serve:dev": "npx ts-node src/cli/main.ts serve",
-    "graph": "node ./bin/llmem generate",
-    "graph:stats": "node ./bin/llmem stats",
+    "graph": "node ./bin/llmem scan",
+    "graph:stats": "node ./bin/llmem health",
     "health:ci": "node ./bin/llmem health --fail-on import-cycle",
     "package": "vsce package",
     "package:dist": "echo 'Dist package - copy dist/* to deployment location'"

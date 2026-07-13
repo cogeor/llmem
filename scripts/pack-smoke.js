@@ -349,7 +349,9 @@ function smokeMcp(node, binJs, cwd, env) {
         let stderr = '';
         let settled = false;
         let sentList = false;
-        const EXPECTED = ['file_info', 'folder_info', 'open_window'];
+        // C5 (2026-07-13): the merged 5-tool surface — document/report_document
+        // replaced the file_info/folder_info pairs.
+        const EXPECTED = ['document', 'report_document', 'review', 'report_review', 'open_window'];
 
         function send(obj) {
             child.stdin.write(JSON.stringify(obj) + '\n');
