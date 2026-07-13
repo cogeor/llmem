@@ -29,6 +29,8 @@
  * LITERAL_USE_ALLOWLIST.
  */
 
+import { ALL_SUPPORTED_EXTENSIONS } from './language-descriptors';
+
 // Branded types (purely compile-time; runtime values are plain strings to
 // preserve the on-disk JSON format byte-for-byte).
 export type FileId = string & { readonly __brand: 'FileId' };
@@ -65,12 +67,27 @@ export function makeExternalModuleId(specifier: string): ExternalModuleId {
 // Parsing
 // ---------------------------------------------------------------------------
 
+// Lowercased set of supported source extensions, so `.R` matches `.r` etc.
+const SOURCE_EXTENSIONS: ReadonlySet<string> = new Set(
+    ALL_SUPPORTED_EXTENSIONS.map((e) => e.toLowerCase()),
+);
+
+function hasSourceExtension(id: string): boolean {
+    const dot = id.lastIndexOf('.');
+    return dot > 0 && SOURCE_EXTENSIONS.has(id.slice(dot).toLowerCase());
+}
+
 export function isExternalModuleId(id: string): boolean {
-    // Loop 16: dropped a redundant `!id.startsWith('src/')` clause —
-    // `!id.includes('/')` is the operative check (workspace file IDs are
-    // repo-relative paths and always contain a slash; external module
-    // specifiers like 'react' or 'pathlib' do not).
-    return !id.includes(ENTITY_SEPARATOR) && !id.includes('/');
+    // Workspace file IDs are repo-relative paths, so they usually contain a
+    // slash — but files at the repo ROOT (`a.ts`, `main.py`) do not. Those are
+    // still workspace files, not external modules: a slashless id counts as
+    // external only when it also lacks a supported source-file extension
+    // (external specifiers like 'react' or 'pathlib' never carry one).
+    return (
+        !id.includes(ENTITY_SEPARATOR) &&
+        !id.includes('/') &&
+        !hasSourceExtension(id)
+    );
 }
 
 export function parseGraphId(id: string): ParsedGraphId {
