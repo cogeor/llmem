@@ -1,5 +1,5 @@
 
-import { WorkTreeNode, DirectoryNode, FileNode } from '../types';
+import { WorkTreeNode, DirectoryNode } from '../types';
 import { WebviewLogger, createWebviewLogger } from './webview-logger';
 
 export class WorktreeService {

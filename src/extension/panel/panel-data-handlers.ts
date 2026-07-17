@@ -111,15 +111,16 @@ export async function loadFolderNodes(host: PanelHost, folderPath: string): Prom
                 edges: visEdges
             }
         });
-    } catch (e: any) {
+    } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
         log.error('Failed to load folder nodes', {
             folderPath,
-            error: e instanceof Error ? e.message : String(e),
+            error: message,
         });
         host.webview.postMessage({
             type: 'data:folderNodes',
             folderPath,
-            error: e.message
+            error: message
         });
     }
 }

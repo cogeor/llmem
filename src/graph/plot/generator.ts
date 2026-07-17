@@ -20,7 +20,7 @@ interface VisEdge {
     title?: string; // Tooltip for edges (e.g., import specifiers)
 }
 
-function formatTooltip(obj: any): string {
+function formatTooltip(obj: object): string {
     const lines: string[] = [];
     for (const [key, value] of Object.entries(obj)) {
         if (key === 'id' || key === 'label' || key === 'kind') continue;
@@ -42,7 +42,7 @@ export function generatePlotHtml<N extends Node, E extends Edge>(graph: Graph<N,
     const visNodes: VisNode[] = Array.from(graph.nodes.values()).map(n => ({
         id: n.id,
         label: n.label,
-        group: (n as any).kind || 'default',
+        group: (n as { kind?: string }).kind || 'default',
         title: `<b>${n.label}</b><hr/>${formatTooltip(n)}`,
         color: nodeColors.get(n.id)
     }));

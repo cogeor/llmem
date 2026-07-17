@@ -57,9 +57,10 @@ async function main() {
         console.log('='.repeat(80) + '\n');
         console.log(data.prompt);
 
-    } catch (e: any) {
-        console.error('\nERROR:', e.message);
-        if (e.stack) console.error(e.stack);
+    } catch (e: unknown) {
+        const err = e instanceof Error ? e : new Error(String(e));
+        console.error('\nERROR:', err.message);
+        if (err.stack) console.error(err.stack);
         process.exit(1);
     }
 }

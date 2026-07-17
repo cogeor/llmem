@@ -1,3 +1,8 @@
+/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires --
+   Every require() below is a deliberately deferred/optional load (native tree-sitter grammars +
+   adapter constructors) that MUST stay a synchronous lazy require inside its loader arrow — a
+   static import would force optional native addons to load at module-import time and break the
+   "TS/JS works without grammars installed" guarantee. */
 /**
  * Language Loaders (lazy adapter constructors)
  *

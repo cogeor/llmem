@@ -4,7 +4,7 @@ import { StaticDataProvider } from './staticDataProvider';
 import { VSCodeDataProvider } from './vscodeDataProvider';
 import { WebviewLogger } from './webview-logger';
 
-declare const acquireVsCodeApi: (() => any) | undefined;
+declare const acquireVsCodeApi: (() => unknown) | undefined;
 
 /**
  * Factory to create the appropriate DataProvider based on the environment.

@@ -8,7 +8,7 @@ export class Splitter {
     private startWidth: number = 0;
     private direction: 'left' | 'right' = 'left'; // which pane to resize
 
-    constructor(element: HTMLElement, targetPane: HTMLElement, direction: 'left' | 'right' = 'left') {
+    constructor(element: HTMLElement, targetPane: HTMLElement, _direction: 'left' | 'right' = 'left') {
         this.element = element;
         // In this specific layout:
         // splitter-1 resizes explorer-pane (its previous sibling) -> 'left'

@@ -32,8 +32,8 @@ import {
 /** MCP server instance */
 let server: Server | null = null;
 
-/** Server transport */
-let transport: StdioServerTransport | null = null;
+/** Server transport (retained to keep the live handle from being GC'd; not read) */
+let _transport: StdioServerTransport | null = null;
 
 /** Server configuration (passed from extension) */
 let serverConfig: Config | null = null;
@@ -65,7 +65,7 @@ export function setServer(next: Server | null): void {
 }
 
 export function setTransport(next: StdioServerTransport | null): void {
-    transport = next;
+    _transport = next;
 }
 
 export function setServerConfig(next: Config | null): void {

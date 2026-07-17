@@ -4,6 +4,7 @@ import { GraphData, WorkTreeNode, VisNode, VisEdge, DesignDoc } from '../types';
 import { WebviewLogger, createWebviewLogger } from './webview-logger';
 import type { FolderTreeData } from '../../../contracts/folder-tree';
 import type { FolderEdgelistData } from '../../../contracts/folder-edges';
+import type { PanelOutboundMessage } from '../../../contracts/panel-messages';
 import { VsCodeWebviewApi, generateRequestId } from './vscodeDataProvider/request-id';
 import {
     routeMessage,
@@ -86,7 +87,7 @@ export class VSCodeDataProvider implements DataProvider {
      * the pure `message-router` sibling (Loop 22 split); this method just
      * threads the provider's mutable state in.
      */
-    private handleMessage(message: any) {
+    private handleMessage(message: PanelOutboundMessage) {
         routeMessage(message, {
             logger: this.logger,
             refreshListeners: this.refreshListeners,

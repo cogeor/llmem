@@ -21,7 +21,23 @@ import {
     startHotReloadAndSendInitialData,
 } from './panel-watch-handlers';
 
-export async function handleMessage(host: PanelHost, message: any): Promise<void> {
+/**
+ * Minimal shape of a webview -> panel message. The `command`/`type`
+ * discriminant selects the case; the remaining fields are the arguments each
+ * handler reads for its case (guaranteed present by the webview sender). This
+ * is an untrusted external boundary — kept intentionally narrow rather than
+ * widened to `any`.
+ */
+interface PanelInboundMessage {
+    command?: string;
+    type?: string;
+    folderPath: string;
+    requestId?: string;
+    path: string;
+    watched: boolean;
+}
+
+export async function handleMessage(host: PanelHost, message: PanelInboundMessage): Promise<void> {
     switch (message.command || message.type) {
         case 'webview:ready':
             await startHotReloadAndSendInitialData(host);

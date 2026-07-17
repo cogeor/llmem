@@ -65,7 +65,7 @@ export interface ITreeNode {
  * UNSUPPORTED (silently dropped or ignored here):
  *   - Negation (`!foo`) — skipped entirely (a re-included path stays ignored).
  *   - `**` recursive globs, character classes (`[abc]`), `?`, brace expansion.
- *   - Anchored patterns (leading `/`) and mid-path globs (`a/*​/b`).
+ *   - Anchored patterns (leading `/`) and mid-path globs (a `*` between segments).
  * SUPPORTED in shouldIgnore: exact name, exact/prefix relative path, `*.ext`,
  * and `dir/*`. For full fidelity, route shouldIgnore through the vetted `ignore`
  * npm package (weighed against the minimal-dependency goal — see PH-08b notes).
@@ -87,7 +87,7 @@ async function parseGitignore(io: WorkspaceIO): Promise<Set<string>> {
             if (!trimmed || trimmed.startsWith('#')) continue;
 
             // Remove trailing slashes for directory patterns
-            let pattern = trimmed.replace(/\/$/, '');
+            const pattern = trimmed.replace(/\/$/, '');
 
             // Handle negation (we don't support it, just skip)
             if (pattern.startsWith('!')) continue;

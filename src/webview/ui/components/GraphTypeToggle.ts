@@ -34,7 +34,7 @@ export class GraphTypeToggle {
         this.unsubscribe = this.state.subscribe((s: AppState) => this.render(s));
     }
 
-    render({ currentView, graphType, callGraphAvailable }: AppState) {
+    render({ graphType, callGraphAvailable }: AppState) {
         // In 3-column layout, graph is always visible, so toggle should be too
         this.el.style.display = 'block';
 

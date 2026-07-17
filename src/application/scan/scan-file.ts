@@ -75,16 +75,17 @@ export async function scanFile(
     });
 
     if (!result.ok && result.kind === 'init-error') {
-        const e: any = result.error;
+        const e = result.error;
+        const eMessage = e instanceof Error ? e.message : String(e);
         const fileExt = path.extname(filePath).toLowerCase();
-        logger.warn(`[GenerateEdges] Failed to initialize parser for ${filePath}: ${e?.message ?? String(e)}`);
+        logger.warn(`[GenerateEdges] Failed to initialize parser for ${filePath}: ${eMessage}`);
         return {
             filesProcessed: 0,
             filesSkipped: 1,
             errors: [{
                 filePath,
                 message:
-                    `Failed to initialize parser for ${fileExt} (${filePath}): ${e?.message ?? String(e)}. ` +
+                    `Failed to initialize parser for ${fileExt} (${filePath}): ${eMessage}. ` +
                     `The tree-sitter native module may be missing or failed to build — ` +
                     `install build tools or a prebuilt binary for your Node version and reinstall.`,
                 cause: e,
@@ -118,8 +119,9 @@ export async function scanFile(
     // matching the legacy `throw new Error('No artifact extracted')` (caught by
     // the inner try) and the outer `Failed to process` wrapper.
     if (!result.ok) {
-        const e: any = result.kind === 'extract-error' ? result.error : new Error('No artifact extracted');
-        throw new Error(`Failed to process ${filePath}: ${e?.message ?? String(e)}`);
+        const e: unknown = result.kind === 'extract-error' ? result.error : new Error('No artifact extracted');
+        const eMessage = e instanceof Error ? e.message : String(e);
+        throw new Error(`Failed to process ${filePath}: ${eMessage}`);
     }
 
     applyArtifactToStores(result.conversion, callStore, importStore);

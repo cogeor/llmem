@@ -65,8 +65,8 @@ export async function bindWithPortFallback(
         try {
             await listenOnce(server, candidatePort, '127.0.0.1');
             return candidatePort;
-        } catch (err: any) {
-            if (err && err.code === 'EADDRINUSE') {
+        } catch (err: unknown) {
+            if (err && (err as NodeJS.ErrnoException).code === 'EADDRINUSE') {
                 continue;
             }
             throw err;

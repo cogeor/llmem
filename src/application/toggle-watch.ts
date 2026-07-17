@@ -127,14 +127,14 @@ export async function addWatchedPath(
         } else {
             await scanFile(ctx, { filePath: targetPath });
         }
-    } catch (e: any) {
+    } catch (e: unknown) {
         // Persist the watch-state update even if scan fails so the user
         // can see the path is being watched. Surface the scan error in
         // the result message.
         await watchService.save();
         return {
             success: false,
-            message: `Watched ${targetPath} but scan failed: ${e?.message ?? String(e)}`,
+            message: `Watched ${targetPath} but scan failed: ${e instanceof Error ? e.message : String(e)}`,
             addedFiles: addedFiles.map(asRelPath),
             watchedFiles: watchService.getWatchedFiles().map(asRelPath),
         };

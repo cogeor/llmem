@@ -143,13 +143,13 @@ export class GraphView {
             this.isRendered = true;
 
             this.logger.log('[GraphView] Graph rendered successfully');
-        } catch (err: any) {
+        } catch (err: unknown) {
             this.logger.error('[GraphView] Render error:', err);
-            // Loop 13: error.message and error.stack can carry user-controlled
-            // path fragments and arbitrary text — they must be HTML-escaped
-            // before interpolation into the error display.
-            const safeMessage = escape(String(err?.message ?? 'unknown'));
-            const safeStack = escape(String(err?.stack ?? ''));
+            // Loop 13: error.message/.stack can carry user-controlled path
+            // fragments — HTML-escape before interpolation into the display.
+            const e = err as { message?: unknown; stack?: unknown };
+            const safeMessage = escape(String(e?.message ?? 'unknown'));
+            const safeStack = escape(String(e?.stack ?? ''));
             // safe: structural template with escape()-wrapped error fields.
             canvasEl.innerHTML = `<div style="padding:20px; color:red">Error rendering graph: ${safeMessage}<br><pre>${safeStack}</pre></div>`;
             canvasEl.style.display = 'block';
@@ -159,7 +159,7 @@ export class GraphView {
     /**
      * Handle state changes - pan camera and highlight as needed.
      */
-    onState({ currentView, graphType, selectedPath, selectedType, selectionSource, watchedPaths }: AppState) {
+    onState({ graphType, selectedPath, selectedType, selectionSource, watchedPaths }: AppState) {
         const canvasEl = this.el.querySelector('.graph-canvas') as HTMLElement;
 
         // Loop 05: drive the empty-state overlay from the same subscription
@@ -339,7 +339,7 @@ export class GraphView {
                     const graph = this.currentGraphType === "import"
                         ? this.data.importGraph
                         : this.data.callGraph;
-                    this.graphRenderer.render(graph, this.worktree, this.currentGraphType as any);
+                    this.graphRenderer.render(graph, this.worktree, this.currentGraphType as 'import' | 'call');
                 }
             } else {
                 this.logger.log('[GraphView] Resize triggered but no renderer yet');

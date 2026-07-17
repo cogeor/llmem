@@ -12,6 +12,7 @@
  * keep working unchanged.
  */
 
+import { execFile, type ExecFileException } from 'child_process';
 import { createLogger } from '../common/logger';
 
 const log = createLogger('web-launcher');
@@ -25,7 +26,6 @@ const log = createLogger('web-launcher');
  * @param url - file:// URL to open
  */
 export function openInBrowser(url: string): void {
-    const { execFile } = require('child_process');
     let cmd: string;
     let args: string[];
     if (process.platform === 'win32') {
@@ -38,7 +38,7 @@ export function openInBrowser(url: string): void {
         cmd = 'xdg-open';
         args = [url];
     }
-    execFile(cmd, args, (error: any) => {
+    execFile(cmd, args, (error: ExecFileException | null) => {
         if (error) {
             log.warn('Failed to open browser', { error: error.message });
         }

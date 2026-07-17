@@ -37,11 +37,11 @@ import {
 const log = createLogger('mcp-server');
 
 // Use require to avoid TypeScript's deep type inference with zod-to-json-schema
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
 const { zodToJsonSchema } = require('zod-to-json-schema');
 
 // Read version from package.json at runtime
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
 const PACKAGE_VERSION: string = require('../../../package.json').version as string;
 
 // ============================================================================

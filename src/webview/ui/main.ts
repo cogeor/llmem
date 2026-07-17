@@ -232,8 +232,9 @@ if (dataProvider.onWatchedPathsRestored) {
 }
 
 // Initialize watched paths from window.WATCHED_FILES (for static mode)
-if (!isVsCode && (window as any).WATCHED_FILES) {
-    const watchedFiles = (window as any).WATCHED_FILES as string[];
+const staticWindow = window as { WATCHED_FILES?: string[] };
+if (!isVsCode && staticWindow.WATCHED_FILES) {
+    const watchedFiles = staticWindow.WATCHED_FILES;
     logger.log(`[Webview] Initializing ${watchedFiles.length} watched paths from static data`);
     state.set({ watchedPaths: new Set(watchedFiles) });
 }

@@ -14,7 +14,7 @@ import { TypeScriptService } from '../parser/ts-service';
 import { TypeScriptExtractor } from '../parser/ts-extractor';
 import { artifactToEdgeList } from '../application/artifact-converter';
 import { getImportEdges, getCallEdges, filterImportEdges } from '../graph/query/filter';
-import { FileArtifact, Entity } from '../parser/types';
+import { FileArtifact } from '../parser/types';
 import { parseGraphId } from '../core/ids';
 
 // Configuration
@@ -192,7 +192,6 @@ async function main() {
         const sourceParsed = parseGraphId(edge.source);
         const targetParsed = parseGraphId(edge.target);
 
-        const sourceFile = sourceParsed.kind === 'entity' ? sourceParsed.fileId : edge.source;
         const sourceName = sourceParsed.kind === 'entity' ? sourceParsed.name : edge.source;
         const targetFile = targetParsed.kind === 'entity' ? targetParsed.fileId : edge.target;
         const targetName = targetParsed.kind === 'entity' ? targetParsed.name : edge.target;

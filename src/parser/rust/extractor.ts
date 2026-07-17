@@ -14,7 +14,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { ArtifactExtractor } from '../interfaces';
-import { FileArtifact, Entity, ImportSpec, ExportSpec, Loc, EntityKind } from '../types';
+import { FileArtifact, Entity, ImportSpec, ExportSpec, Loc } from '../types';
 
 // Type-only references to the tree-sitter native core. Written as inline
 // `import(...)` type queries (never `import type` statements) so that ts-node /
@@ -33,13 +33,13 @@ export class RustExtractor implements ArtifactExtractor {
         // Tree-sitter Rust grammar - require lazily so `parser/config.ts` can
         // import this module's adapter for extension metadata without forcing
         // tree-sitter-rust to be installed at module-load time.
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
         const Rust = require('tree-sitter-rust');
         // Tree-sitter core (native addon) - require lazily too so that
         // importing this module (e.g. via `parser/config.ts`) never loads
         // the native binding; it is only loaded when an extractor is
         // actually constructed.
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
         const Parser = require('tree-sitter');
         this.parser = new Parser();
         this.parser.setLanguage(Rust);
@@ -231,7 +231,7 @@ export class RustExtractor implements ArtifactExtractor {
     /**
      * Extract a struct entity.
      */
-    private extractStructEntity(node: SyntaxNode, fileContent: string): Entity | null {
+    private extractStructEntity(node: SyntaxNode, _fileContent: string): Entity | null {
         const nameNode = node.childForFieldName('name');
         if (!nameNode) return null;
 

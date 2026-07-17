@@ -46,7 +46,7 @@ export class DesignDocCache {
      * Initialize cache from window.DESIGN_DOCS
      */
     private initFromWindow(): void {
-        const windowDocs = (window as any).DESIGN_DOCS || {};
+        const windowDocs = (window as { DESIGN_DOCS?: Record<string, unknown> }).DESIGN_DOCS || {};
         for (const [key, doc] of Object.entries(windowDocs)) {
             if (doc && typeof doc === 'object') {
                 this.cache.set(key, doc as DesignDoc);

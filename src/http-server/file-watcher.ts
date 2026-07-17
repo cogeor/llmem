@@ -112,7 +112,7 @@ export class FileWatcherService {
 
         // Setup chokidar watcher
         this.watcher = chokidar.watch(existingPaths, {
-            ignored: /(^|[\/\\])\../, // Ignore dotfiles
+            ignored: /(^|[/\\])\../, // Ignore dotfiles
             persistent: true,
             ignoreInitial: true,
             awaitWriteFinish: {

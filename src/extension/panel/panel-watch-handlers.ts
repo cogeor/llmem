@@ -80,8 +80,8 @@ export async function handleToggleWatch(
         const raw = await collectViewerData(ctx);
         const rendered = await toRenderedViewerData(raw);
         host.webview.postMessage({ type: 'data:refresh', data: rendered });
-    } catch (e: any) {
-        vscode.window.showErrorMessage(`Toggle watch failed: ${e?.message ?? String(e)}`);
+    } catch (e: unknown) {
+        vscode.window.showErrorMessage(`Toggle watch failed: ${e instanceof Error ? e.message : String(e)}`);
     }
 }
 

@@ -134,7 +134,7 @@ export async function generateStaticWebview(
         // Bundle from source TypeScript
         // Lazy-load esbuild to avoid errors when not installed
         try {
-            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
             const esbuild = require('esbuild');
             await esbuild.build({
                 entryPoints: [path.join(srcWebview, 'ui', 'main.ts')],

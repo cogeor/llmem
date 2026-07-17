@@ -126,8 +126,9 @@ async function main() {
             if (processed % 20 === 0) {
                 console.log(`  Processed ${processed} files...`);
             }
-        } catch (e: any) {
-            console.error(`  ERROR: ${relativePath}: ${e.message}`);
+        } catch (e: unknown) {
+            const err = e instanceof Error ? e : new Error(String(e));
+            console.error(`  ERROR: ${relativePath}: ${err.message}`);
             errors++;
         }
     }

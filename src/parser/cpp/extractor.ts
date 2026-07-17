@@ -15,7 +15,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { ArtifactExtractor } from '../interfaces';
-import { FileArtifact, Entity, ImportSpec, ExportSpec, Loc, EntityKind } from '../types';
+import { FileArtifact, Entity, ImportSpec, ExportSpec, Loc } from '../types';
 
 // Type-only references to the tree-sitter native core. Written as inline
 // `import(...)` type queries (never `import type` statements) so that ts-node /
@@ -34,13 +34,13 @@ export class CppExtractor implements ArtifactExtractor {
         // Tree-sitter C++ grammar - require lazily so `parser/config.ts` can
         // import this module's adapter for extension metadata without forcing
         // tree-sitter-cpp to be installed at module-load time.
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
         const Cpp = require('tree-sitter-cpp');
         // Tree-sitter core (native addon) - require lazily too so that
         // importing this module (e.g. via `parser/config.ts`) never loads
         // the native binding; it is only loaded when an extractor is
         // actually constructed.
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
         const Parser = require('tree-sitter');
         this.parser = new Parser();
         this.parser.setLanguage(Cpp);
@@ -106,17 +106,14 @@ export class CppExtractor implements ArtifactExtractor {
     private parseIncludeDirective(node: SyntaxNode): ImportSpec | null {
         // Find the path child (string_literal or system_lib_string)
         let source = '';
-        let kind: 'system' | 'local' = 'local';
 
         for (const child of node.children) {
             if (child.type === 'string_literal') {
                 // #include "local.h"
                 source = child.text.slice(1, -1); // Remove quotes
-                kind = 'local';
             } else if (child.type === 'system_lib_string') {
                 // #include <system.h>
                 source = child.text.slice(1, -1); // Remove angle brackets
-                kind = 'system';
             }
         }
 
@@ -194,14 +191,14 @@ export class CppExtractor implements ArtifactExtractor {
     /**
      * Extract a class entity.
      */
-    private extractClassEntity(node: SyntaxNode, fileContent: string): Entity | null {
+    private extractClassEntity(node: SyntaxNode, _fileContent: string): Entity | null {
         const nameNode = node.childForFieldName('name');
         if (!nameNode) return null;
 
         const name = nameNode.text;
 
         // Build signature
-        let signature = `class ${name}`;
+        const signature = `class ${name}`;
 
         return {
             id: `${name}-${node.startPosition.row}`,

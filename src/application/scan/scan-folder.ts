@@ -160,11 +160,12 @@ export async function scanFolder(
         });
 
         if (!result.ok && result.kind === 'init-error') {
-            const e: any = result.error;
+            const e = result.error;
+            const eMessage = e instanceof Error ? e.message : String(e);
             errors.push({
                 filePath: relativePath,
                 message:
-                    `Failed to initialize parser for ${relativePath}: ${e?.message ?? String(e)}. ` +
+                    `Failed to initialize parser for ${relativePath}: ${eMessage}. ` +
                     `The tree-sitter native module may be missing or failed to build — ` +
                     `install build tools or a prebuilt binary for your Node version and reinstall.`,
                 cause: e,
@@ -190,10 +191,10 @@ export async function scanFolder(
         }
 
         if (!result.ok && result.kind === 'extract-error') {
-            const e: any = result.error;
+            const e = result.error;
             errors.push({
                 filePath: relativePath,
-                message: e?.message ?? String(e),
+                message: e instanceof Error ? e.message : String(e),
                 cause: e,
             });
             skippedCount++;
