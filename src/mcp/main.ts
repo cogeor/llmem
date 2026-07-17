@@ -25,7 +25,7 @@
  */
 
 import { startServer, stopServer } from './server';
-import { getMcpConfig } from './config';
+import { getMcpConfig, applyStoreResolution } from './config';
 import { detectWorkspace } from '../workspace';
 import { createLogger } from '../common/logger';
 
@@ -54,8 +54,10 @@ async function main(): Promise<void> {
     const workspaceRoot = detectWorkspaceRoot();
     log.info('Workspace root resolved', { workspaceRoot });
 
-    // Load MCP server config
-    const config = getMcpConfig();
+    // Load MCP server config. P1 portable store: LLMEM_STORE=global routes
+    // artifacts to the per-user store keyed by the workspace path (unless
+    // LLMEM_ARTIFACT_ROOT pinned an explicit root — higher precedence).
+    const config = applyStoreResolution(getMcpConfig(), workspaceRoot);
     log.info('Configuration loaded', {
         artifactRoot: config.artifactRoot,
         maxFilesPerFolder: config.maxFilesPerFolder,

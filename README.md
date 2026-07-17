@@ -173,10 +173,22 @@ All optional:
 
 | Setting | Default | What it controls |
 |---|---|---|
-| `artifactRoot` | `.llmem/graph` | Where edge lists and the generated webview live. Relative paths resolve against the workspace; an **absolute path may live anywhere on disk** (outside the repo), so analyzing a foreign codebase never pollutes it. Set per-invocation with `--artifact-root <dir>` or the `LLMEM_ARTIFACT_ROOT` env var (flag > env > default) |
+| `artifactRoot` | `.llmem/graph` | Where edge lists and the generated webview live. Relative paths resolve against the workspace; an **absolute path may live anywhere on disk** (outside the repo), so analyzing a foreign codebase never pollutes it. Set per-invocation with `--artifact-root <dir>` or the `LLMEM_ARTIFACT_ROOT` env var |
+| `--store` / `LLMEM_STORE` | `repo` | `global` routes artifacts to a **per-user store keyed by the workspace path** (see below) — no directory to pick, nothing written into the repo. An explicit `--store repo` beats `LLMEM_STORE=global` |
 | `maxFileSizeKB` | `512` | Skip files larger than this when scanning |
 | `maxFileLines` | `2000` | Skip files with more than this many lines when scanning |
 | `maxFilesPerFolder` | `20` | Viewer/context **display** heuristic only — caps how many files a folder summary lists for readability |
+
+### The global store (`--store global`)
+
+`llmem scan --store global` (or `LLMEM_STORE=global` for the CLI **and** the MCP server) writes artifacts to a per-user store keyed by the workspace path — the same scheme Bazel, pre-commit, and JetBrains indexes use for tools that analyze code they don't own:
+
+- **Windows:** `%LOCALAPPDATA%\llmem\store\<name>-<hash8>\graph`
+- **Linux/macOS:** `$XDG_CACHE_HOME/llmem/store/<name>-<hash8>/graph` (default `~/.cache/...`)
+
+where `<name>` is the workspace basename sanitized to `[a-z0-9-]` and `<hash8>` is the first 8 hex chars of the sha256 of the workspace's real path (case-folded on Windows). `LLMEM_STORE_DIR` overrides the base directory. `scan` and `serve` print the resolved location (`Artifacts: <path>`).
+
+Precedence for the effective artifact root: `--artifact-root` > `LLMEM_ARTIFACT_ROOT` > `--store global` / `LLMEM_STORE=global` > default `.llmem/graph`.
 
 ### What caps the graph scan (and what doesn't)
 

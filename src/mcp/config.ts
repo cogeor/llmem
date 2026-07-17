@@ -8,6 +8,7 @@
 import type { Config } from '../core/config-types';
 import { DEFAULT_CONFIG, ENV_VARS, MAX_FILES_PER_FOLDER_CAP, MAX_FILE_SIZE_KB_CAP, MAX_FILE_LINES_CAP } from '../config-defaults';
 import { parseInternalOnly } from '../core/internal-only';
+import { resolveArtifactRootPrecedence } from '../workspace/store-location';
 
 /**
  * Load configuration for the MCP server
@@ -68,6 +69,29 @@ export function getMcpConfig(): Config {
     }
 
     return config;
+}
+
+/**
+ * P1 (portable store): fold `LLMEM_STORE=global` into the MCP config's
+ * `artifactRoot`, honoring the same precedence chain as the CLI:
+ * `LLMEM_ARTIFACT_ROOT` (already merged into `config.artifactRoot` by
+ * `getMcpConfig`) > `LLMEM_STORE=global` (per-user store keyed by the
+ * workspace path) > default. Split from `getMcpConfig` because the
+ * workspace root is only known later (main.ts detects it); `env` is
+ * injectable for unit tests.
+ */
+export function applyStoreResolution(
+    config: Config,
+    workspaceRoot: string,
+    env: NodeJS.ProcessEnv = process.env,
+): Config {
+    const resolved = resolveArtifactRootPrecedence({
+        workspaceRoot,
+        envArtifactRoot: env[ENV_VARS.ARTIFACT_ROOT],
+        envStore: env[ENV_VARS.STORE],
+        seams: { env },
+    });
+    return resolved ? { ...config, artifactRoot: resolved } : config;
 }
 
 /**

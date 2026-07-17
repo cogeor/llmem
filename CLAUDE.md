@@ -188,6 +188,7 @@ config. Set `LLMEM_WORKSPACE` for Claude Desktop (no launch dir) or to pin one p
 | Setting | Default | Controls |
 |---|---|---|
 | `artifactRoot` | `.llmem/graph` | Where edge lists + webview live (absolute paths allowed, incl. outside the workspace; `--artifact-root` / `LLMEM_ARTIFACT_ROOT`) |
+| `--store` / `LLMEM_STORE` | `repo` | `global` = per-user store keyed by workspace path: `<base>/llmem/store/<name>-<hash8>/graph` where `<base>` is `%LOCALAPPDATA%` (win32) / `$XDG_CACHE_HOME` else `~/.cache` (POSIX), overridable via `LLMEM_STORE_DIR`; `<hash8>` = sha256 of the workspace realpath (case-folded on win32), `<name>` = sanitized basename. Resolver: `src/workspace/store-location.ts`. Precedence: `--artifact-root` > `LLMEM_ARTIFACT_ROOT` > `--store global` / `LLMEM_STORE=global` > default (explicit `--store repo` beats the env var). Honored by CLI and MCP server |
 | `maxFileSizeKB` | `512` | Skip files larger than this when scanning |
 | `maxFileLines` | `2000` | Skip files with more than this many lines |
 | `maxFilesPerFolder` | `20` | **Display** cap on files a folder summary lists (NOT a scan cap) |

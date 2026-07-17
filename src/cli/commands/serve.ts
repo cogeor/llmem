@@ -37,6 +37,7 @@ const serveArgs = z.object({
     workspace: z.string().optional(),
     regenerate: z.boolean().default(false),
     artifactRoot: z.string().optional().describe('Artifact store directory (absolute paths allowed, may be outside the workspace; overrides LLMEM_ARTIFACT_ROOT; default: .llmem/graph)'),
+    store: z.enum(['repo', 'global']).optional().describe('Artifact store location: repo (.llmem/graph in the workspace, default) or global (per-user store keyed by workspace path; overrides LLMEM_STORE; --artifact-root beats both)'),
     open: z.boolean().default(true),      // Loop 03: default-on per design/06.
     verbose: z.boolean().default(false),
 }).strict();
@@ -59,8 +60,17 @@ export const serveCommand: CommandSpec<typeof serveArgs> = {
         // vscode / default — do NOT hardcode a fallback root) so the probe,
         // cold scan, webview dir, and generateGraph all agree on a single
         // artifactRoot (the centralized `.llmem/graph` default).
-        const ctx = await cli.createWorkspace(workspace, { artifactRoot: args.artifactRoot });
+        const ctx = await cli.createWorkspace(
+            workspace,
+            { artifactRoot: args.artifactRoot },
+            { store: args.store },
+        );
         const artifactRoot = ctx.config.artifactRoot;
+
+        // Discoverability (P1 portable store): always show WHERE the graph
+        // artifacts live — especially useful with --store global, where the
+        // resolved per-user path is not guessable.
+        console.log(`Artifacts: ${ctx.artifactRoot}`);
 
         // Loop 03: zero-config. If no edge lists exist, run the canonical
         // application-layer scan over the workspace root (shared `ensureGraph`

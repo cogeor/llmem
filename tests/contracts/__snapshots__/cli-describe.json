@@ -24,6 +24,14 @@
             "default": false,
             "type": "boolean"
           },
+          "store": {
+            "description": "Artifact store location: repo (.llmem/graph in the workspace, default) or global (per-user store keyed by workspace path; overrides LLMEM_STORE; --artifact-root beats both)",
+            "enum": [
+              "repo",
+              "global"
+            ],
+            "type": "string"
+          },
           "verbose": {
             "default": false,
             "type": "boolean"
@@ -103,6 +111,14 @@
             ],
             "type": "string"
           },
+          "store": {
+            "description": "Artifact store location: repo (.llmem/graph in the workspace, default) or global (per-user store keyed by workspace path; overrides LLMEM_STORE; --artifact-root beats both)",
+            "enum": [
+              "repo",
+              "global"
+            ],
+            "type": "string"
+          },
           "workspace": {
             "description": "Workspace root directory (auto-detected if omitted)",
             "type": "string"
@@ -163,6 +179,14 @@
               "general",
               "frontend",
               "both"
+            ],
+            "type": "string"
+          },
+          "store": {
+            "description": "Artifact store location: repo (.llmem/graph in the workspace, default) or global (per-user store keyed by workspace path; overrides LLMEM_STORE; --artifact-root beats both)",
+            "enum": [
+              "repo",
+              "global"
             ],
             "type": "string"
           },
@@ -234,6 +258,14 @@
             "description": "Workspace-relative folder to scan (defaults to the whole workspace)",
             "type": "string"
           },
+          "store": {
+            "description": "Artifact store location: repo (.llmem/graph in the workspace, default) or global (per-user store keyed by workspace path; overrides LLMEM_STORE; --artifact-root beats both)",
+            "enum": [
+              "repo",
+              "global"
+            ],
+            "type": "string"
+          },
           "verbose": {
             "default": false,
             "description": "Show per-file scan diagnostics",
@@ -291,6 +323,14 @@
             "default": false,
             "description": "Print the LLM prompt to stdout and exit 0.",
             "type": "boolean"
+          },
+          "store": {
+            "description": "Artifact store location: repo (.llmem/graph in the workspace, default) or global (per-user store keyed by workspace path; overrides LLMEM_STORE; --artifact-root beats both)",
+            "enum": [
+              "repo",
+              "global"
+            ],
+            "type": "string"
           },
           "workspace": {
             "description": "Workspace root directory (auto-detected if omitted).",

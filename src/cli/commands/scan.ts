@@ -27,6 +27,7 @@ const scanArgs = z.object({
     folder: z.string().default('.').describe('Workspace-relative folder to scan (defaults to the whole workspace)'),
     external: z.boolean().default(false).describe('Include external-module import edges (default: internal-only)'),
     artifactRoot: z.string().optional().describe('Artifact store directory (absolute paths allowed, may be outside the workspace; overrides LLMEM_ARTIFACT_ROOT; default: .llmem/graph)'),
+    store: z.enum(['repo', 'global']).optional().describe('Artifact store location: repo (.llmem/graph in the workspace, default) or global (per-user store keyed by workspace path; overrides LLMEM_STORE; --artifact-root beats both)'),
     verbose: z.boolean().default(false).describe('Show per-file scan diagnostics'),
 }).strict();
 
@@ -52,7 +53,12 @@ export const scanCommand: CommandSpec<typeof scanArgs> = {
         const ctx = await cli.createWorkspace(workspace, {
             internalOnly: !args.external,
             artifactRoot: args.artifactRoot,
-        });
+        }, { store: args.store });
+
+        // Discoverability (P1 portable store): always show WHERE the edge
+        // lists land — especially useful with --store global, where the
+        // resolved per-user path is not guessable.
+        console.log(`Artifacts: ${ctx.artifactRoot}`);
 
         console.log(`Scanning ${args.folder}...`);
 
