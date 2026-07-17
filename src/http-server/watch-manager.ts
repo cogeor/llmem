@@ -47,6 +47,7 @@ export class WatchManager {
             this.ctx.artifactRoot,
             this.ctx.workspaceRoot,
             this.ctx.io,
+            this.ctx.artifactIo,
         );
     }
 
@@ -72,6 +73,7 @@ export class WatchManager {
             this.ctx.artifactRoot,
             this.ctx.workspaceRoot,
             this.ctx.io,
+            this.ctx.artifactIo,
         );
         await this.watchService.load();
     }

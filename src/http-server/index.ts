@@ -79,7 +79,7 @@ export class GraphServer {
     constructor(config: ServerConfig) {
         this.config = normalizeConfig(config);
         const { verbose } = this.config;
-        this.webviewDir = path.join(this.config.workspaceRoot, this.config.artifactRoot, 'webview');
+        this.webviewDir = path.join(path.resolve(this.config.workspaceRoot, this.config.artifactRoot), 'webview');
 
         this.webSocket = new WebSocketService(verbose);
         this.httpHandler = new HttpRequestHandler({ webviewDir: this.webviewDir, verbose });
@@ -107,7 +107,7 @@ export class GraphServer {
         this.watchManager = new WatchManager(this._ctx, verbose);
         this.archWatcher = new ArchWatcherService(this._ctx, verbose);
 
-        await coldStartScan(this._ctx, workspaceRoot, this.config.artifactRoot);
+        await coldStartScan(this._ctx);
 
         if (!fs.existsSync(this.webviewDir)) {
             log.info('Generating graph...');

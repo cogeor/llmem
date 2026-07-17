@@ -33,10 +33,9 @@ async function scan() {
     console.log(`\nRoot: ${root}`);
     console.log(`Artifact dir: ${artifactDir}`);
 
-    // Ensure artifact directory exists. `io.mkdirRecursive` is idempotent
-    // and asserts containment.
-    const artifactRel = path.relative(ctx.io.getRealRoot(), artifactDir).replace(/\\/g, '/');
-    await ctx.io.mkdirRecursive(artifactRel);
+    // Ensure artifact directory exists (idempotent; the context factory
+    // already created it).
+    await ctx.artifactIo.mkdirRecursive('.');
 
     // Initialize TypeScript service
     console.log('\nInitializing TypeScript service...');
@@ -63,8 +62,8 @@ async function scan() {
     console.log(`\nFound ${sourceFiles.length} TypeScript files to scan`);
 
     // Create split edge list stores
-    const importStore = new ImportEdgeListStore(artifactDir, ctx.io);
-    const callStore = new CallEdgeListStore(artifactDir, ctx.io);
+    const importStore = new ImportEdgeListStore(artifactDir, ctx.artifactIo);
+    const callStore = new CallEdgeListStore(artifactDir, ctx.artifactIo);
     // Loop 13 (codebase-quality-v2): the load is followed by clear()
     // anyway, so a SchemaMismatchError on a stale envelope is
     // structurally a no-op — the clear discards what the load

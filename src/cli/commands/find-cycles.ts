@@ -95,8 +95,8 @@ export const findCyclesCommand: CommandSpec<typeof findCyclesArgs> = {
         // prior `llmem scan`. Probes ctx.config.artifactRoot (bug 1.3).
         await ensureGraph(ctx, { requireGraph: true });
 
-        const importStore = new ImportEdgeListStore(ctx.artifactRoot, ctx.io);
-        const callStore = new CallEdgeListStore(ctx.artifactRoot, ctx.io);
+        const importStore = new ImportEdgeListStore(ctx.artifactRoot, ctx.artifactIo);
+        const callStore = new CallEdgeListStore(ctx.artifactRoot, ctx.artifactIo);
         await importStore.load();
         await callStore.load();
 

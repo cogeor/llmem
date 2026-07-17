@@ -75,14 +75,17 @@ export const serveCommand: CommandSpec<typeof serveArgs> = {
             );
         }
 
-        // Regenerate if requested or if webview doesn't exist
-        const webviewDir = path.join(workspace, artifactRoot, 'webview');
+        // Regenerate if requested or if webview doesn't exist. Use the
+        // RESOLVED absolute artifact root (may live outside the workspace).
+        const webviewDir = path.join(ctx.artifactRoot, 'webview');
         const shouldRegenerate = args.regenerate || !fs.existsSync(webviewDir);
 
         if (shouldRegenerate) {
             console.log('Generating graph...');
+            // Reuse the CLI context so the generator honors the SAME
+            // resolved artifact root as the probe / cold scan above.
             const result = await generateGraph({
-                workspaceRoot: workspace,
+                ctx,
                 graphOnly: false,  // Generate full 3-panel UI by default
                 assetRoot: ASSET_ROOT_OVERRIDE,
             });
@@ -104,6 +107,7 @@ export const serveCommand: CommandSpec<typeof serveArgs> = {
         // factory.
         const server = new GraphServer({
             workspaceRoot: workspace,
+            artifactRoot,
             port: args.port,
             openBrowser: args.open,
             verbose: args.verbose,

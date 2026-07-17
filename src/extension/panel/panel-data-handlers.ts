@@ -54,7 +54,7 @@ export async function loadFolderNodes(host: PanelHost, folderPath: string): Prom
         // resolver swap. Surface a status to the webview and trigger
         // a fresh recursive rescan, then retry the load.
         const { CallEdgeListStore, SchemaMismatchError } = await import('../../graph/edgelist');
-        const callStore = new CallEdgeListStore(ctx.artifactRoot, ctx.io);
+        const callStore = new CallEdgeListStore(ctx.artifactRoot, ctx.artifactIo);
         try {
             await callStore.load();
         } catch (e) {
@@ -146,7 +146,7 @@ export async function loadFolderTree(host: PanelHost, requestId: string | undefi
     }
 
     try {
-        const store = new FolderTreeStore(ctx.artifactRoot, ctx.io);
+        const store = new FolderTreeStore(ctx.artifactRoot, ctx.artifactIo);
         const data = await store.load();
         host.webview.postMessage({
             type: 'data:folderTree',
@@ -181,7 +181,7 @@ export async function loadFolderEdges(host: PanelHost, requestId: string | undef
     }
 
     try {
-        const store = new FolderEdgelistStore(ctx.artifactRoot, ctx.io);
+        const store = new FolderEdgelistStore(ctx.artifactRoot, ctx.artifactIo);
         const data = await store.load();
         host.webview.postMessage({
             type: 'data:folderEdges',

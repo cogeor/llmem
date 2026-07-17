@@ -60,7 +60,7 @@ export class FileWatcherService {
         const artifactDir = this.ctx.artifactRoot;
 
         // Load watched files from WatchService
-        const watchService = new WatchService(artifactDir, this.ctx.workspaceRoot, this.ctx.io);
+        const watchService = new WatchService(artifactDir, this.ctx.workspaceRoot, this.ctx.io, this.ctx.artifactIo);
         await watchService.load();
         const watchedFiles = watchService.getWatchedFiles();
 
@@ -82,17 +82,21 @@ export class FileWatcherService {
         ];
 
         // L24: Filter valid paths through the realpath-strong I/O surface.
-        // Each path is workspace-rooted by construction; we convert to
-        // workspace-relative form, ask `io.exists`, and skip on
-        // PathEscapeError (defensive — should not happen since the paths
-        // were built from inside-workspace sources).
+        // Edge-list files are ARTIFACT-rooted (possibly outside the
+        // workspace) so they convert via `artifactIo`; watched source files
+        // are workspace-rooted and convert via `io`. Skip on
+        // PathEscapeError (defensive — should not happen since each path
+        // was built from its own root).
         const existingPaths: string[] = [];
         for (const p of watchPaths) {
-            const rel = path.relative(this.ctx.io.getRealRoot(), p);
+            const io = this.edgeListFiles.includes(p)
+                ? this.ctx.artifactIo
+                : this.ctx.io;
+            const rel = path.relative(io.getRealRoot(), p);
             try {
-                if (await this.ctx.io.exists(rel)) existingPaths.push(p);
+                if (await io.exists(rel)) existingPaths.push(p);
             } catch (err) {
-                log.warn('Watch path escapes workspace; skipping', {
+                log.warn('Watch path escapes its root; skipping', {
                     path: p,
                     error: err instanceof Error ? err.message : String(err),
                 });

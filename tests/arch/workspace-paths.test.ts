@@ -198,6 +198,18 @@ interface WriteAllowlistEntry {
 // shape that the scan uses is derived from `file` below.
 const WRITE_ALLOWLIST_ENTRIES: readonly WriteAllowlistEntry[] = [
   {
+    file: 'src/application/artifact-root.ts',
+    phase: 'permanent',
+    reason:
+      'The workspace-context factory helper `mkdir -p`s the resolved ' +
+      'artifact root (which may be an absolute path OUTSIDE the workspace ' +
+      '— the portable store) before building the artifact-scoped ' +
+      '`WorkspaceIO` on it. A WorkspaceIO cannot perform this write: the ' +
+      'artifact IO does not exist until its root directory does, and the ' +
+      'workspace IO must not contain an out-of-tree root. Documented side ' +
+      'effect of `createWorkspaceContext`.',
+  },
+  {
     file: 'src/application/migrate-docs.ts',
     phase: 'permanent',
     reason:

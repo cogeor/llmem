@@ -205,8 +205,8 @@ export async function generateStaticWebview(
     // single-source-of-truth on its `destinationDir` argument.
     const artifactDir = path.dirname(destinationDir);
 
-    const folderTree = await new FolderTreeStore(artifactDir, io).load();
-    const folderEdges = await new FolderEdgelistStore(artifactDir, io).load();
+    const folderTree = await new FolderTreeStore(artifactDir, resolvedCtx.artifactIo).load();
+    const folderEdges = await new FolderEdgelistStore(artifactDir, resolvedCtx.artifactIo).load();
 
     const folderTreePath = path.join(destinationDir, 'folder_tree.js');
     const folderTreeContent = `window.FOLDER_TREE = ${JSON.stringify(folderTree, null, 2)};`;

@@ -32,8 +32,8 @@ export interface LoadedGraphs {
 
 /** Construct + load both edge-list stores once and build both graphs. */
 export async function loadGraphs(ctx: WorkspaceContext): Promise<LoadedGraphs> {
-    const importStore = new ImportEdgeListStore(ctx.artifactRoot, ctx.io);
-    const callStore = new CallEdgeListStore(ctx.artifactRoot, ctx.io);
+    const importStore = new ImportEdgeListStore(ctx.artifactRoot, ctx.artifactIo);
+    const callStore = new CallEdgeListStore(ctx.artifactRoot, ctx.artifactIo);
     await importStore.load();
     await callStore.load();
 

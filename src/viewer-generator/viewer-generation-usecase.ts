@@ -149,8 +149,8 @@ export async function generateGraph(
     }
 
     // Load split edge lists
-    const importStore = new ImportEdgeListStore(artifactDir, ctx.io);
-    const callStore = new CallEdgeListStore(artifactDir, ctx.io);
+    const importStore = new ImportEdgeListStore(artifactDir, ctx.artifactIo);
+    const callStore = new CallEdgeListStore(artifactDir, ctx.artifactIo);
 
     // Loop 13 (codebase-quality-v2): the persisted envelope may be
     // pre-resolver-swap. Catch SchemaMismatchError, rescan into v_next
@@ -188,7 +188,7 @@ export async function generateGraph(
     await buildAndSaveFolderArtifacts(ctx);
 
     // Load watched files state
-    const watchService = new WatchService(artifactDir, ctx.workspaceRoot, ctx.io);
+    const watchService = new WatchService(artifactDir, ctx.workspaceRoot, ctx.io, ctx.artifactIo);
     await watchService.load();
     const watchedFiles = new Set(watchService.getWatchedFiles());
 

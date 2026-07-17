@@ -88,8 +88,8 @@ export async function generateStaticSnapshot(): Promise<string> {
     const artifactDir = ctx.artifactRoot;
 
     // Load split edge lists and build graphs
-    const importStore = new ImportEdgeListStore(artifactDir, ctx.io);
-    const callStore = new CallEdgeListStore(artifactDir, ctx.io);
+    const importStore = new ImportEdgeListStore(artifactDir, ctx.artifactIo);
+    const callStore = new CallEdgeListStore(artifactDir, ctx.artifactIo);
     await Promise.all([importStore.load(), callStore.load()]);
     const graphData = prepareWebviewDataFromSplitEdgeLists(importStore.getData(), callStore.getData());
 

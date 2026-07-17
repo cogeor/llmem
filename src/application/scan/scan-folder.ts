@@ -24,7 +24,7 @@ export async function scanFolder(
     ctx: WorkspaceContext,
     req: ScanFolderRequest,
 ): Promise<ScanResult> {
-    const { workspaceRoot, artifactRoot: artifactDir, io, logger, config } = ctx;
+    const { workspaceRoot, artifactRoot: artifactDir, io, artifactIo, logger, config } = ctx;
     const { folderPath } = req;
 
     if (!(await io.exists(folderPath))) {
@@ -37,8 +37,8 @@ export async function scanFolder(
     // the second (mandatory) constructor arg; the boundary logger's
     // shape is incompatible with the edge-list store's, so the stores
     // fall back to their internal `createLogger`.
-    const callStore = new CallEdgeListStore(artifactDir, io);
-    const importStore = new ImportEdgeListStore(artifactDir, io);
+    const callStore = new CallEdgeListStore(artifactDir, artifactIo);
+    const importStore = new ImportEdgeListStore(artifactDir, artifactIo);
     // Loop 13 (codebase-quality-v2): see scanFile comment — same posture.
     await loadOrClearOnMismatch(callStore, importStore, logger);
     const existingCallEdgeCount = callStore.getStats().edges;

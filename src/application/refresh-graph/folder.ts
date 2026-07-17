@@ -135,9 +135,8 @@ export async function refreshFolderGraph(
     }
 
     // COLD / CHANGED PATH.
-    const { io } = ctx;
-    const importStore = new ImportEdgeListStore(ctx.artifactRoot, io);
-    const callStore = new CallEdgeListStore(ctx.artifactRoot, io);
+    const importStore = new ImportEdgeListStore(ctx.artifactRoot, ctx.artifactIo);
+    const callStore = new CallEdgeListStore(ctx.artifactRoot, ctx.artifactIo);
 
     // Remove edges for changed + deleted files on BOTH stores. removeByFile
     // (LS-07) is precise to one file and purges edges where the file is the

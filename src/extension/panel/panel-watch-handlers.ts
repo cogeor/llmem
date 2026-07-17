@@ -108,7 +108,7 @@ export async function startHotReloadAndSendInitialData(host: PanelHost): Promise
 
     // Load watch state using WatchService
     const { WatchService } = await import('../../graph/worktree-state');
-    const watchService = new WatchService(ctx.artifactRoot, ctx.workspaceRoot, ctx.io);
+    const watchService = new WatchService(ctx.artifactRoot, ctx.workspaceRoot, ctx.io, ctx.artifactIo);
     await watchService.load();
 
     const watchedFiles = watchService.getWatchedFiles();

@@ -136,16 +136,16 @@ function emptyManifest(): Manifest {
 }
 
 /**
- * Workspace-relative path of the manifest sidecar, derived from
+ * Artifact-root-relative path of the manifest sidecar, derived from
  * `ctx.artifactRoot` (NOT a hardcoded artifact literal — it follows the
- * configured artifact root, so the manifest lands under `.llmem/graph` today).
+ * configured artifact root, which may live outside the workspace).
  *
- * Mirrors how the edge-list stores derive their `relPath`:
- * `path.relative(io.getRealRoot(), path.join(artifactRoot, filename))`.
+ * Mirrors how the edge-list stores derive their `relPath` against the
+ * artifact-scoped IO (a plain filename in practice).
  */
 function manifestRelPath(ctx: WorkspaceContext): string {
     const abs = path.join(ctx.artifactRoot, MANIFEST_FILENAME);
-    return path.relative(ctx.io.getRealRoot(), abs).replace(/\\/g, '/');
+    return path.relative(ctx.artifactIo.getRealRoot(), abs).replace(/\\/g, '/');
 }
 
 /**
@@ -163,7 +163,7 @@ function asValidManifest(value: unknown): Manifest | null {
 }
 
 /**
- * Load `<artifactRoot>/scan-manifest.json` via `ctx.io`. Tolerates a MISSING
+ * Load `<artifactRoot>/scan-manifest.json` via `ctx.artifactIo`. Tolerates a MISSING
  * file (ENOENT) or CORRUPT JSON by returning an empty manifest
  * (`{ version: 1, files: {} }`) — both mean "treat everything as new". Never
  * throws on those two conditions.
@@ -172,7 +172,7 @@ export async function readManifest(ctx: WorkspaceContext): Promise<Manifest> {
     const rel = manifestRelPath(ctx);
     let raw: string;
     try {
-        raw = await ctx.io.readFile(rel, 'utf-8');
+        raw = await ctx.artifactIo.readFile(rel, 'utf-8');
     } catch {
         // Missing (ENOENT) or any read failure → everything-new.
         return emptyManifest();
@@ -261,5 +261,5 @@ export async function writeManifest(
 ): Promise<void> {
     const rel = manifestRelPath(ctx);
     const content = JSON.stringify(manifest, null, 2);
-    await writeFileAtomic(ctx.io, rel, content);
+    await writeFileAtomic(ctx.artifactIo, rel, content);
 }

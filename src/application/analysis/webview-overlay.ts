@@ -86,7 +86,7 @@ export async function buildHealthOverlay(
  */
 async function loadCloneEdges(ctx: WorkspaceContext): Promise<CloneEdge[]> {
     try {
-        const store = new CloneEdgeListStore(ctx.artifactRoot, ctx.io, undefined);
+        const store = new CloneEdgeListStore(ctx.artifactRoot, ctx.artifactIo, undefined);
         await store.load();
         return store.getEdges();
     } catch (e) {

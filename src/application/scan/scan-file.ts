@@ -26,7 +26,7 @@ export async function scanFile(
     ctx: WorkspaceContext,
     req: ScanFileRequest,
 ): Promise<ScanResult> {
-    const { workspaceRoot, artifactRoot: artifactDir, io, logger, config } = ctx;
+    const { workspaceRoot, artifactRoot: artifactDir, io, artifactIo, logger, config } = ctx;
     const { filePath } = req;
 
     // L24: io.exists performs textual + realpath containment checks.
@@ -45,8 +45,8 @@ export async function scanFile(
     // internally (their `Logger` shape is `common/logger`'s, not the
     // boundary `core/logger.Logger` accepted by ScanFileOptions /
     // ScanFolderOptions, so we omit it).
-    const callStore = new CallEdgeListStore(artifactDir, io);
-    const importStore = new ImportEdgeListStore(artifactDir, io);
+    const callStore = new CallEdgeListStore(artifactDir, artifactIo);
+    const importStore = new ImportEdgeListStore(artifactDir, artifactIo);
     // Loop 13 (codebase-quality-v2): a stale edge-list envelope (e.g.
     // pre-resolver-swap `schemaVersion: 1`) raises SchemaMismatchError.
     // The fix is in-place clear() — the in-progress scan then proceeds

@@ -32,8 +32,8 @@ import { scanFolder } from './scan-folder';
 export async function rescanAfterSchemaMismatch(
     ctx: WorkspaceContext,
 ): Promise<ScanResult> {
-    const importStore = new ImportEdgeListStore(ctx.artifactRoot, ctx.io);
-    const callStore = new CallEdgeListStore(ctx.artifactRoot, ctx.io);
+    const importStore = new ImportEdgeListStore(ctx.artifactRoot, ctx.artifactIo);
+    const callStore = new CallEdgeListStore(ctx.artifactRoot, ctx.artifactIo);
     importStore.clear();
     callStore.clear();
     await importStore.save();

@@ -36,10 +36,9 @@ async function main() {
     console.log(`\nProject root: ${root}`);
     console.log(`Output dir: ${artifactDir}`);
 
-    // Ensure artifact directory exists. `io.mkdirRecursive` is idempotent
-    // and asserts containment.
-    const artifactRel = path.relative(ctx.io.getRealRoot(), artifactDir).replace(/\\/g, '/');
-    await ctx.io.mkdirRecursive(artifactRel);
+    // Ensure artifact directory exists (idempotent; the context factory
+    // already created it).
+    await ctx.artifactIo.mkdirRecursive('.');
 
     // Initialize TypeScript service
     console.log('\nInitializing TypeScript service...');
@@ -77,8 +76,8 @@ async function main() {
     console.log(`Total codebase lines: ${totalCodebaseLines}, lazy mode: ${isLazyMode} (threshold: ${LAZY_CODEBASE_LINE_THRESHOLD})`);
 
     // Create split edge list stores
-    const importStore = new ImportEdgeListStore(artifactDir, ctx.io);
-    const callStore = new CallEdgeListStore(artifactDir, ctx.io);
+    const importStore = new ImportEdgeListStore(artifactDir, ctx.artifactIo);
+    const callStore = new CallEdgeListStore(artifactDir, ctx.artifactIo);
     importStore.clear(); // Start fresh
     callStore.clear();
 
