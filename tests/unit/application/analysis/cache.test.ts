@@ -82,7 +82,7 @@ function seedWorkspace(tmp: string, files: SeedFile[]): void {
 }
 
 function readCache(tmp: string): { version: number; files: Record<string, { contentHash: string; entities: { id: string; normalizedHash: string; tokenCount: number }[] }> } {
-    const raw = fs.readFileSync(path.join(tmp, '.llmem', 'analysis-cache.json'), 'utf8');
+    const raw = fs.readFileSync(path.join(tmp, '.llmem', 'graph', 'analysis-cache.json'), 'utf8');
     return JSON.parse(raw);
 }
 
