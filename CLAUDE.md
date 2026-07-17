@@ -25,7 +25,7 @@ duplication and in-file cohesion by construction (those need the content/AST and
 
 | Path | Contents |
 |---|---|
-| `.llmem/graph/` | Edge lists (`import-edgelist.json`, `call-edgelist.json`, `clone-edgelist.json`), `folder-tree.json`, `folder-edgelist.json`, generated webview. This is `artifactRoot` (override: `LLMEM_ARTIFACT_ROOT`). |
+| `.llmem/graph/` | Edge lists (`import-edgelist.json`, `call-edgelist.json`, `clone-edgelist.json`), `folder-tree.json`, `folder-edgelist.json`, generated webview. This is `artifactRoot` (override: `--artifact-root` flag or `LLMEM_ARTIFACT_ROOT`; flag > env > default). May be an **absolute path outside the workspace** — artifact I/O goes through a second `WorkspaceIO` rooted at the artifact root (`ctx.artifactIo`), keeping foreign repos clean. |
 | `.llmem/` (root) | `health-report.{md,json}` (host artifacts CI diffs). |
 | `.llmem/review/` | Review reports (`<path>.{md,json}`). |
 | `.llmem/docs/` | LLM-enriched per-folder/file spec docs (markdown shadow tree). |
@@ -187,7 +187,7 @@ config. Set `LLMEM_WORKSPACE` for Claude Desktop (no launch dir) or to pin one p
 
 | Setting | Default | Controls |
 |---|---|---|
-| `artifactRoot` | `.llmem/graph` | Where edge lists + webview live |
+| `artifactRoot` | `.llmem/graph` | Where edge lists + webview live (absolute paths allowed, incl. outside the workspace; `--artifact-root` / `LLMEM_ARTIFACT_ROOT`) |
 | `maxFileSizeKB` | `512` | Skip files larger than this when scanning |
 | `maxFileLines` | `2000` | Skip files with more than this many lines |
 | `maxFilesPerFolder` | `20` | **Display** cap on files a folder summary lists (NOT a scan cap) |

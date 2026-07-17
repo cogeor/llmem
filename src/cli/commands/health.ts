@@ -41,6 +41,8 @@ const healthArgs = z.object({
         .describe('Exit non-zero if the report has >=1 finding of this kind (e.g. import-cycle)'),
     refresh: z.boolean().default(true)
         .describe('Refresh edge lists before scanning (use --no-refresh to skip)'),
+    artifactRoot: z.string().optional()
+        .describe('Artifact store directory (absolute paths allowed, may be outside the workspace; overrides LLMEM_ARTIFACT_ROOT; default: .llmem/graph)'),
 }).strict();
 
 /**
@@ -97,7 +99,7 @@ export const healthCommand: CommandSpec<typeof healthArgs> = {
     async run(args, cli) {
         const workspace = detectWorkspace(args.workspace);
 
-        const ctx = await cli.createWorkspace(workspace);
+        const ctx = await cli.createWorkspace(workspace, { artifactRoot: args.artifactRoot });
 
         // A5: zero-config — auto-scan on first run instead of demanding a
         // prior `llmem scan`. Probes ctx.config.artifactRoot (bug 1.3: the

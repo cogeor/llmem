@@ -173,7 +173,7 @@ All optional:
 
 | Setting | Default | What it controls |
 |---|---|---|
-| `artifactRoot` | `.llmem/graph` | Where edge lists and the generated webview live (under the single `.llmem/` tree) |
+| `artifactRoot` | `.llmem/graph` | Where edge lists and the generated webview live. Relative paths resolve against the workspace; an **absolute path may live anywhere on disk** (outside the repo), so analyzing a foreign codebase never pollutes it. Set per-invocation with `--artifact-root <dir>` or the `LLMEM_ARTIFACT_ROOT` env var (flag > env > default) |
 | `maxFileSizeKB` | `512` | Skip files larger than this when scanning |
 | `maxFileLines` | `2000` | Skip files with more than this many lines when scanning |
 | `maxFilesPerFolder` | `20` | Viewer/context **display** heuristic only — caps how many files a folder summary lists for readability |

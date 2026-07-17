@@ -6,6 +6,10 @@
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false,
         "properties": {
+          "artifactRoot": {
+            "description": "Artifact store directory (absolute paths allowed, may be outside the workspace; overrides LLMEM_ARTIFACT_ROOT; default: .llmem/graph)",
+            "type": "string"
+          },
           "open": {
             "default": true,
             "type": "boolean"
@@ -68,6 +72,10 @@
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false,
         "properties": {
+          "artifactRoot": {
+            "description": "Artifact store directory (absolute paths allowed, may be outside the workspace; overrides LLMEM_ARTIFACT_ROOT; default: .llmem/graph)",
+            "type": "string"
+          },
           "failOn": {
             "description": "Exit non-zero if the report has >=1 finding of this kind (e.g. import-cycle)",
             "type": "string"
@@ -130,6 +138,10 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "artifactRoot": {
+            "description": "Artifact store directory (absolute paths allowed, may be outside the workspace; overrides LLMEM_ARTIFACT_ROOT; default: .llmem/graph)",
+            "type": "string"
           },
           "json": {
             "default": false,
@@ -208,6 +220,10 @@
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false,
         "properties": {
+          "artifactRoot": {
+            "description": "Artifact store directory (absolute paths allowed, may be outside the workspace; overrides LLMEM_ARTIFACT_ROOT; default: .llmem/graph)",
+            "type": "string"
+          },
           "external": {
             "default": false,
             "description": "Include external-module import edges (default: internal-only)",
@@ -254,6 +270,10 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "artifactRoot": {
+            "description": "Artifact store directory (absolute paths allowed, may be outside the workspace; overrides LLMEM_ARTIFACT_ROOT; default: .llmem/graph)",
+            "type": "string"
           },
           "content": {
             "description": "Inline JSON payload — the agent's report_file_info / report_folder_info body.",

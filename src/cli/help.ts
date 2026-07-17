@@ -47,7 +47,9 @@ EXAMPLES:
 
 ENVIRONMENT:
   LLMEM_WORKSPACE        Workspace root directory
-  LLMEM_ARTIFACT_ROOT    Artifact directory (default: .llmem/graph)
+  LLMEM_ARTIFACT_ROOT    Artifact store directory; absolute paths may live
+                         outside the workspace (default: .llmem/graph;
+                         --artifact-root wins over the env var)
 `);
 }
 

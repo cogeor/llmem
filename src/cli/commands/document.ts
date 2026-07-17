@@ -85,6 +85,8 @@ const documentArgs = z.object({
         .describe('Path to a file containing the JSON payload, or "-" to read stdin to EOF.'),
     workspace: z.string().optional()
         .describe('Workspace root directory (auto-detected if omitted).'),
+    artifactRoot: z.string().optional()
+        .describe('Artifact store directory (absolute paths allowed, may be outside the workspace; overrides LLMEM_ARTIFACT_ROOT; default: .llmem/graph)'),
     // Captures the positional arguments that main.ts collects into `flagMap._`.
     // Surfaces in `describe --json` as an internal flag so the loop 04 contract
     // test (which asserts every property has a `description`) keeps passing.
@@ -126,7 +128,7 @@ export const documentCommand: CommandSpec<typeof documentArgs> = {
         // The `--prompt-only` path must produce machine-parseable stdout
         // (the prompt body and nothing else).
         const workspace = detectWorkspace(args.workspace);
-        const ctx = await cli.createWorkspace(workspace);
+        const ctx = await cli.createWorkspace(workspace, { artifactRoot: args.artifactRoot });
 
         // ----- Step 6.3: classify file vs folder via io.stat -----
         // ENOENT propagates to main.ts:236-241 which prints `Error: <message>` exit 1.

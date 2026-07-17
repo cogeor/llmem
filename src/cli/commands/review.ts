@@ -40,6 +40,8 @@ const reviewArgs = z.object({
         .describe('Override the checklist output directory or .md path (default: <workspace>/.llmem/review)'),
     json: z.boolean().default(false)
         .describe('Emit the JSON ReviewChecklist to stdout instead of the markdown'),
+    artifactRoot: z.string().optional()
+        .describe('Artifact store directory (absolute paths allowed, may be outside the workspace; overrides LLMEM_ARTIFACT_ROOT; default: .llmem/graph)'),
     // Captures the positional arguments that main.ts collects into `flagMap._`.
     // Surfaces in `describe --json` as an internal flag so the loop 04 contract
     // test (which asserts every property has a `description`) keeps passing.
@@ -108,7 +110,7 @@ export const reviewCommand: CommandSpec<typeof reviewArgs> = {
     async run(args, cli) {
         const workspace = detectWorkspace(args.workspace);
 
-        const ctx = await cli.createWorkspace(workspace);
+        const ctx = await cli.createWorkspace(workspace, { artifactRoot: args.artifactRoot });
 
         // A5: zero-config — auto-scan on first run instead of demanding a
         // prior `llmem scan`. Probes ctx.config.artifactRoot (bug 1.3).

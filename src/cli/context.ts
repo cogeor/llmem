@@ -70,11 +70,20 @@ export function createCliContext(opts: { verbose?: boolean } = {}): CliContext {
         // CLI. Explicit per-command overrides still win.
         createWorkspace: (workspaceRoot, configOverrides) => {
             const envArtifactRoot = process.env[ENV_VARS.ARTIFACT_ROOT];
+            // Drop explicit-undefined overrides so commands can thread
+            // optional flags (e.g. `--artifact-root`) unconditionally
+            // without clobbering the env/default fallback below.
+            const overrides = Object.fromEntries(
+                Object.entries(configOverrides ?? {}).filter(
+                    ([, v]) => v !== undefined,
+                ),
+            );
             return initWorkspaceContext({
                 workspaceRoot,
                 configOverrides: {
+                    // Precedence: explicit flag > LLMEM_ARTIFACT_ROOT > default.
                     ...(envArtifactRoot ? { artifactRoot: envArtifactRoot } : {}),
-                    ...configOverrides,
+                    ...overrides,
                 },
                 logger: cliLogger,
             });
