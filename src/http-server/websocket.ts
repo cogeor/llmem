@@ -33,7 +33,7 @@ export type WebSocketMessageType =
 export interface WebSocketMessage {
     type: WebSocketMessageType | string;
     message?: string;
-    data?: any;
+    data?: unknown;
 }
 
 /**
@@ -58,8 +58,8 @@ export interface GraphUpdateMessage extends WebSocketMessage {
     type: 'graph:updated';
     data?: {
         /** Optional: include updated graph data inline */
-        importGraph?: any;
-        callGraph?: any;
+        importGraph?: unknown;
+        callGraph?: unknown;
     };
 }
 

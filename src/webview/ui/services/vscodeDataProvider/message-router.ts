@@ -16,6 +16,7 @@ import { WatchToggleResult } from '../dataProvider';
 import { WebviewLogger } from '../webview-logger';
 import type { FolderTreeData } from '../../../../contracts/folder-tree';
 import type { FolderEdgelistData } from '../../../../contracts/folder-edges';
+import type { PanelOutboundMessage } from '../../../../contracts/panel-messages';
 
 /** Resolver pair for a pending folder-node request. */
 export interface PendingFolderNodeRequest {
@@ -69,7 +70,7 @@ export interface MessageRouterContext {
  * semantics to the prior inline switch — only the resolver/state access is
  * threaded through `ctx`.
  */
-export function routeMessage(message: any, ctx: MessageRouterContext): void {
+export function routeMessage(message: PanelOutboundMessage, ctx: MessageRouterContext): void {
     switch (message.type) {
         case 'data:init':
             // Initial data from extension
@@ -97,7 +98,7 @@ export function routeMessage(message: any, ctx: MessageRouterContext): void {
                 if (message.error) {
                     pending.reject(new Error(message.error));
                 } else {
-                    pending.resolve(message.data);
+                    pending.resolve(message.data ?? null);
                 }
                 ctx.pendingFolderNodeRequests.delete(folderPath);
             }

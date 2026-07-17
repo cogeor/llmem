@@ -8,10 +8,10 @@
  * (extracting rather than copying — a copy would be exactly the clone smell
  * the health report flags).
  *
- * The probe honors `ctx.config.artifactRoot` — the old guards called
- * `hasEdgeLists(workspace)` with the DEFAULT root, so a custom
- * `LLMEM_ARTIFACT_ROOT` made them demand a rescan of an already-scanned
- * workspace (review bug 1.3).
+ * The probe uses the RESOLVED `ctx.artifactRoot` (absolute; may live
+ * outside the workspace) — the old guards called `hasEdgeLists(workspace)`
+ * with the DEFAULT root, so a custom `LLMEM_ARTIFACT_ROOT` made them
+ * demand a rescan of an already-scanned workspace (review bug 1.3).
  *
  * CLI layer: `console.log` is allowed here (tests/arch/console-discipline).
  */
@@ -41,10 +41,7 @@ export async function ensureGraph(
     ctx: WorkspaceContext,
     opts: { requireGraph?: boolean } = {},
 ): Promise<EnsureGraphResult> {
-    const workspace = ctx.workspaceRoot;
-    const artifactRoot = ctx.config.artifactRoot;
-
-    if (hasEdgeLists(workspace, artifactRoot)) {
+    if (hasEdgeLists(ctx.artifactRoot)) {
         return { scanned: false, filesProcessed: 0 };
     }
 
@@ -66,7 +63,7 @@ export async function ensureGraph(
         console.log(line);
     }
 
-    if (opts.requireGraph && !hasEdgeLists(workspace, artifactRoot)) {
+    if (opts.requireGraph && !hasEdgeLists(ctx.artifactRoot)) {
         throw new CliError(
             "Error: Scan produced no edge lists — run 'llmem scan' to see why.",
             1,

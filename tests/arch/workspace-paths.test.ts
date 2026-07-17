@@ -198,6 +198,18 @@ interface WriteAllowlistEntry {
 // shape that the scan uses is derived from `file` below.
 const WRITE_ALLOWLIST_ENTRIES: readonly WriteAllowlistEntry[] = [
   {
+    file: 'src/application/artifact-root.ts',
+    phase: 'permanent',
+    reason:
+      'The workspace-context factory helper `mkdir -p`s the resolved ' +
+      'artifact root (which may be an absolute path OUTSIDE the workspace ' +
+      '— the portable store) before building the artifact-scoped ' +
+      '`WorkspaceIO` on it. A WorkspaceIO cannot perform this write: the ' +
+      'artifact IO does not exist until its root directory does, and the ' +
+      'workspace IO must not contain an out-of-tree root. Documented side ' +
+      'effect of `createWorkspaceContext`.',
+  },
+  {
     file: 'src/application/migrate-docs.ts',
     phase: 'permanent',
     reason:
@@ -212,13 +224,14 @@ const WRITE_ALLOWLIST_ENTRIES: readonly WriteAllowlistEntry[] = [
     phase: 'permanent',
     reason:
       'The `llmem health` command writes the durable report artifact ' +
-      '(`health-report.{md,json}`) to the WORKSPACE-ROOT `.llmem/` dir ' +
-      '(NOT `ctx.artifactRoot`, which is `.llmem/graph`). This is a ' +
-      'top-level workspace-root write outside any WorkspaceIO sandbox — ' +
-      'it targets `path.join(detectWorkspace(...), \'.llmem\', ...)` and ' +
-      'mirrors the proven `init.ts` plain-`fs` pattern (the report is a ' +
-      'host artifact CI diffs, not a graph-store file). `--out` overrides ' +
-      'the destination; all paths derive from the resolved workspace root.',
+      '(`health-report.{md,json}`) to the PARENT of the artifact root — a ' +
+      'sibling of the graph dir (`<workspace>/.llmem` in-repo, or the store ' +
+      'dir when `--store global` / an absolute `--artifact-root` moves the ' +
+      'store out-of-tree, keeping foreign repos clean). This is a top-level ' +
+      'write outside any WorkspaceIO sandbox — it targets ' +
+      '`path.join(path.dirname(ctx.artifactRoot), ...)` and mirrors the ' +
+      'proven `init.ts` plain-`fs` pattern (the report is a host artifact CI ' +
+      'diffs, not a graph-store file). `--out` overrides the destination.',
   },
   {
     file: 'src/application/review/persist.ts',

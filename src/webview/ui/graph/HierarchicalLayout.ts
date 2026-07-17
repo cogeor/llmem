@@ -79,8 +79,8 @@ export class HierarchicalLayout {
 
     compute(
         nodes: VisNode[],
-        edges: VisEdge[],
-        worktree: WorkTreeNode
+        _edges: VisEdge[],
+        _worktree: WorkTreeNode
     ): LayoutResult {
         // Reset per-pass measurement state.
         this.measured.clear();

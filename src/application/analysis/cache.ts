@@ -2,9 +2,12 @@
  * Analysis-cache sidecar (STUB).
  *
  * Tolerant load / save of a per-workspace analysis cache at
- * `<workspaceRoot>/.llmem/analysis-cache.json`. NOTE: this lives at the
- * WORKSPACE ROOT's `.llmem/` — a sibling of `.llmem/graph` (the artifactRoot) —
- * NOT under `ctx.artifactRoot`.
+ * `<artifactRoot>/analysis-cache.json` (via `ctx.artifactIo`). It is a CACHE,
+ * not a deliverable, so it follows the artifact store — with `--artifact-root`
+ * or `--store global` it must not leak into the analyzed workspace. It
+ * historically lived at `<workspaceRoot>/.llmem/analysis-cache.json`; a legacy
+ * file there is simply orphaned and ignored (the same "stale → recompute once"
+ * contract as a CACHE_VERSION bump).
  *
  * Loop 06 wires real per-file fingerprinting: each `files[fileId]` holds the
  * file's content sha256 plus per-entity normalized-body hashes, so an unchanged
@@ -21,14 +24,10 @@
  * bucketing pass never sees a record missing them (no crash, no silent miss).
  */
 
-import * as path from 'path';
 import { writeFileAtomic } from '../../graph/edgelist';
 import type { WorkspaceContext } from '../workspace-context';
 
-/** Subdirectory (workspace-root sibling of `.llmem/graph`). */
-const CACHE_DIR = '.llmem';
-
-/** Cache filename under `<workspaceRoot>/.llmem/`. */
+/** Cache filename under `ctx.artifactRoot` (addressed via `ctx.artifactIo`). */
 const CACHE_FILENAME = 'analysis-cache.json';
 
 /** Current cache schema version. Bumped 1 → 2 by Loop 07 (adds `literalHashes`). */
@@ -75,24 +74,6 @@ function emptyCache(): AnalysisCache {
 }
 
 /**
- * Workspace-relative directory of the cache (`.llmem`), relative to
- * `io.getRealRoot()`, forward-slash normalized.
- */
-function cacheDirRel(ctx: WorkspaceContext): string {
-    const abs = path.join(ctx.workspaceRoot, CACHE_DIR);
-    return path.relative(ctx.io.getRealRoot(), abs).replace(/\\/g, '/');
-}
-
-/**
- * Workspace-relative path of the cache file, relative to `io.getRealRoot()`,
- * forward-slash normalized.
- */
-function cacheRelPath(ctx: WorkspaceContext): string {
-    const abs = path.join(ctx.workspaceRoot, CACHE_DIR, CACHE_FILENAME);
-    return path.relative(ctx.io.getRealRoot(), abs).replace(/\\/g, '/');
-}
-
-/**
  * Validate that a parsed value is a well-formed v2 cache. Returns it typed as
  * `AnalysisCache` when valid, else `null`. A stale v1 envelope fails the
  * `version` check and degrades to empty (recompute once — Loop 07 migration).
@@ -115,17 +96,16 @@ function asValidCache(value: unknown): AnalysisCache | null {
 }
 
 /**
- * Load `<workspaceRoot>/.llmem/analysis-cache.json` via `ctx.io`. Tolerates a
+ * Load `<artifactRoot>/analysis-cache.json` via `ctx.artifactIo`. Tolerates a
  * MISSING file or CORRUPT JSON by returning an empty cache. Never throws on
  * those conditions.
  */
 export async function loadAnalysisCache(
     ctx: WorkspaceContext,
 ): Promise<AnalysisCache> {
-    const rel = cacheRelPath(ctx);
     let raw: string;
     try {
-        raw = await ctx.io.readFile(rel, 'utf-8');
+        raw = await ctx.artifactIo.readFile(CACHE_FILENAME, 'utf-8');
     } catch {
         return emptyCache();
     }
@@ -138,16 +118,14 @@ export async function loadAnalysisCache(
 }
 
 /**
- * Serialize `cache` and publish it to `<workspaceRoot>/.llmem/analysis-cache.json`.
- * Ensures the `.llmem` directory exists (it is a workspace-root sibling that may
- * not pre-exist) then writes atomically via LS-10's `writeFileAtomic`.
+ * Serialize `cache` and publish it to `<artifactRoot>/analysis-cache.json`,
+ * atomically via LS-10's `writeFileAtomic`. The artifact root itself is
+ * guaranteed to exist (the context factory mkdirs it), so no mkdir here.
  */
 export async function saveAnalysisCache(
     ctx: WorkspaceContext,
     cache: AnalysisCache,
 ): Promise<void> {
-    await ctx.io.mkdirRecursive(cacheDirRel(ctx));
-    const rel = cacheRelPath(ctx);
     const content = JSON.stringify(cache, null, 2);
-    await writeFileAtomic(ctx.io, rel, content);
+    await writeFileAtomic(ctx.artifactIo, CACHE_FILENAME, content);
 }

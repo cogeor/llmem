@@ -24,12 +24,6 @@
  * browser-purity scan (`tests/arch/browser-purity.test.ts`) only walks
  * `src/webview/ui/**`, so it will not flag the `fs`/`path` imports
  * here, but the discipline is documented as the human rule.
- *
- * Loop reference
- * --------------
- * Loop 03 — pure additive. Defines types + factory + helpers; does NOT
- * migrate any caller. Loop 04 owns caller migration (CLI / server /
- * panel / MCP entrypoints).
  */
 
 import * as fs from 'fs/promises';
@@ -43,10 +37,10 @@ import {
     asWorkspaceRoot,
     asRelPath,
     toAbs,
-    toRel,
     assertContained,
 } from '../core/paths';
 import { WorkspaceNotFoundError } from '../core/errors';
+import { resolveArtifactRoot } from './artifact-root';
 import type { Logger } from '../core/logger';
 import { NoopLogger } from '../core/logger';
 import { WorkspaceIO } from '../workspace/workspace-io';
@@ -98,10 +92,19 @@ export function defaultRuntimeConfig(): RuntimeConfig {
 export interface WorkspaceContext {
     readonly workspaceRoot: WorkspaceRoot;
     readonly artifactRoot: AbsPath;
-    readonly artifactRootRel: RelPath;
+    /** Workspace-relative artifact root; `null` when it lives out-of-tree. */
+    readonly artifactRootRel: RelPath | null;
     readonly docsRoot: AbsPath;
     readonly docsRootRel: RelPath;
+    /** Realpath-strong I/O rooted at the WORKSPACE root. */
     readonly io: WorkspaceIO;
+    /**
+     * Realpath-strong I/O rooted at the ARTIFACT root. Every artifact
+     * store/reader uses this so the containment invariant is uniform:
+     * artifact I/O stays inside the artifact root, whether that root is
+     * in-tree (`.llmem/graph`) or an absolute path outside the workspace.
+     */
+    readonly artifactIo: WorkspaceIO;
     readonly config: RuntimeConfig;
     readonly logger: Logger;
 }
@@ -156,8 +159,15 @@ export type CreateWorkspaceContextInput =
  *      bag with mismatched fields).
  *
  * Then in both arities: derive `artifactRoot` from `config.artifactRoot`
- * (with containment assertion), derive `docsRoot` via `getDocsRoot()`
- * (single source of truth for the `.llmem/docs` prefix), and assemble.
+ * (absolute values are honored as-is and may live OUTSIDE the workspace;
+ * relative values resolve against the workspace root), derive `docsRoot`
+ * via `getDocsRoot()` (single source of truth for the `.llmem/docs`
+ * prefix), and assemble.
+ *
+ * SIDE EFFECT: the artifact root directory is created (`mkdir -p`) so the
+ * artifact-scoped `WorkspaceIO` can realpath-anchor on it. This is the
+ * factory's only disk mutation; the docs migration stays in
+ * `initWorkspaceContext`.
  */
 export async function createWorkspaceContext(
     input: CreateWorkspaceContextInput,
@@ -200,16 +210,17 @@ export async function createWorkspaceContext(
         };
     }
 
-    // artifactRoot / docsRoot derivations.
-    const artifactRootAbs = toAbs(config.artifactRoot, workspaceRoot);
-    assertContained(artifactRootAbs, workspaceRoot);
-    // `toRel` yields OS-native separators; normalize to forward slashes so
-    // the relpath matches `docsRootRel` (derived from the forward-slash
-    // `DOCS_DIR` const) and stays stable across platforms for routes / DTOs.
-    // Matters now that the default is multi-segment (`.llmem/graph`).
-    const artifactRootRel = asRelPath(
-        toRel(artifactRootAbs, workspaceRoot).replace(/\\/g, '/'),
-    );
+    // artifactRoot derivation + artifact-scoped IO. Absolute config values
+    // are honored as-is (portable store — the root may live outside the
+    // workspace); relative values resolve against the workspace root. The
+    // helper mkdir-p's the root (the factory's documented side effect) and
+    // returns `artifactRootRel: null` for an out-of-tree root. See
+    // `./artifact-root.ts`.
+    const {
+        artifactRoot: artifactRootAbs,
+        artifactRootRel,
+        artifactIo,
+    } = await resolveArtifactRoot(config.artifactRoot, workspaceRoot);
 
     // `getDocsRoot` / `DOCS_DIR` are the single source of truth for the
     // docs-tree prefix (`.llmem/docs`; see `src/docs/doc-store.ts`). It
@@ -228,6 +239,7 @@ export async function createWorkspaceContext(
         docsRoot: archRootAbs,
         docsRootRel,
         io,
+        artifactIo,
         config,
         logger,
     };
@@ -264,8 +276,11 @@ export async function initWorkspaceContext(
 // Helper accessors
 // ---------------------------------------------------------------------------
 
-/** Workspace-relative path of the artifact root (for routes / DTOs). */
-export function getArtifactRootRel(ctx: WorkspaceContext): RelPath {
+/**
+ * Workspace-relative path of the artifact root (for routes / DTOs).
+ * `null` when the artifact root lives outside the workspace.
+ */
+export function getArtifactRootRel(ctx: WorkspaceContext): RelPath | null {
     return ctx.artifactRootRel;
 }
 

@@ -136,7 +136,7 @@ export function resolveCallToEdge(
     callerNodeId: string,
     call: CallSite,
     imports: ImportSpec[],
-    externalModules: Set<string>
+    _externalModules: Set<string>
 ): EdgeEntry | null {
     // If the call has a resolved definition, use it
     if (call.resolvedDefinition) {

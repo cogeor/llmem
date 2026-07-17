@@ -121,8 +121,8 @@ export async function refreshFileGraph(
     }
 
     // COLD / CHANGED PATH.
-    const importStore = new ImportEdgeListStore(ctx.artifactRoot, io);
-    const callStore = new CallEdgeListStore(ctx.artifactRoot, io);
+    const importStore = new ImportEdgeListStore(ctx.artifactRoot, ctx.artifactIo);
+    const callStore = new CallEdgeListStore(ctx.artifactRoot, ctx.artifactIo);
     await importStore.load();
     await callStore.load();
 

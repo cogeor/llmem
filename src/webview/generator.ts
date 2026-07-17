@@ -134,7 +134,7 @@ export async function generateStaticWebview(
         // Bundle from source TypeScript
         // Lazy-load esbuild to avoid errors when not installed
         try {
-            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
             const esbuild = require('esbuild');
             await esbuild.build({
                 entryPoints: [path.join(srcWebview, 'ui', 'main.ts')],
@@ -205,8 +205,8 @@ export async function generateStaticWebview(
     // single-source-of-truth on its `destinationDir` argument.
     const artifactDir = path.dirname(destinationDir);
 
-    const folderTree = await new FolderTreeStore(artifactDir, io).load();
-    const folderEdges = await new FolderEdgelistStore(artifactDir, io).load();
+    const folderTree = await new FolderTreeStore(artifactDir, resolvedCtx.artifactIo).load();
+    const folderEdges = await new FolderEdgelistStore(artifactDir, resolvedCtx.artifactIo).load();
 
     const folderTreePath = path.join(destinationDir, 'folder_tree.js');
     const folderTreeContent = `window.FOLDER_TREE = ${JSON.stringify(folderTree, null, 2)};`;

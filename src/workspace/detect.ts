@@ -15,7 +15,8 @@
  * any `CliContext` shape: workspace detection is a pre-context concern
  * (callers need a root before constructing IO).
  *
- * Error contract: when an explicit path is supplied that does not exist, this
+ * Error contract: when an explicit path (argument or `LLMEM_WORKSPACE` env
+ * var) is supplied that does not exist, this
  * function THROWS `WorkspaceNotFoundError` (from `src/core/errors`) rather than
  * calling `process.exit`. It is a lower layer than the CLI, so it must not own
  * process termination: the CLI's `main()` catches the error and exits 1, and
@@ -26,16 +27,21 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import { WorkspaceNotFoundError } from '../core/errors';
+import { ENV_VARS } from '../config-defaults';
 
 /**
  * Detect workspace root.
  *
- * - When `explicit` is supplied: resolves the path. If it does not exist,
- *   throws `WorkspaceNotFoundError` (the caller owns process termination).
- * - Otherwise: walks up from `process.cwd()` looking for one of the
- *   marker files/dirs (`.git`, `package.json`, `.llmem`, `.arch`,
- *   `.artifacts`). Returns the first match.
- * - Fallback: `process.cwd()`.
+ * Priority (mirrors the documented "Workspace root detection" order):
+ * 1. `explicit` argument: resolves the path. If it does not exist,
+ *    throws `WorkspaceNotFoundError` (the caller owns process termination).
+ * 2. `LLMEM_WORKSPACE` env var (`ENV_VARS.WORKSPACE`): same contract as
+ *    `explicit` — a set-but-nonexistent path throws `WorkspaceNotFoundError`
+ *    rather than silently falling through to auto-detect.
+ * 3. Auto-detect: walks up from `process.cwd()` looking for one of the
+ *    marker files/dirs (`.git`, `package.json`, `.llmem`, `.arch`,
+ *    `.artifacts`). Returns the first match.
+ * 4. Fallback: `process.cwd()`.
  */
 export function detectWorkspace(explicit?: string): string {
     if (explicit) {
@@ -43,6 +49,15 @@ export function detectWorkspace(explicit?: string): string {
             throw new WorkspaceNotFoundError(explicit);
         }
         return path.resolve(explicit);
+    }
+
+    // Env var (same validation contract as an explicit argument)
+    const envWorkspace = process.env[ENV_VARS.WORKSPACE];
+    if (envWorkspace) {
+        if (!fs.existsSync(envWorkspace)) {
+            throw new WorkspaceNotFoundError(envWorkspace);
+        }
+        return path.resolve(envWorkspace);
     }
 
     // Auto-detect

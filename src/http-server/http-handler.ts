@@ -160,7 +160,7 @@ export class HttpRequestHandler {
     /**
      * Send JSON response
      */
-    sendJson(res: http.ServerResponse, statusCode: number, data: any): void {
+    sendJson(res: http.ServerResponse, statusCode: number, data: unknown): void {
         res.writeHead(statusCode, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(data, null, 2));
     }

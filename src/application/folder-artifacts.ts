@@ -52,7 +52,7 @@ import type { WorkspaceContext } from './workspace-context';
 export async function buildAndSaveFolderArtifacts(
     ctx: WorkspaceContext,
 ): Promise<void> {
-    const { artifactRoot: artifactDir, io } = ctx;
+    const { artifactRoot: artifactDir, io, artifactIo } = ctx;
 
     // Load existing edge lists. Loop 07: `io` is now the second
     // (mandatory) constructor argument; `BaseEdgeListStore` falls back to
@@ -63,8 +63,8 @@ export async function buildAndSaveFolderArtifacts(
     // swap. In that case, run a full rescan (which writes v_next
     // envelopes) and re-issue the loads. After the rescan a second
     // throw is a real failure and we let it propagate.
-    const importStore = new ImportEdgeListStore(artifactDir, io);
-    const callStore = new CallEdgeListStore(artifactDir, io);
+    const importStore = new ImportEdgeListStore(artifactDir, artifactIo);
+    const callStore = new CallEdgeListStore(artifactDir, artifactIo);
     try {
         await importStore.load();
         await callStore.load();
@@ -123,8 +123,8 @@ export async function buildAndSaveFolderArtifacts(
 
     // Persist via the two stores. Both stores re-stamp `timestamp` and
     // `schemaVersion` on save (loop 09 contract).
-    const treeStore = new FolderTreeStore(artifactDir, io);
-    const edgesStore = new FolderEdgelistStore(artifactDir, io);
+    const treeStore = new FolderTreeStore(artifactDir, artifactIo);
+    const edgesStore = new FolderEdgelistStore(artifactDir, artifactIo);
     await treeStore.save(folderTree);
     await edgesStore.save(folderEdges);
 }

@@ -12,7 +12,7 @@
 
 import * as path from 'path';
 import { ImportEdgeListStore, CallEdgeListStore, SchemaMismatchError } from '../../graph/edgelist';
-import { IGNORED_FOLDERS, ALL_SUPPORTED_EXTENSIONS } from '../../parser/config';
+import { isIgnoredDir, ALL_SUPPORTED_EXTENSIONS } from '../../parser/config';
 import { GraphStatus } from './worktree';
 import { WorkspaceIO } from '../../workspace/workspace-io';
 
@@ -26,37 +26,30 @@ export interface FolderGraphStatus {
     lastModified: number;        // Most recent file modification timestamp
 }
 
-/** Convert an absolute path under the workspace to its workspace-relative POSIX form. */
-function toWorkspaceRel(workspaceRoot: string, abs: string): string {
-    return path.relative(workspaceRoot, abs).replace(/\\/g, '/');
-}
-
 /**
  * Compute graph status for all folders in a worktree.
  *
- * @param projectRoot Workspace root (absolute path)
- * @param artifactRoot Artifact directory (absolute path)
+ * @param artifactRoot Artifact directory (absolute path; may be out-of-tree)
  * @param io Realpath-strong I/O surface anchored on the workspace root
+ * @param artifactIo Realpath-strong I/O surface anchored on the artifact root
  * @returns Map of folder path to status
  */
 export async function computeAllFolderStatuses(
-    projectRoot: string,
     artifactRoot: string,
-    io: WorkspaceIO
+    io: WorkspaceIO,
+    artifactIo: WorkspaceIO
 ): Promise<Map<string, FolderGraphStatus>> {
     const results = new Map<string, FolderGraphStatus>();
 
-    // Load edge lists
-    const importStore = new ImportEdgeListStore(artifactRoot, io);
-    const callStore = new CallEdgeListStore(artifactRoot, io);
+    // Load edge lists (plain filenames — relative to the artifact root).
+    const importStore = new ImportEdgeListStore(artifactRoot, artifactIo);
+    const callStore = new CallEdgeListStore(artifactRoot, artifactIo);
 
-    const importPath = path.join(artifactRoot, 'import-edgelist.json');
-    const callPath = path.join(artifactRoot, 'call-edgelist.json');
-    const importRel = toWorkspaceRel(projectRoot, importPath);
-    const callRel = toWorkspaceRel(projectRoot, callPath);
+    const importRel = 'import-edgelist.json';
+    const callRel = 'call-edgelist.json';
 
-    let hasImportStore = await io.exists(importRel);
-    let hasCallStore = await io.exists(callRel);
+    let hasImportStore = await artifactIo.exists(importRel);
+    let hasCallStore = await artifactIo.exists(callRel);
 
     // Loop 13 (codebase-quality-v2): if the on-disk envelope predates
     // the resolver swap, treat the mismatched store as "not present"
@@ -81,8 +74,8 @@ export async function computeAllFolderStatuses(
     }
 
     // Get edge list timestamps
-    const importTimestamp = hasImportStore ? await getFileTimestamp(io, importRel) : 0;
-    const callTimestamp = hasCallStore ? await getFileTimestamp(io, callRel) : 0;
+    const importTimestamp = hasImportStore ? await getFileTimestamp(artifactIo, importRel) : 0;
+    const callTimestamp = hasCallStore ? await getFileTimestamp(artifactIo, callRel) : 0;
 
     // Build set of FILES that have edges (not folders)
     const filesWithImportEdges = new Set<string>();
@@ -183,9 +176,9 @@ async function scanFoldersRecursive(
 ): Promise<void> {
     const relativePath = currentRel || '.';
 
-    // Skip ignored folders
+    // Skip ignored folders (name or venv/cache marker file)
     const folderName = relativePath === '.' ? '' : path.posix.basename(relativePath);
-    if (folderName && IGNORED_FOLDERS.has(folderName)) return;
+    if (folderName && isIgnoredDir(path.dirname(io.resolve(relativePath)), folderName)) return;
 
     // Get files in this folder and check their status
     const {
@@ -249,8 +242,9 @@ async function scanFoldersRecursive(
         return;
     }
 
+    const dirAbs = io.resolve(relativePath);
     for (const entry of entries) {
-        if (IGNORED_FOLDERS.has(entry)) continue;
+        if (isIgnoredDir(dirAbs, entry)) continue;
 
         const entryRel = relativePath === '.' ? entry : `${relativePath}/${entry}`;
         let isDir = false;

@@ -153,7 +153,7 @@ export async function findClones(ctx: WorkspaceContext): Promise<CloneFinding[]>
 
     // In-scope fileIds = call-edgelist file nodes (same scope as the other
     // analyzers). Load ONLY the call store (the import graph is irrelevant here).
-    const callStore = new CallEdgeListStore(ctx.artifactRoot, ctx.io);
+    const callStore = new CallEdgeListStore(ctx.artifactRoot, ctx.artifactIo);
     await callStore.load();
     const inScope = [
         ...new Set(
@@ -249,7 +249,7 @@ export async function findClones(ctx: WorkspaceContext): Promise<CloneFinding[]>
     const edges = [...exact.edges, ...shared.edges];
 
     // Persist clone edges + refreshed cache (the store sorts edges itself).
-    const cloneStore = new CloneEdgeListStore(ctx.artifactRoot, ctx.io);
+    const cloneStore = new CloneEdgeListStore(ctx.artifactRoot, ctx.artifactIo);
     await cloneStore.load();
     cloneStore.setEdges(edges);
     await cloneStore.save();

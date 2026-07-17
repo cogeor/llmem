@@ -24,7 +24,7 @@ export async function scanFolder(
     ctx: WorkspaceContext,
     req: ScanFolderRequest,
 ): Promise<ScanResult> {
-    const { workspaceRoot, artifactRoot: artifactDir, io, logger, config } = ctx;
+    const { workspaceRoot, artifactRoot: artifactDir, io, artifactIo, logger, config } = ctx;
     const { folderPath } = req;
 
     if (!(await io.exists(folderPath))) {
@@ -37,8 +37,8 @@ export async function scanFolder(
     // the second (mandatory) constructor arg; the boundary logger's
     // shape is incompatible with the edge-list store's, so the stores
     // fall back to their internal `createLogger`.
-    const callStore = new CallEdgeListStore(artifactDir, io);
-    const importStore = new ImportEdgeListStore(artifactDir, io);
+    const callStore = new CallEdgeListStore(artifactDir, artifactIo);
+    const importStore = new ImportEdgeListStore(artifactDir, artifactIo);
     // Loop 13 (codebase-quality-v2): see scanFile comment — same posture.
     await loadOrClearOnMismatch(callStore, importStore, logger);
     const existingCallEdgeCount = callStore.getStats().edges;
@@ -160,11 +160,12 @@ export async function scanFolder(
         });
 
         if (!result.ok && result.kind === 'init-error') {
-            const e: any = result.error;
+            const e = result.error;
+            const eMessage = e instanceof Error ? e.message : String(e);
             errors.push({
                 filePath: relativePath,
                 message:
-                    `Failed to initialize parser for ${relativePath}: ${e?.message ?? String(e)}. ` +
+                    `Failed to initialize parser for ${relativePath}: ${eMessage}. ` +
                     `The tree-sitter native module may be missing or failed to build — ` +
                     `install build tools or a prebuilt binary for your Node version and reinstall.`,
                 cause: e,
@@ -190,10 +191,10 @@ export async function scanFolder(
         }
 
         if (!result.ok && result.kind === 'extract-error') {
-            const e: any = result.error;
+            const e = result.error;
             errors.push({
                 filePath: relativePath,
-                message: e?.message ?? String(e),
+                message: e instanceof Error ? e.message : String(e),
                 cause: e,
             });
             skippedCount++;

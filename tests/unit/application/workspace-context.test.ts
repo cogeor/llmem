@@ -101,7 +101,7 @@ test('createWorkspaceContext (resolved): accepts pre-built io + config', async (
 // Root containment
 // ---------------------------------------------------------------------------
 
-test('createWorkspaceContext: artifactRoot is contained under workspaceRoot', async () => {
+test('createWorkspaceContext: default (relative) artifactRoot resolves under workspaceRoot', async () => {
     const parent = mkTmp('llmem-ctx-');
     try {
         const root = path.join(parent, 'workspace');
@@ -111,6 +111,60 @@ test('createWorkspaceContext: artifactRoot is contained under workspaceRoot', as
         assert.ok(
             !rel.startsWith('..') && !path.isAbsolute(rel),
             `expected artifactRoot under workspaceRoot, got rel='${rel}'`,
+        );
+        // The factory mkdir-p's the artifact root (documented side effect)
+        // and roots the artifact-scoped IO on it.
+        assert.ok(fs.existsSync(ctx.artifactRoot));
+        assert.equal(ctx.artifactIo.getRealRoot(), ctx.artifactRoot);
+    } finally {
+        rm(parent);
+    }
+});
+
+test('createWorkspaceContext: ABSOLUTE out-of-tree artifactRoot is honored (portable store)', async () => {
+    const parent = mkTmp('llmem-ctx-');
+    try {
+        const root = path.join(parent, 'workspace');
+        const store = path.join(parent, 'store', 'graph');
+        fs.mkdirSync(root);
+        const ctx = await createWorkspaceContext({
+            workspaceRoot: root,
+            configOverrides: { artifactRoot: store },
+        });
+        // Resolved out-of-tree: realpath of the (factory-created) store dir.
+        assert.equal(ctx.artifactRoot, fs.realpathSync(store));
+        assert.ok(fs.existsSync(store), 'factory must mkdir -p the artifact root');
+        // artifactIo is rooted AT the artifact root, not the workspace.
+        assert.equal(ctx.artifactIo.getRealRoot(), ctx.artifactRoot);
+        // No workspace-relative form for an out-of-tree root.
+        assert.equal(ctx.artifactRootRel, null);
+        assert.equal(getArtifactRootRel(ctx), null);
+        // Workspace io is unchanged.
+        assert.equal(ctx.io.getRealRoot(), ctx.workspaceRoot);
+        // Nothing was created inside the workspace by the artifact-root
+        // derivation (the workspace dir stays empty).
+        assert.deepEqual(fs.readdirSync(root), []);
+    } finally {
+        rm(parent);
+    }
+});
+
+test('createWorkspaceContext: artifactIo round-trips a write inside an out-of-tree root', async () => {
+    const parent = mkTmp('llmem-ctx-');
+    try {
+        const root = path.join(parent, 'workspace');
+        const store = path.join(parent, 'store');
+        fs.mkdirSync(root);
+        const ctx = await createWorkspaceContext({
+            workspaceRoot: root,
+            configOverrides: { artifactRoot: store },
+        });
+        await ctx.artifactIo.writeFile('probe.json', '{}');
+        assert.ok(fs.existsSync(path.join(store, 'probe.json')));
+        // Escapes of the ARTIFACT root are still blocked.
+        await assert.rejects(
+            ctx.artifactIo.writeFile('../escape.json', '{}'),
+            (err: Error) => err.name === 'PathEscapeError',
         );
     } finally {
         rm(parent);

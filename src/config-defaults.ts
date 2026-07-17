@@ -25,6 +25,10 @@ export const DEFAULT_CONFIG: Config = {
 export const ENV_VARS = {
     WORKSPACE: 'LLMEM_WORKSPACE',
     ARTIFACT_ROOT: 'LLMEM_ARTIFACT_ROOT',
+    /** `repo` | `global` — where artifacts live when no explicit root is given. */
+    STORE: 'LLMEM_STORE',
+    /** Base-directory override for the global store (default: platform cache dir). */
+    STORE_DIR: 'LLMEM_STORE_DIR',
     MAX_FILES_PER_FOLDER: 'LLMEM_MAX_FILES_PER_FOLDER',
     MAX_FILE_SIZE_KB: 'LLMEM_MAX_FILE_SIZE_KB',
     MAX_FILE_LINES: 'LLMEM_MAX_FILE_LINES',

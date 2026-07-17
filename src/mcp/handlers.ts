@@ -5,7 +5,7 @@
  * Uses Zod for schema validation per best practices.
  */
 
-import { z, ZodSchema, ZodError } from 'zod';
+import { ZodSchema, ZodError } from 'zod';
 import { createLogger } from '../common/logger';
 
 const log = createLogger('mcp');

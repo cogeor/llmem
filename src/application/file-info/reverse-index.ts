@@ -5,7 +5,7 @@
  * We need to reverse this to find: for each callee, who calls it
  */
 
-import { CallGraph, EntityNode } from '../../graph/types';
+import { CallGraph } from '../../graph/types';
 import { CallerInfo, ReverseCallIndex } from './file-info-types';
 
 /**

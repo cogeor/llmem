@@ -90,7 +90,7 @@ export async function addWatchedPath(
     ctx: WorkspaceContext,
     req: AddWatchedPathRequest,
 ): Promise<AddWatchedPathResult> {
-    const { workspaceRoot, artifactRoot, io, logger } = ctx;
+    const { workspaceRoot, artifactRoot, io, artifactIo, logger } = ctx;
     const { targetPath } = req;
     void logger; // tracked for parity; no host-visible log lines today
 
@@ -105,7 +105,7 @@ export async function addWatchedPath(
 
     const isDirectory = (await io.stat(targetPath)).isDirectory();
 
-    const watchService = new WatchService(artifactRoot, workspaceRoot, io);
+    const watchService = new WatchService(artifactRoot, workspaceRoot, io, artifactIo);
     await watchService.load();
 
     // Add to watch state. addFolder returns only files newly added (it
@@ -127,14 +127,14 @@ export async function addWatchedPath(
         } else {
             await scanFile(ctx, { filePath: targetPath });
         }
-    } catch (e: any) {
+    } catch (e: unknown) {
         // Persist the watch-state update even if scan fails so the user
         // can see the path is being watched. Surface the scan error in
         // the result message.
         await watchService.save();
         return {
             success: false,
-            message: `Watched ${targetPath} but scan failed: ${e?.message ?? String(e)}`,
+            message: `Watched ${targetPath} but scan failed: ${e instanceof Error ? e.message : String(e)}`,
             addedFiles: addedFiles.map(asRelPath),
             watchedFiles: watchService.getWatchedFiles().map(asRelPath),
         };
@@ -166,13 +166,13 @@ export async function removeWatchedPath(
     ctx: WorkspaceContext,
     req: RemoveWatchedPathRequest,
 ): Promise<RemoveWatchedPathResult> {
-    const { workspaceRoot, artifactRoot, io, logger } = ctx;
+    const { workspaceRoot, artifactRoot, io, artifactIo, logger } = ctx;
     const { targetPath } = req;
 
     const isDirectory =
         (await io.exists(targetPath)) && (await io.stat(targetPath)).isDirectory();
 
-    const watchService = new WatchService(artifactRoot, workspaceRoot, io);
+    const watchService = new WatchService(artifactRoot, workspaceRoot, io, artifactIo);
     await watchService.load();
 
     // Remove from watch state.
@@ -202,10 +202,10 @@ export async function removeWatchedPath(
     // same edge-list file can't load the old state, mutate, and clobber this
     // removal. Each store writes a DISTINCT file (import vs call edgelist), so
     // the two transactions take independent locks and stay concurrent.
-    const importStore = new ImportEdgeListStore(artifactRoot, io);
+    const importStore = new ImportEdgeListStore(artifactRoot, artifactIo);
     await importStore.withTransaction(() => importStore.removeByFolder(targetPath));
 
-    const callStore = new CallEdgeListStore(artifactRoot, io);
+    const callStore = new CallEdgeListStore(artifactRoot, artifactIo);
     await callStore.withTransaction(() => callStore.removeByFolder(targetPath));
 
     await watchService.save();

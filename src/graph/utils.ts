@@ -29,14 +29,27 @@ export function deriveCallSiteKey(fileId: string, callerEntityId: string, origin
     return `${fileId}#${callerEntityId}#${originalCallSiteId}#${index}`;
 }
 
+/**
+ * Minimal node shape the color generator reads: an `id`/`label` plus the
+ * optional path-bearing fields it groups by (`path` on FileNode-like nodes,
+ * `fileId` on EntityNode-like nodes). Structurally satisfied by both graph
+ * node kinds without coupling to the full `Node` union.
+ */
+export interface ColorableNode {
+    id: string;
+    label?: string;
+    path?: string;
+    fileId?: string;
+}
+
 export class ColorGenerator {
     /**
      * Generates colors for a set of nodes based on their folder structure.
      * Returns a map of Node ID -> Color String (HSL)
      */
-    public generateColors(nodes: Iterable<any>): Map<string, string> {
+    public generateColors(nodes: Iterable<ColorableNode>): Map<string, string> {
         const colors = new Map<string, string>();
-        const nodesByFolder = new Map<string, any[]>();
+        const nodesByFolder = new Map<string, ColorableNode[]>();
 
         // 1. Group by folder
         for (const node of nodes) {

@@ -6,6 +6,10 @@
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false,
         "properties": {
+          "artifactRoot": {
+            "description": "Artifact store directory (absolute paths allowed, may be outside the workspace; overrides LLMEM_ARTIFACT_ROOT; default: .llmem/graph)",
+            "type": "string"
+          },
           "open": {
             "default": true,
             "type": "boolean"
@@ -19,6 +23,14 @@
           "regenerate": {
             "default": false,
             "type": "boolean"
+          },
+          "store": {
+            "description": "Artifact store location: repo (.llmem/graph in the workspace, default) or global (per-user store keyed by workspace path; overrides LLMEM_STORE; --artifact-root beats both)",
+            "enum": [
+              "repo",
+              "global"
+            ],
+            "type": "string"
           },
           "verbose": {
             "default": false,
@@ -68,6 +80,10 @@
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false,
         "properties": {
+          "artifactRoot": {
+            "description": "Artifact store directory (absolute paths allowed, may be outside the workspace; overrides LLMEM_ARTIFACT_ROOT; default: .llmem/graph)",
+            "type": "string"
+          },
           "failOn": {
             "description": "Exit non-zero if the report has >=1 finding of this kind (e.g. import-cycle)",
             "type": "string"
@@ -92,6 +108,14 @@
               "high",
               "medium",
               "low"
+            ],
+            "type": "string"
+          },
+          "store": {
+            "description": "Artifact store location: repo (.llmem/graph in the workspace, default) or global (per-user store keyed by workspace path; overrides LLMEM_STORE; --artifact-root beats both)",
+            "enum": [
+              "repo",
+              "global"
             ],
             "type": "string"
           },
@@ -131,6 +155,10 @@
             },
             "type": "array"
           },
+          "artifactRoot": {
+            "description": "Artifact store directory (absolute paths allowed, may be outside the workspace; overrides LLMEM_ARTIFACT_ROOT; default: .llmem/graph)",
+            "type": "string"
+          },
           "json": {
             "default": false,
             "description": "Emit the JSON ReviewChecklist to stdout instead of the markdown",
@@ -151,6 +179,14 @@
               "general",
               "frontend",
               "both"
+            ],
+            "type": "string"
+          },
+          "store": {
+            "description": "Artifact store location: repo (.llmem/graph in the workspace, default) or global (per-user store keyed by workspace path; overrides LLMEM_STORE; --artifact-root beats both)",
+            "enum": [
+              "repo",
+              "global"
             ],
             "type": "string"
           },
@@ -208,6 +244,10 @@
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false,
         "properties": {
+          "artifactRoot": {
+            "description": "Artifact store directory (absolute paths allowed, may be outside the workspace; overrides LLMEM_ARTIFACT_ROOT; default: .llmem/graph)",
+            "type": "string"
+          },
           "external": {
             "default": false,
             "description": "Include external-module import edges (default: internal-only)",
@@ -216,6 +256,14 @@
           "folder": {
             "default": ".",
             "description": "Workspace-relative folder to scan (defaults to the whole workspace)",
+            "type": "string"
+          },
+          "store": {
+            "description": "Artifact store location: repo (.llmem/graph in the workspace, default) or global (per-user store keyed by workspace path; overrides LLMEM_STORE; --artifact-root beats both)",
+            "enum": [
+              "repo",
+              "global"
+            ],
             "type": "string"
           },
           "verbose": {
@@ -255,6 +303,10 @@
             },
             "type": "array"
           },
+          "artifactRoot": {
+            "description": "Artifact store directory (absolute paths allowed, may be outside the workspace; overrides LLMEM_ARTIFACT_ROOT; default: .llmem/graph)",
+            "type": "string"
+          },
           "content": {
             "description": "Inline JSON payload — the agent's report_file_info / report_folder_info body.",
             "type": "string"
@@ -271,6 +323,14 @@
             "default": false,
             "description": "Print the LLM prompt to stdout and exit 0.",
             "type": "boolean"
+          },
+          "store": {
+            "description": "Artifact store location: repo (.llmem/graph in the workspace, default) or global (per-user store keyed by workspace path; overrides LLMEM_STORE; --artifact-root beats both)",
+            "enum": [
+              "repo",
+              "global"
+            ],
+            "type": "string"
           },
           "workspace": {
             "description": "Workspace root directory (auto-detected if omitted).",

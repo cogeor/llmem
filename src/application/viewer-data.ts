@@ -27,7 +27,6 @@
  * lives on the context).
  */
 
-import * as path from 'path';
 import { asWorkspaceRoot, asAbsPath } from '../core/paths';
 import { generateWorkTree, type ITreeNode } from './viewer/worktree';
 import {
@@ -41,7 +40,6 @@ import type { WorkspaceContext } from './workspace-context';
 import { buildHealthOverlay } from './analysis/webview-overlay';
 import { ensureGitignored } from './ensure-gitignored';
 import {
-    toWorkspaceRel,
     scanAndPopulateSplitEdgeLists,
     collectRawDesignDocs,
 } from './viewer-data/helpers';
@@ -74,17 +72,18 @@ export interface ViewerData {
 export async function collectViewerData(
     ctx: WorkspaceContext,
 ): Promise<ViewerData> {
-    const { workspaceRoot, artifactRoot, docsRoot, io, logger } = ctx;
+    const { workspaceRoot, artifactRoot, docsRoot, io, artifactIo, logger } = ctx;
 
-    // Ensure artifact root exists. The realpath-strong `io.mkdirRecursive`
-    // walks up to the nearest existing ancestor and asserts containment.
-    const artifactRel = toWorkspaceRel(workspaceRoot, artifactRoot);
-    await io.mkdirRecursive(artifactRel);
+    // Ensure artifact root exists (idempotent — the context factory already
+    // created it; this guards against a mid-session delete).
+    await artifactIo.mkdirRecursive('.');
 
     // First creation of the `.llmem/` dot-folder is our cue to ensure a single
     // blanket `.llmem/` line in the repo's .gitignore (append-only, idempotent;
-    // see ensure-gitignored.ts). Once per workspace per process.
-    if (!gitignoreEnsured.has(workspaceRoot)) {
+    // see ensure-gitignored.ts). Only when the artifact root is IN-TREE —
+    // an out-of-tree store writes nothing ignorable into the workspace.
+    // Once per workspace per process.
+    if (ctx.artifactRootRel !== null && !gitignoreEnsured.has(workspaceRoot)) {
         gitignoreEnsured.add(workspaceRoot);
         try {
             await ensureGitignored(workspaceRoot, io, undefined, logger);
@@ -95,16 +94,15 @@ export async function collectViewerData(
         }
     }
 
-    // Load or generate split edge lists
-    const importStore = new ImportEdgeListStore(artifactRoot, io);
-    const callStore = new CallEdgeListStore(artifactRoot, io);
+    // Load or generate split edge lists (artifact-scoped IO: plain
+    // filenames relative to the artifact root).
+    const importStore = new ImportEdgeListStore(artifactRoot, artifactIo);
+    const callStore = new CallEdgeListStore(artifactRoot, artifactIo);
 
-    const importPath = path.join(artifactRoot, 'import-edgelist.json');
-    const callPath = path.join(artifactRoot, 'call-edgelist.json');
-    const importRel = toWorkspaceRel(workspaceRoot, importPath);
-    const callRel = toWorkspaceRel(workspaceRoot, callPath);
+    const importRel = 'import-edgelist.json';
+    const callRel = 'call-edgelist.json';
 
-    if ((await io.exists(importRel)) && (await io.exists(callRel))) {
+    if ((await artifactIo.exists(importRel)) && (await artifactIo.exists(callRel))) {
         // Both edge lists exist - load them
         await importStore.load();
         await callStore.load();
@@ -138,7 +136,7 @@ export async function collectViewerData(
     }
 
     // Load watched files state
-    const watchService = new WatchService(artifactRoot, workspaceRoot, io);
+    const watchService = new WatchService(artifactRoot, workspaceRoot, io, artifactIo);
     await watchService.load();
     const watchedFiles = new Set(watchService.getWatchedFiles());
     logger.info(`[WebviewDataService] Loaded ${watchedFiles.size} watched files`);
@@ -161,7 +159,7 @@ export async function collectViewerData(
     const workTree = await generateWorkTree(io);
 
     // Populate graph status for directories
-    const folderStatuses = await computeAllFolderStatuses(workspaceRoot, artifactRoot, io);
+    const folderStatuses = await computeAllFolderStatuses(artifactRoot, io, artifactIo);
     populateTreeStatus(workTree, folderStatuses);
 
     // 3. Design Docs (raw markdown — caller renders)

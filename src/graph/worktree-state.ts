@@ -52,18 +52,29 @@ export class WatchService {
     private artifactRoot: string;
     private workspaceRoot: string;
     /**
-     * Loop 07: required realpath-strong I/O surface. All read / write /
-     * list operations flow through it.
+     * Loop 07: required realpath-strong I/O surface for WORKSPACE reads
+     * (watched-file hashing / folder expansion).
      */
     private readonly io: WorkspaceIO;
-    /** State file path relative to the workspace root. */
+    /**
+     * Portable store: I/O surface rooted at the ARTIFACT root — owns the
+     * state file, which may live outside the workspace.
+     */
+    private readonly artifactIo: WorkspaceIO;
+    /** State file path relative to the artifact root. */
     private readonly stateRelPath: string;
 
-    constructor(artifactRoot: string, workspaceRoot: string, io: WorkspaceIO) {
+    constructor(
+        artifactRoot: string,
+        workspaceRoot: string,
+        io: WorkspaceIO,
+        artifactIo: WorkspaceIO,
+    ) {
         this.artifactRoot = artifactRoot;
         this.workspaceRoot = workspaceRoot;
         this.io = io;
-        this.stateRelPath = path.relative(this.io.getRealRoot(), path.join(artifactRoot, STATE_FILENAME));
+        this.artifactIo = artifactIo;
+        this.stateRelPath = path.relative(this.artifactIo.getRealRoot(), path.join(artifactRoot, STATE_FILENAME));
     }
 
     // ========================================================================
@@ -75,8 +86,8 @@ export class WatchService {
      */
     async load(): Promise<void> {
         try {
-            if (await this.io.exists(this.stateRelPath)) {
-                const content = await this.io.readFile(this.stateRelPath, 'utf-8');
+            if (await this.artifactIo.exists(this.stateRelPath)) {
+                const content = await this.artifactIo.readFile(this.stateRelPath, 'utf-8');
                 const rawState = JSON.parse(content);
 
                 if (typeof rawState !== 'object' || rawState === null) {
@@ -153,8 +164,8 @@ export class WatchService {
 
             // mkdirRecursive is idempotent, so no `existsSync` pre-check
             // is needed.
-            await this.io.mkdirRecursive(path.dirname(this.stateRelPath));
-            await this.io.writeFile(this.stateRelPath, content);
+            await this.artifactIo.mkdirRecursive(path.dirname(this.stateRelPath));
+            await this.artifactIo.writeFile(this.stateRelPath, content);
             log.debug('Saved watched files', { count: this.watchedFiles.size });
         } catch (e) {
             log.error('Failed to save state', {

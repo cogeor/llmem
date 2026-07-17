@@ -156,6 +156,62 @@ test('health on a clean workspace: exit 0, writes md+json, prints the report', (
     }
 });
 
+test('health --store global: report + graph follow the store, workspace stays clean', () => {
+    ensureBuilt();
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-health-ws-'));
+    const storeBase = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-health-store-'));
+    try {
+        // Seed source only — no in-repo .llmem; the global store must be built
+        // from scratch and nothing may be written back into the workspace.
+        fs.writeFileSync(path.join(tmp, 'package.json'), '{}', 'utf8');
+        fs.mkdirSync(path.join(tmp, 'src'), { recursive: true });
+        fs.writeFileSync(
+            path.join(tmp, 'src', 'a.ts'),
+            'export const a = 1;\n',
+            'utf8',
+        );
+
+        const result = spawnSync(
+            'node',
+            [BIN, 'health', '--workspace', tmp, '--store', 'global'],
+            {
+                encoding: 'utf8',
+                env: {
+                    ...process.env,
+                    FORCE_COLOR: '0',
+                    LOG_LEVEL: 'error',
+                    LLMEM_STORE_DIR: storeBase,
+                },
+            },
+        );
+        assert.equal(result.status, 0, `expected exit 0; stderr=${result.stderr}`);
+
+        // The workspace must carry NO .llmem at all (no graph, no report).
+        assert.ok(
+            !fs.existsSync(path.join(tmp, '.llmem')),
+            'workspace .llmem must not be created with an out-of-tree store',
+        );
+
+        // The report + graph land under the store, keyed by workspace path.
+        const stored = fs
+            .readdirSync(path.join(storeBase, 'llmem', 'store'))
+            .filter((d) => d.startsWith('llmem-health-ws-') || /-[0-9a-f]{8}$/.test(d));
+        assert.equal(stored.length, 1, `exactly one store key; got ${stored.join(',')}`);
+        const storeRoot = path.join(storeBase, 'llmem', 'store', stored[0]);
+        assert.ok(
+            fs.existsSync(path.join(storeRoot, 'health-report.md')),
+            'health-report.md written to the store (sibling of graph/)',
+        );
+        assert.ok(
+            fs.existsSync(path.join(storeRoot, 'graph', 'import-edgelist.json')),
+            'graph built under the store',
+        );
+    } finally {
+        rmrf(tmp);
+        rmrf(storeBase);
+    }
+});
+
 test('health --fail-on import-cycle on a clean workspace exits 0', () => {
     ensureBuilt();
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'llmem-health-'));

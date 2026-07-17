@@ -24,7 +24,7 @@ export interface ArchEventData {
 
 export interface WebSocketEventData {
     type: WebSocketEventType;
-    data?: ArchEventData | any;
+    data?: ArchEventData;
     message?: string;
 }
 
@@ -45,7 +45,7 @@ export class LiveReloadClient {
      */
     connect(): void {
         // Only connect if we're in HTTP mode (not VSCode)
-        const isVscode = !!(window as any).acquireVsCodeApi;
+        const isVscode = !!(window as { acquireVsCodeApi?: unknown }).acquireVsCodeApi;
         if (isVscode) {
             if (this.verbose) {
                 console.log('[LiveReload] Skipping WebSocket in VSCode mode');
@@ -107,7 +107,7 @@ export class LiveReloadClient {
     /**
      * Handle WebSocket message
      */
-    private handleMessage(message: any): void {
+    private handleMessage(message: WebSocketEventData): void {
         if (this.verbose) {
             console.log('[LiveReload] Message:', message);
         }

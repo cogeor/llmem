@@ -79,8 +79,9 @@ async function main(): Promise<void> {
         console.log('='.repeat(60));
         console.log(`New edges added: ${result.newEdges}`);
         console.log(`Total call edges: ${result.totalEdges}`);
-    } catch (e: any) {
-        console.error(`\nERROR: ${e.message}`);
+    } catch (e: unknown) {
+        const err = e instanceof Error ? e : new Error(String(e));
+        console.error(`\nERROR: ${err.message}`);
         process.exit(1);
     }
 }

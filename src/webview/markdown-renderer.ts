@@ -20,6 +20,12 @@
 import { JSDOM } from 'jsdom';
 import createDOMPurify, { type WindowLike } from 'dompurify';
 
+/** Minimal shape of the `marked` module surface we use. */
+interface MarkedLike {
+    parse: (md: string) => string | Promise<string>;
+    setOptions: (options: { gfm: boolean; breaks: boolean }) => void;
+}
+
 let markedInstance: { parse: (md: string) => string | Promise<string> } | null = null;
 let purify: ReturnType<typeof createDOMPurify> | null = null;
 
@@ -32,7 +38,7 @@ async function ensureMarked(): Promise<{ parse: (md: string) => string | Promise
     // exactly one hit, located in this file.
     // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func
     const dynImport = new Function('s', 'return import(s)') as
-        (s: string) => Promise<any>;
+        (s: string) => Promise<{ marked: MarkedLike }>;
     const mod = await dynImport('marked');
     const marked = mod.marked;
     marked.setOptions({ gfm: true, breaks: false });

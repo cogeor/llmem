@@ -99,8 +99,8 @@ export async function buildDocumentFolderPrompt(
     // tolerates a missing JSON file (returns an empty envelope), so an empty
     // subtree with no artifact root still projects cleanly.
     const artifactDir = ctx.artifactRoot;
-    const importStore = new ImportEdgeListStore(artifactDir, io);
-    const callStore = new CallEdgeListStore(artifactDir, io);
+    const importStore = new ImportEdgeListStore(artifactDir, ctx.artifactIo);
+    const callStore = new CallEdgeListStore(artifactDir, ctx.artifactIo);
     await importStore.load();
     await callStore.load();
 

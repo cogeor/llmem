@@ -36,8 +36,8 @@ async function run() {
         const artifactDir = ctx.artifactRoot;
 
         console.log(`Loading edge lists from: ${artifactDir}`);
-        const importStore = new ImportEdgeListStore(artifactDir, ctx.io);
-        const callStore = new CallEdgeListStore(artifactDir, ctx.io);
+        const importStore = new ImportEdgeListStore(artifactDir, ctx.artifactIo);
+        const callStore = new CallEdgeListStore(artifactDir, ctx.artifactIo);
         await Promise.all([importStore.load(), callStore.load()]);
 
         const importStats = importStore.getStats();

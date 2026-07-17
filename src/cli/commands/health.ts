@@ -41,26 +41,35 @@ const healthArgs = z.object({
         .describe('Exit non-zero if the report has >=1 finding of this kind (e.g. import-cycle)'),
     refresh: z.boolean().default(true)
         .describe('Refresh edge lists before scanning (use --no-refresh to skip)'),
+    artifactRoot: z.string().optional()
+        .describe('Artifact store directory (absolute paths allowed, may be outside the workspace; overrides LLMEM_ARTIFACT_ROOT; default: .llmem/graph)'),
+    store: z.enum(['repo', 'global']).optional()
+        .describe('Artifact store location: repo (.llmem/graph in the workspace, default) or global (per-user store keyed by workspace path; overrides LLMEM_STORE; --artifact-root beats both)'),
 }).strict();
 
 /**
  * Resolve the markdown + JSON report paths, honoring `--out`.
  *
- * Default: `<workspace>/.llmem/health-report.{md,json}`. With `--out`:
+ * Default: `<defaultDir>/health-report.{md,json}`, where `defaultDir` is the
+ * PARENT of the artifact root — i.e. the health report is always a sibling of
+ * the graph dir. In-repo that is `<workspace>/.llmem` (unchanged); with an
+ * out-of-tree store (`--store global` / an absolute `--artifact-root`) it
+ * follows the store so a foreign repo is never written to. With `--out`:
  *   - if it ends in `.md`, it IS the markdown path and the JSON sibling is the
  *     same path with a `.json` extension;
  *   - otherwise it is a directory and both default filenames are joined under
  *     it.
- * A relative `--out` resolves against `workspace`.
+ * A relative `--out` resolves against `workspace` (an explicit user choice).
  */
 function resolveOutPaths(
     workspace: string,
+    defaultDir: string,
     out: string | undefined,
 ): { mdPath: string; jsonPath: string } {
     if (out === undefined) {
         return {
-            mdPath: path.join(workspace, '.llmem', 'health-report.md'),
-            jsonPath: path.join(workspace, '.llmem', 'health-report.json'),
+            mdPath: path.join(defaultDir, 'health-report.md'),
+            jsonPath: path.join(defaultDir, 'health-report.json'),
         };
     }
     const resolved = path.isAbsolute(out) ? out : path.join(workspace, out);
@@ -97,7 +106,11 @@ export const healthCommand: CommandSpec<typeof healthArgs> = {
     async run(args, cli) {
         const workspace = detectWorkspace(args.workspace);
 
-        const ctx = await cli.createWorkspace(workspace);
+        const ctx = await cli.createWorkspace(
+            workspace,
+            { artifactRoot: args.artifactRoot },
+            { store: args.store },
+        );
 
         // A5: zero-config — auto-scan on first run instead of demanding a
         // prior `llmem scan`. Probes ctx.config.artifactRoot (bug 1.3: the
@@ -113,7 +126,14 @@ export const healthCommand: CommandSpec<typeof healthArgs> = {
         const report = await runHealthScan(ctx);
 
         const md = renderHealthReport(report);
-        const { mdPath, jsonPath } = resolveOutPaths(workspace, args.out);
+        // Default the report next to the graph dir (parent of the artifact
+        // root): `<workspace>/.llmem` in-repo, or the store dir out-of-tree so
+        // a foreign repo stays clean. `--out` still overrides.
+        const { mdPath, jsonPath } = resolveOutPaths(
+            workspace,
+            path.dirname(ctx.artifactRoot),
+            args.out,
+        );
 
         await fs.mkdir(path.dirname(mdPath), { recursive: true });
         await fs.writeFile(mdPath, md, 'utf8');

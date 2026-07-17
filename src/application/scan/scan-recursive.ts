@@ -9,7 +9,7 @@
 
 import * as path from 'path';
 import { CallEdgeListStore, ImportEdgeListStore } from '../../graph/edgelist';
-import { IGNORED_FOLDERS } from '../../parser/config';
+import { isIgnoredDir } from '../../parser/config';
 import type { WorkspaceContext } from '../workspace-context';
 import type { ScanResult, ScanFolderRequest } from './types';
 import { mergeCoverage } from './coverage';
@@ -32,8 +32,8 @@ import { scanFolder } from './scan-folder';
 export async function rescanAfterSchemaMismatch(
     ctx: WorkspaceContext,
 ): Promise<ScanResult> {
-    const importStore = new ImportEdgeListStore(ctx.artifactRoot, ctx.io);
-    const callStore = new CallEdgeListStore(ctx.artifactRoot, ctx.io);
+    const importStore = new ImportEdgeListStore(ctx.artifactRoot, ctx.artifactIo);
+    const callStore = new CallEdgeListStore(ctx.artifactRoot, ctx.artifactIo);
     importStore.clear();
     callStore.clear();
     await importStore.save();
@@ -58,10 +58,13 @@ export async function scanFolderRecursive(
     let acc: ScanResult = folderResult;
 
     // Find subfolders. L24: io.readDir + io.stat replace fs.readdirSync +
-    // fs.statSync so each child is realpath-validated.
+    // fs.statSync so each child is realpath-validated. isIgnoredDir also
+    // marker-checks each entry (pyvenv.cfg / CACHEDIR.TAG) so oddly-named
+    // venvs and cache dirs are pruned, not just IGNORED_FOLDERS names.
+    const folderAbs = io.resolve(folderPath);
     const entries = await io.readDir(folderPath);
     for (const entry of entries) {
-        if (IGNORED_FOLDERS.has(entry)) continue;
+        if (isIgnoredDir(folderAbs, entry)) continue;
 
         const subRel = path.join(folderPath, entry).replace(/\\/g, '/');
         const st = await io.stat(subRel);

@@ -185,7 +185,7 @@ export class NodeRenderer {
      * Extract and return the name part of a label (no truncation).
      */
     private truncateLabel(label: string): string {
-        const parts = label.split(/[\/\\:#]/);
+        const parts = label.split(/[/\\:#]/);
         return parts[parts.length - 1] || label;
     }
 

@@ -18,6 +18,10 @@ import {
 } from '../application/workspace-context';
 import { ENV_VARS } from '../config-defaults';
 import type { Logger } from '../core/logger';
+import {
+    resolveArtifactRootPrecedence,
+    type StoreMode,
+} from '../workspace/store-location';
 
 export interface CliContext {
     cwd: string;
@@ -38,6 +42,15 @@ export interface CliContext {
     createWorkspace: (
         workspaceRoot: string,
         configOverrides?: Partial<RuntimeConfig>,
+        opts?: {
+            /**
+             * `--store` flag (P1 portable store). `global` routes artifacts
+             * to the per-user store keyed by the workspace path; an explicit
+             * `repo` beats `LLMEM_STORE=global`. Both lose to an explicit
+             * `artifactRoot` override / `LLMEM_ARTIFACT_ROOT`.
+             */
+            store?: StoreMode;
+        },
     ) => Promise<WorkspaceContext>;
 }
 
@@ -68,13 +81,35 @@ export function createCliContext(opts: { verbose?: boolean } = {}): CliContext {
         // the loose context factory only merges explicit overrides over
         // DEFAULT_CONFIG — so without this seam the env var was dead for the
         // CLI. Explicit per-command overrides still win.
-        createWorkspace: (workspaceRoot, configOverrides) => {
-            const envArtifactRoot = process.env[ENV_VARS.ARTIFACT_ROOT];
+        createWorkspace: (workspaceRoot, configOverrides, opts) => {
+            // Drop explicit-undefined overrides so commands can thread
+            // optional flags (e.g. `--artifact-root`) unconditionally
+            // without clobbering the env/default fallback below.
+            const overrides = Object.fromEntries(
+                Object.entries(configOverrides ?? {}).filter(
+                    ([, v]) => v !== undefined,
+                ),
+            );
+            // Precedence (P1 portable store): --artifact-root flag >
+            // LLMEM_ARTIFACT_ROOT > --store global / LLMEM_STORE=global >
+            // default (.llmem/graph). Single owner: store-location.ts.
+            const effectiveArtifactRoot = resolveArtifactRootPrecedence({
+                workspaceRoot,
+                flagArtifactRoot:
+                    typeof overrides.artifactRoot === 'string'
+                        ? overrides.artifactRoot
+                        : undefined,
+                envArtifactRoot: process.env[ENV_VARS.ARTIFACT_ROOT],
+                flagStore: opts?.store,
+                envStore: process.env[ENV_VARS.STORE],
+            });
             return initWorkspaceContext({
                 workspaceRoot,
                 configOverrides: {
-                    ...(envArtifactRoot ? { artifactRoot: envArtifactRoot } : {}),
-                    ...configOverrides,
+                    ...(effectiveArtifactRoot
+                        ? { artifactRoot: effectiveArtifactRoot }
+                        : {}),
+                    ...overrides,
                 },
                 logger: cliLogger,
             });

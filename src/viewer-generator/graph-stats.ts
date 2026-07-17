@@ -16,22 +16,20 @@ import { ImportEdgeListStore, CallEdgeListStore, SchemaMismatchError } from '../
 import { createLogger } from '../common/logger';
 import { rescanAfterSchemaMismatch } from '../application/scan';
 import { type WorkspaceContext } from '../application/workspace-context';
-import { DEFAULT_CONFIG } from '../config-defaults';
 
 const log = createLogger('web-launcher');
 
 /**
- * Check if edge lists exist for a workspace
+ * Check if edge lists exist in the given artifact directory.
  *
- * @param workspaceRoot - Workspace root directory
- * @param artifactRoot - Artifact root (default: DEFAULT_CONFIG.artifactRoot)
+ * Portable store: callers pass the RESOLVED absolute artifact dir
+ * (`ctx.artifactRoot`) — the old `(workspaceRoot, artifactRoot)` join
+ * silently mangled absolute artifact roots.
+ *
+ * @param artifactDir - Absolute artifact directory
  * @returns True if edge lists exist
  */
-export function hasEdgeLists(
-    workspaceRoot: string,
-    artifactRoot: string = DEFAULT_CONFIG.artifactRoot
-): boolean {
-    const artifactDir = path.join(workspaceRoot, artifactRoot);
+export function hasEdgeLists(artifactDir: string): boolean {
     const importEdgeListPath = path.join(artifactDir, 'import-edgelist.json');
     const callEdgeListPath = path.join(artifactDir, 'call-edgelist.json');
     return fs.existsSync(importEdgeListPath) && fs.existsSync(callEdgeListPath);
@@ -58,8 +56,8 @@ export async function getGraphStats(
 }> {
     const artifactDir = ctx.artifactRoot;
 
-    const importStore = new ImportEdgeListStore(artifactDir, ctx.io);
-    const callStore = new CallEdgeListStore(artifactDir, ctx.io);
+    const importStore = new ImportEdgeListStore(artifactDir, ctx.artifactIo);
+    const callStore = new CallEdgeListStore(artifactDir, ctx.artifactIo);
 
     // Loop 13 (codebase-quality-v2): a stats query over a stale envelope
     // is a worse failure than a slow first call — surface the same

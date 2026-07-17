@@ -35,13 +35,13 @@ export class RExtractor implements ArtifactExtractor {
         // import this module's adapter for extension metadata without forcing
         // @davisvaughan/tree-sitter-r to be installed at module-load time.
         // (Using scoped package until tree-sitter-r is claimed.)
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
         const R = require('@davisvaughan/tree-sitter-r');
         // Tree-sitter core (native addon) - require lazily too so that
         // importing this module (e.g. via `parser/config.ts`) never loads
         // the native binding; it is only loaded when an extractor is
         // actually constructed.
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
         const Parser = require('tree-sitter');
         this.parser = new Parser();
         this.parser.setLanguage(R);

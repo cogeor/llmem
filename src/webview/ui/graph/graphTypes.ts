@@ -2,7 +2,7 @@
  * Types for graph rendering.
  */
 
-import { VisNode, VisEdge, WorkTreeNode, DirectoryNode } from '../types';
+import { VisNode } from '../types';
 
 /**
  * A folder region computed by treemap layout.

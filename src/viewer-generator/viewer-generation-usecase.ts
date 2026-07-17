@@ -149,8 +149,8 @@ export async function generateGraph(
     }
 
     // Load split edge lists
-    const importStore = new ImportEdgeListStore(artifactDir, ctx.io);
-    const callStore = new CallEdgeListStore(artifactDir, ctx.io);
+    const importStore = new ImportEdgeListStore(artifactDir, ctx.artifactIo);
+    const callStore = new CallEdgeListStore(artifactDir, ctx.artifactIo);
 
     // Loop 13 (codebase-quality-v2): the persisted envelope may be
     // pre-resolver-swap. Catch SchemaMismatchError, rescan into v_next
@@ -188,7 +188,7 @@ export async function generateGraph(
     await buildAndSaveFolderArtifacts(ctx);
 
     // Load watched files state
-    const watchService = new WatchService(artifactDir, ctx.workspaceRoot, ctx.io);
+    const watchService = new WatchService(artifactDir, ctx.workspaceRoot, ctx.io, ctx.artifactIo);
     await watchService.load();
     const watchedFiles = new Set(watchService.getWatchedFiles());
 
@@ -197,8 +197,17 @@ export async function generateGraph(
     // artifacts are absent.
     const health = await buildHealthOverlay(ctx);
 
-    // Prepare graph data for visualization (filtered by watched files)
-    const graphData = prepareWebviewDataFromSplitEdgeLists(importData, callData, watchedFiles, health);
+    // Prepare graph data for visualization. An EMPTY watched set means "nothing
+    // pinned yet" (e.g. a fresh `serve` on a newly-scanned repo) and must render
+    // the FULL graph — passing the empty Set as a filter would exclude every
+    // node. Mirror viewer-data.ts: fall back to `undefined` (no filter) when the
+    // set is empty. Only a non-empty set narrows the view to pinned files.
+    const graphData = prepareWebviewDataFromSplitEdgeLists(
+        importData,
+        callData,
+        watchedFiles.size > 0 ? watchedFiles : undefined,
+        health,
+    );
 
     // Loop 21 — resolve webview asset root via injected option / cwd
     // walk-up. Replaces the previous compile-time directory arithmetic.

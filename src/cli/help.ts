@@ -47,7 +47,19 @@ EXAMPLES:
 
 ENVIRONMENT:
   LLMEM_WORKSPACE        Workspace root directory
-  LLMEM_ARTIFACT_ROOT    Artifact directory (default: .llmem/graph)
+  LLMEM_ARTIFACT_ROOT    Artifact store directory; absolute paths may live
+                         outside the workspace (default: .llmem/graph;
+                         --artifact-root wins over the env var)
+  LLMEM_STORE            repo | global — where artifacts live when no explicit
+                         root is given. global = per-user store keyed by the
+                         workspace path (<base>/llmem/store/<name>-<hash8>/graph;
+                         an explicit --store repo|global wins over the env var)
+  LLMEM_STORE_DIR        Base directory for the global store (default:
+                         %LOCALAPPDATA% on Windows, $XDG_CACHE_HOME or
+                         ~/.cache elsewhere)
+
+  Artifact-root precedence: --artifact-root > LLMEM_ARTIFACT_ROOT >
+  --store global / LLMEM_STORE=global > default (.llmem/graph)
 `);
 }
 

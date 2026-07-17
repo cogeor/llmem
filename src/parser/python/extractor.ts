@@ -40,13 +40,13 @@ export class PythonExtractor implements ArtifactExtractor {
         // Tree-sitter Python grammar - require lazily so `parser/config.ts` can
         // import this module's adapter for extension metadata without forcing
         // tree-sitter-python to be installed at module-load time.
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
         const Python = require('tree-sitter-python');
         // Tree-sitter core (native addon) - require lazily too so that
         // importing this module (e.g. via `parser/config.ts`) never loads
         // the native binding; it is only loaded when an extractor is
         // actually constructed.
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
         const Parser = require('tree-sitter');
         this.parser = new Parser();
         this.parser.setLanguage(Python);
@@ -243,7 +243,7 @@ export class PythonExtractor implements ArtifactExtractor {
     /**
      * Extract a class entity from a class_definition node.
      */
-    private extractClassEntity(node: SyntaxNode, fileContent: string): Entity | null {
+    private extractClassEntity(node: SyntaxNode, _fileContent: string): Entity | null {
         const nameNode = node.childForFieldName('name');
         if (!nameNode) return null;
 

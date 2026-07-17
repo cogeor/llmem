@@ -45,6 +45,15 @@ interface CreateAllowlistEntry {
 // Both rows are permanent.
 const ALLOWLIST_ENTRIES: readonly CreateAllowlistEntry[] = [
     {
+        file: 'src/application/artifact-root.ts',
+        phase: 'permanent',
+        reason:
+            'Factory-internal helper (extracted from workspace-context.ts ' +
+            'for the file-size budget): builds the artifact-scoped ' +
+            '`WorkspaceIO` rooted at the resolved artifact root (portable ' +
+            'store). Only `createWorkspaceContext` calls it.',
+    },
+    {
         file: 'src/application/workspace-context.ts',
         phase: 'permanent',
         reason:

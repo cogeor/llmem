@@ -80,8 +80,8 @@ export async function handleToggleWatch(
         const raw = await collectViewerData(ctx);
         const rendered = await toRenderedViewerData(raw);
         host.webview.postMessage({ type: 'data:refresh', data: rendered });
-    } catch (e: any) {
-        vscode.window.showErrorMessage(`Toggle watch failed: ${e?.message ?? String(e)}`);
+    } catch (e: unknown) {
+        vscode.window.showErrorMessage(`Toggle watch failed: ${e instanceof Error ? e.message : String(e)}`);
     }
 }
 
@@ -108,7 +108,7 @@ export async function startHotReloadAndSendInitialData(host: PanelHost): Promise
 
     // Load watch state using WatchService
     const { WatchService } = await import('../../graph/worktree-state');
-    const watchService = new WatchService(ctx.artifactRoot, ctx.workspaceRoot, ctx.io);
+    const watchService = new WatchService(ctx.artifactRoot, ctx.workspaceRoot, ctx.io, ctx.artifactIo);
     await watchService.load();
 
     const watchedFiles = watchService.getWatchedFiles();

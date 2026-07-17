@@ -65,8 +65,8 @@ export async function bindWithPortFallback(
         try {
             await listenOnce(server, candidatePort, '127.0.0.1');
             return candidatePort;
-        } catch (err: any) {
-            if (err && err.code === 'EADDRINUSE') {
+        } catch (err: unknown) {
+            if (err && (err as NodeJS.ErrnoException).code === 'EADDRINUSE') {
                 continue;
             }
             throw err;
@@ -84,12 +84,9 @@ export async function bindWithPortFallback(
  * lists not found". Guarded by `hasEdgeLists` so a warm workspace (edge
  * lists already present) is untouched — no perf hit.
  */
-export async function coldStartScan(
-    ctx: WorkspaceContext,
-    workspaceRoot: string,
-    artifactRoot: string,
-): Promise<void> {
-    if (!hasEdgeLists(workspaceRoot, artifactRoot)) {
+export async function coldStartScan(ctx: WorkspaceContext): Promise<void> {
+    // Probe the RESOLVED absolute artifact root (may live out-of-tree).
+    if (!hasEdgeLists(ctx.artifactRoot)) {
         log.info('Indexing workspace... (first run)');
         await scanFolderRecursive(ctx, { folderPath: '.' });
     }

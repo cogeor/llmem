@@ -52,7 +52,7 @@ export function loadConfig(): Config {
     // Read VS Code workspace settings (silently ignored outside VS Code)
     let vsCodeConfig: { artifactRoot?: string; maxFilesPerFolder?: number; maxFileSizeKB?: number; maxFileLines?: number; internalOnly?: boolean } = {};
     try {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
         const vscode = require('vscode');
         const ws = vscode.workspace.getConfiguration('llmem');
         vsCodeConfig = {
