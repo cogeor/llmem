@@ -261,9 +261,8 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     // A-grade #2: generate.ts / stats.ts dropped their duplicate local
     // `detectWorkspace` copies (with the `.arch` marker) for the shared
     // `src/workspace/detect.ts` walker — rows removed.
-    { file: 'src/mcp/main.ts',
-      phase: 'permanent',
-      reason: 'detectWorkspaceRoot() marker list; `.arch` kept as a legacy back-compat root marker.' },
+    // feat/portable-store: src/mcp/main.ts's duplicate detectWorkspaceRoot()
+    // marker list was deduped into the shared walker too — row removed.
     { file: 'src/workspace/detect.ts',
       phase: 'permanent',
       reason: 'detectWorkspace() marker list + JSDoc that enumerates the markers; `.arch` is a legacy back-compat root marker (moved from the original CLI workspace helper in G2).' },

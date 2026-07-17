@@ -26,43 +26,22 @@
 
 import { startServer, stopServer } from './server';
 import { getMcpConfig } from './config';
-import * as path from 'path';
-import * as fs from 'fs';
+import { detectWorkspace } from '../workspace';
 import { createLogger } from '../common/logger';
 
 const log = createLogger('mcp');
 
 /**
- * Detect workspace root by walking up directory tree
- * looking for project markers
+ * Detect workspace root: `LLMEM_WORKSPACE` env var first (throws
+ * `WorkspaceNotFoundError` if set but nonexistent — `entry.ts` turns that
+ * into a fatal exit-1), then marker walk-up from cwd, then cwd. Thin wrapper
+ * over the shared `src/workspace/detect.ts` helper (same priority order),
+ * kept for the log line and the existing export surface.
  */
 function detectWorkspaceRoot(): string {
-    // 1. Explicit env var (highest priority)
-    if (process.env.LLMEM_WORKSPACE) {
-        const workspace = process.env.LLMEM_WORKSPACE;
-        log.info('Using LLMEM_WORKSPACE', { workspace });
-        return workspace;
-    }
-
-    // 2. Auto-detect by walking up from cwd
-    const markers = ['.git', 'package.json', '.llmem', '.arch', '.artifacts'];
-    let current = process.cwd();
-    const root = path.parse(current).root;
-
-    while (current !== root) {
-        for (const marker of markers) {
-            const markerPath = path.join(current, marker);
-            if (fs.existsSync(markerPath)) {
-                log.info('Auto-detected workspace root', { current, marker });
-                return current;
-            }
-        }
-        current = path.dirname(current);
-    }
-
-    // 3. Fallback to cwd
-    log.info('Using current directory as workspace', { cwd: process.cwd() });
-    return process.cwd();
+    const workspace = detectWorkspace();
+    log.info('Workspace root detected', { workspace });
+    return workspace;
 }
 
 /**

@@ -325,9 +325,8 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     // `.artifacts` literal gone, row removed.
     // G3: config.ts JSDoc now documents the `.llmem/graph` default —
     // `.artifacts` literal gone, row removed.
-    { file: 'src/mcp/main.ts',
-      phase: 'permanent',
-      reason: 'Workspace-marker walker.' },
+    // feat/portable-store: src/mcp/main.ts's duplicate marker walker was
+    // deduped into src/workspace/detect.ts — `.artifacts` literal gone, row removed.
     { file: 'src/workspace/detect.ts',
       phase: 'permanent',
       reason: 'Workspace-marker walker + JSDoc listing the markers checked (moved from the original CLI workspace helper in G2).' },
