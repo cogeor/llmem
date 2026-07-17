@@ -5,6 +5,7 @@
  * This is the SINGLE SOURCE OF TRUTH for supported file extensions.
  */
 
+import * as fs from 'fs';
 import * as path from 'path';
 
 import {
@@ -217,3 +218,40 @@ export const IGNORED_FOLDERS = new Set([
     'bin',
     'obj',
 ]);
+
+/**
+ * Marker FILES that identify a directory as a virtualenv or cache dir even
+ * when its NAME is not in {@link IGNORED_FOLDERS}:
+ *
+ * - `pyvenv.cfg` — the universal Python venv marker. Every venv carries one
+ *   at its top level regardless of the directory's name, so a nonstandard
+ *   venv name (e.g. `.venv_diffdock_pp`) is still recognized. Without this,
+ *   crawling one stray venv pulls its entire `site-packages` into the graph
+ *   (observed: 60k+ import nodes, 10+ minute scans).
+ * - `CACHEDIR.TAG` — the cachedir.org convention written by pip, uv, pytest,
+ *   cargo and friends into their cache directories.
+ */
+const IGNORE_MARKER_FILES = ['pyvenv.cfg', 'CACHEDIR.TAG'] as const;
+
+/**
+ * Return `true` when the directory entry `parentDirAbs/entryName` must be
+ * skipped by a directory walk. Two layers:
+ *
+ * 1. Name check (free): `entryName` is in {@link IGNORED_FOLDERS}.
+ * 2. Marker check (1–2 `existsSync` calls, only when the name check misses):
+ *    the directory itself CONTAINS one of {@link IGNORE_MARKER_FILES}.
+ *
+ * This is the shared gate for EVERY walk that used to consult
+ * `IGNORED_FOLDERS` directly (scan, refresh, line counter, explorer tree,
+ * graph status). Callers pass the ABSOLUTE path of the parent directory being
+ * listed plus the entry name; the marker files live INSIDE the entry. Calling
+ * it on a file entry is safe — `existsSync` under a file path is just false.
+ */
+export function isIgnoredDir(parentDirAbs: string, entryName: string): boolean {
+    if (IGNORED_FOLDERS.has(entryName)) return true;
+    const dirAbs = path.join(parentDirAbs, entryName);
+    for (const marker of IGNORE_MARKER_FILES) {
+        if (fs.existsSync(path.join(dirAbs, marker))) return true;
+    }
+    return false;
+}

@@ -12,7 +12,7 @@
 
 import * as path from 'path';
 import { ImportEdgeListStore, CallEdgeListStore, SchemaMismatchError } from '../../graph/edgelist';
-import { IGNORED_FOLDERS, ALL_SUPPORTED_EXTENSIONS } from '../../parser/config';
+import { isIgnoredDir, ALL_SUPPORTED_EXTENSIONS } from '../../parser/config';
 import { GraphStatus } from './worktree';
 import { WorkspaceIO } from '../../workspace/workspace-io';
 
@@ -183,9 +183,9 @@ async function scanFoldersRecursive(
 ): Promise<void> {
     const relativePath = currentRel || '.';
 
-    // Skip ignored folders
+    // Skip ignored folders (name or venv/cache marker file)
     const folderName = relativePath === '.' ? '' : path.posix.basename(relativePath);
-    if (folderName && IGNORED_FOLDERS.has(folderName)) return;
+    if (folderName && isIgnoredDir(path.dirname(io.resolve(relativePath)), folderName)) return;
 
     // Get files in this folder and check their status
     const {
@@ -249,8 +249,9 @@ async function scanFoldersRecursive(
         return;
     }
 
+    const dirAbs = io.resolve(relativePath);
     for (const entry of entries) {
-        if (IGNORED_FOLDERS.has(entry)) continue;
+        if (isIgnoredDir(dirAbs, entry)) continue;
 
         const entryRel = relativePath === '.' ? entry : `${relativePath}/${entry}`;
         let isDir = false;

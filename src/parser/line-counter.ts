@@ -7,7 +7,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { ALL_SUPPORTED_EXTENSIONS, IGNORED_FOLDERS } from './config';
+import { ALL_SUPPORTED_EXTENSIONS, isIgnoredDir } from './config';
 import { createLogger } from '../common/logger';
 
 const log = createLogger('line-counter');
@@ -51,8 +51,8 @@ export function countFolderLines(rootDir: string, folderPath: string): FolderLin
     for (const entry of entries) {
         const fullPath = path.join(folderPath, entry);
 
-        // Skip ignored folders
-        if (IGNORED_FOLDERS.has(entry)) continue;
+        // Skip ignored folders (name or venv/cache marker file)
+        if (isIgnoredDir(folderPath, entry)) continue;
 
         let stats: fs.Stats;
         try {
@@ -125,8 +125,8 @@ function countFoldersRecursive(
     }
 
     for (const entry of entries) {
-        // Skip ignored folders
-        if (IGNORED_FOLDERS.has(entry)) continue;
+        // Skip ignored folders (name or venv/cache marker file)
+        if (isIgnoredDir(currentDir, entry)) continue;
 
         const fullPath = path.join(currentDir, entry);
 

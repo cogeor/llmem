@@ -1,6 +1,6 @@
 import * as path from 'path';
 import { ParserRegistry } from '../../parser/registry';
-import { IGNORED_FOLDERS } from '../../parser/config';
+import { isIgnoredDir } from '../../parser/config';
 import { createLogger } from '../../common/logger';
 import { WorkspaceIO } from '../../workspace/workspace-io';
 
@@ -45,12 +45,12 @@ export interface ITreeNode {
     callGraph?: 'semantic' | 'heuristic' | 'none';
 }
 
-// PH-07: the scanner (parser/config IGNORED_FOLDERS) is the single source of
-// truth for folder ignores. The explorer previously kept a divergent
-// ALWAYS_IGNORED set that omitted venvs/target/dist/build/.arch, so the tree
-// rendered large vendored trees the scanner skipped. shouldIgnore now checks
-// IGNORED_FOLDERS by entry name (it is called per-entry before stat, so the
-// folded-in .DS_Store file name is matched too).
+// PH-07: the scanner (parser/config isIgnoredDir over IGNORED_FOLDERS +
+// venv/cache marker files) is the single source of truth for folder ignores.
+// The explorer previously kept a divergent ALWAYS_IGNORED set that omitted
+// venvs/target/dist/build/.arch, so the tree rendered large vendored trees
+// the scanner skipped. shouldIgnore now routes through isIgnoredDir per entry
+// (called before stat, so the folded-in .DS_Store file name is matched too).
 
 /**
  * Parse .gitignore and return a set of patterns.
@@ -106,8 +106,9 @@ async function parseGitignore(io: WorkspaceIO): Promise<Set<string>> {
 /**
  * Check if a path should be ignored.
  *
- * Two layers: (1) the authoritative IGNORED_FOLDERS always-ignore set (shared
- * with the scanner — PH-07), and (2) an APPROXIMATE .gitignore match. The
+ * Two layers: (1) the authoritative scanner ignore gate (shared with the
+ * scanner — PH-07): IGNORED_FOLDERS names plus the pyvenv.cfg / CACHEDIR.TAG
+ * marker-file check via isIgnoredDir, and (2) an APPROXIMATE .gitignore match. The
  * gitignore layer supports ONLY: exact name (`pattern === name`), exact/prefix
  * relative-path match, `*.ext`, and `dir/*`. It does NOT support negation (`!`),
  * `**`, character classes, `?`, braces, or anchored (`/`-leading) patterns — see
@@ -115,9 +116,10 @@ async function parseGitignore(io: WorkspaceIO): Promise<Set<string>> {
  * (the entry is shown), which is safe for tree pruning; switch to the `ignore`
  * npm package if exact gitignore fidelity is needed.
  */
-function shouldIgnore(name: string, relativePath: string, patterns: Set<string>): boolean {
-    // Check always ignored (shared scanner ignore list — PH-07)
-    if (IGNORED_FOLDERS.has(name)) return true;
+function shouldIgnore(name: string, relativePath: string, patterns: Set<string>, parentDirAbs: string): boolean {
+    // Check always ignored (shared scanner ignore gate: names + venv/cache
+    // marker files — PH-07)
+    if (isIgnoredDir(parentDirAbs, name)) return true;
 
     // Skip problematic file extensions that can cause issues (like Electron .asar archives, large CSVs)
     const SKIP_EXTENSIONS = [
@@ -250,11 +252,15 @@ export async function generateWorkTree(
             });
         }
 
+        // Absolute path of THIS directory (the parent of every entry below),
+        // for the isIgnoredDir marker-file check inside shouldIgnore.
+        const dirAbs = io.resolve(probeRel);
+
         for (const entry of entries) {
             const entryRelPath = relativePath ? `${relativePath}/${entry}` : entry;
 
             // Check if should be ignored
-            if (shouldIgnore(entry, entryRelPath, gitignorePatterns)) continue;
+            if (shouldIgnore(entry, entryRelPath, gitignorePatterns, dirAbs)) continue;
 
             // Per-child try/catch so a single bad entry (e.g. a symlink
             // pointing outside the workspace, surfaced as PathEscapeError
